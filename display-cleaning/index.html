@@ -426,9 +426,40 @@ const cfg = k => (S.config[k] !== undefined && S.config[k] !== null && S.config[
 
 /* ================= التخزين (سحابي مشترك أو محلي) ================= */
 const LKEY = 'dh2_data';
+/* ----- Firebase: يُفعَّل تلقائياً عند الاستضافة على Firebase Hosting (يقرأ /__/firebase/init.json) ----- */
+function loadScript(src){ return new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = rej; document.head.appendChild(e); }); }
+async function fbConfig(){
+  if(window.FIREBASE_CONFIG) return window.FIREBASE_CONFIG;
+  if(!/^https?:$/.test(location.protocol)) return null;
+  try{ const r = await withTimeout(fetch('/__/firebase/init.json', { cache: 'no-store' }), 4000); if(r && r.ok){ const j = await r.json(); if(j && j.projectId && !j.apiKey && /^demo-/.test(j.projectId)) j.apiKey = 'demo-key'; if(j && j.projectId && j.apiKey) return j; } }catch(e){}
+  return null;
+}
+const FN_REGION = 'europe-west1';
+// استدعاء دالة خادم؛ رسالة الخطأ القادمة من الخادم عربية وتُعرض كما هي
+async function fbCall(name, data){
+  try{ return (await FB.httpsCallable(Store.fb.fn, name)(data || {})).data; }
+  catch(e){ toast(e && e.message && !/^internal$/i.test(e.message) ? e.message : 'تعذّر الاتصال بالخادم. حاول مرة أخرى.', 3600); return null; }
+}
+async function fbSignIn(r){
+  if(!r || !r.token) return false;
+  try{ await FB.signInWithCustomToken(Store.fb.auth, r.token); LS.set('dh2_shared', !!LG.shared); S.shared = !!LG.shared; LG = { step: 'num' }; S.tab = 'home'; lastAct = Date.now(); return true; }
+  catch(e){ toast('تعذّر تسجيل الدخول. حاول مرة أخرى.'); return false; }
+}
 const Store = {
-  db: null, local: null, ls: [], q: Promise.resolve(),
+  db: null, fb: null, local: null, ls: [], q: Promise.resolve(),
   async init(){
+    const fc = await fbConfig();
+    if(fc){
+      try{
+        if(!window.FB) await loadScript('vendor/firebase.js');
+        const app = FB.initializeApp(fc), emu = /^demo-/.test(fc.projectId) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+        let db; try{ db = FB.initializeFirestore(app, Object.assign({ ignoreUndefinedProperties: true }, emu ? {} : { localCache: FB.persistentLocalCache({ tabManager: FB.persistentMultipleTabManager() }) })); }catch(e){ db = FB.getFirestore(app); }
+        const auth = FB.getAuth(app), fn = FB.getFunctions(app, FN_REGION);
+        if(emu){ FB.connectFirestoreEmulator(db, location.hostname, 8080); FB.connectAuthEmulator(auth, 'http://' + location.hostname + ':9099', { disableWarnings: true }); FB.connectFunctionsEmulator(fn, location.hostname, 5001); }
+        this.fb = { db, auth, fn }; S.mode = 'firebase'; S.canManage = false;
+        return;
+      }catch(e){ console.warn('firebase init failed', e); }
+    }
     let db = null, user = null;
     for(let i = 0; i < 15 && !(window.claude && typeof window.claude.use === 'function'); i++) await sleep(100);
     if(window.claude && typeof window.claude.use === 'function'){
@@ -444,8 +475,20 @@ const Store = {
       this.local = LS.get(LKEY, null) || {};
     }
   },
+  _q(col, where, opt){
+    const c = []; if(where) c.push(FB.where(where[0], where[1], where[2]));
+    if(opt && opt.order) c.push(FB.orderBy(opt.order[0], opt.order[1])); if(opt && opt.limit) c.push(FB.limit(opt.limit));
+    return FB.query(FB.collection(this.fb.db, col), ...c);
+  },
+  _ref(col, id){ return FB.doc(this.fb.db, col, id); },
+  // Firestore لا يقبل مصفوفة داخل مصفوفة: سجل الشهر (act.e) يُخزَّن كنصوص JSON ويُفكّ عند القراءة
+  _enc(col, d){ if(col === 'act' && d && Array.isArray(d.e)){ d = Object.assign({}, d, { e: d.e.map(x => typeof x === 'string' ? x : JSON.stringify(x)) }); } return d; },
+  _dec(col, id, d){ const o = Object.assign({ id }, d); if(col === 'act' && Array.isArray(o.e)) o.e = o.e.map(x => { if(typeof x !== 'string') return x; try{ return JSON.parse(x); }catch(e){ return null; } }).filter(Boolean); return o; },
+  // الكتابة في Firebase تُحفظ محلياً فوراً وتُرسل عند توفر الاتصال؛ لا ننتظر الخادم أكثر من 8 ثوانٍ
+  _w(p){ return Promise.race([p, sleep(8000)]); },
   // اشتراك بمجموعة مع شرط اختياري
   listen(col, where, opt, cb){
+    if(this.fb) return FB.onSnapshot(this._q(col, where, opt), s => cb(s.docs.map(d => this._dec(col, d.id, d.data())), s.metadata), e => cb(null, null, e));
     if(this.db){
       let q = this.db.collection(col);
       if(where) q = q.where(where[0], where[1], where[2]);
@@ -464,16 +507,19 @@ const Store = {
     return () => { this.ls = this.ls.filter(x => x !== L); };
   },
   listenDoc(col, id, cb){
+    if(this.fb) return FB.onSnapshot(this._ref(col, id), d => cb(d.exists() ? this._dec(col, d.id, d.data()) : null), () => cb(null));
     if(this.db) return this.db.collection(col).doc(id).onSnapshot(d => cb(d.exists ? Object.assign({ id: d.id }, d.data()) : null), () => cb(null));
     const run = () => { const v = (this.local[col] || {})[id]; cb(v ? Object.assign({ id }, v) : null); };
     const L = { col, run }; this.ls.push(L); setTimeout(run, 0);
     return () => { this.ls = this.ls.filter(x => x !== L); };
   },
   async getDoc(col, id){
+    if(this.fb){ const d = await FB.getDoc(this._ref(col, id)); return d.exists() ? this._dec(col, d.id, d.data()) : null; }
     if(this.db){ const d = await this.db.collection(col).doc(id).get(); return d.exists ? Object.assign({ id: d.id }, d.data()) : null; }
     const v = (this.local[col] || {})[id]; return v ? Object.assign({ id }, JSON.parse(JSON.stringify(v))) : null;
   },
   async query(col, where, limit){
+    if(this.fb){ const s = await FB.getDocs(this._q(col, where, { limit })); return s.docs.map(d => this._dec(col, d.id, d.data())); }
     if(this.db){ const s = await this.db.collection(col).where(where[0], where[1], where[2]).limit(limit).get(); return s.docs.map(d => Object.assign({ id: d.id }, d.data())); }
     return Object.entries(this.local[col] || {}).map(([id, v]) => Object.assign({ id }, v)).filter(d => where[1] === '<' ? d[where[0]] < where[2] : d[where[0]] === where[2]).slice(0, limit);
   },
@@ -490,10 +536,11 @@ const Store = {
       for(let a = 0; a < 4; a++){
         try{ await fn(); return true; }
         catch(e){
-          const c = e && e.code;
+          const c = e && e.code && String(e.code).replace(/-/g, '_');
           if((c === 'unavailable' || c === 'resource_exhausted') && a < 3){ await sleep(800 * (a + 1) + Math.random() * 600); continue; }
           if(!silent){
-            if(c === 'invalid_argument' && this.db){ S.readOnly = true; toast('لا تملك صلاحية الحفظ. اطلب من المسؤول منحك صلاحية «مساهم».'); }
+            if(c === 'permission_denied') toast('لا تملك صلاحية هذا الإجراء.');
+            else if(c === 'invalid_argument' && this.db){ S.readOnly = true; toast('لا تملك صلاحية الحفظ. اطلب من المسؤول منحك صلاحية «مساهم».'); }
             else if(c === 'quota_exceeded') toast('امتلأت سعة قاعدة البيانات. احذف سجلات الإثبات القديمة من الإعدادات.');
             else toast('تعذّر الحفظ. حاول مرة أخرى.');
           }
@@ -505,15 +552,18 @@ const Store = {
     this.q = p.catch(() => false); return p;
   },
   set(col, id, data, silent){ return this.run(async () => {
-    if(this.db) await this.db.collection(col).doc(id).set(data);
+    if(this.fb) await this._w(FB.setDoc(this._ref(col, id), this._enc(col, data)));
+    else if(this.db) await this.db.collection(col).doc(id).set(data);
     else { (this.local[col] = this.local[col] || {})[id] = JSON.parse(JSON.stringify(data)); this.notify(col); }
   }, silent); },
   update(col, id, patch){ return this.run(async () => {
-    if(this.db) await this.db.collection(col).doc(id).update(patch);
+    if(this.fb) await this._w(FB.setDoc(this._ref(col, id), this._enc(col, patch), { merge: true })); // merge يدمج الكائنات المتداخلة
+    else if(this.db) await this.db.collection(col).doc(id).update(patch);
     else { const c = this.local[col] = this.local[col] || {}; if(!c[id]) throw { code: 'invalid_argument' }; const merge = (t, s) => { for(const k in s){ if(s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) && t[k] && typeof t[k] === 'object') merge(t[k], s[k]); else t[k] = s[k]; } }; merge(c[id], JSON.parse(JSON.stringify(patch))); this.notify(col); }
   }); },
   del(col, id){ return this.run(async () => {
-    if(this.db) await this.db.collection(col).doc(id).delete();
+    if(this.fb) await this._w(FB.deleteDoc(this._ref(col, id)));
+    else if(this.db) await this.db.collection(col).doc(id).delete();
     else { if(this.local[col]) delete this.local[col][id]; this.notify(col); }
   }); }
 };
@@ -645,7 +695,7 @@ function render(force){
 function renderHeader(){
   const m = me();
   $('#hdr').innerHTML = `<div class="brand"><div class="lg">${ic('shield')}</div><div style="min-width:0"><b>${esc(cfg('orgName'))}</b><small>نظام متابعة نظافة العارضات</small></div></div><div class="sp"></div>
-    ${S.mode === 'cloud' ? `<span class="mode">${S.stale ? 'غير متصل' : 'متصل'}</span>` : S.mode === 'local' ? '<span class="mode">وضع محلي</span>' : ''}
+    ${S.mode === 'cloud' || S.mode === 'firebase' ? `<span class="mode">${S.stale ? 'غير متصل' : 'متصل'}</span>` : S.mode === 'local' ? '<span class="mode">وضع محلي</span>' : ''}
     ${(S.canManage || (m && m.role === 'sup')) && S.tab !== 'admin' ? `<button class="hbtn" data-act="openAdmin">${ic('cog', 18)}<span>الإدارة</span></button>` : ''}
     ${S.tab === 'admin' && S.me ? `<button class="hbtn" data-act="tab" data-t="home">${ic('back', 18)}<span>رجوع</span></button>` : ''}`;
 }
@@ -666,11 +716,12 @@ function vLogin(){
       <label class="row sm" style="margin:8px 0"><input type="checkbox" id="lgShared" style="width:auto" ${LS.get('dh2_shared', false) ? 'checked' : ''}> جهاز مشترك (خروج تلقائي بعد 5 دقائق من عدم الاستخدام)</label>
       <button class="btn pri big" data-act="lgNext">متابعة</button>`;
   } else if(LG.step === 'pin'){
-    h += `<div class="row" style="margin-bottom:10px"><div class="av">${initials(LG.st.name)}</div><div><b>${esc(LG.st.name)}</b><div class="xs mut">${esc(LG.st.section || '')}</div></div></div>
+    h += LG.st ? `<div class="row" style="margin-bottom:10px"><div class="av">${initials(LG.st.name)}</div><div><b>${esc(LG.st.name)}</b><div class="xs mut">${esc(LG.st.section || '')}</div></div></div>` : `<p class="sm" style="margin-top:0">الرقم الوظيفي <b>${esc(LG.num)}</b></p>`;
+    h += `
       <div class="fld"><label>الرمز السري</label><input id="lgPin" type="password" inputmode="numeric" autocomplete="off"></div>
       <button class="btn pri big" data-act="lgPin">دخول</button><button class="btn w" style="margin-top:8px" data-act="lgBack">رجوع</button>`;
   } else if(LG.step === 'newpin'){
-    h += `<p class="sm">مرحباً <b>${esc(LG.st.name)}</b>. هذا أول دخول لك؛ يرجى تعيين رمز سري من 4 أرقام على الأقل.</p>
+    h += `<p class="sm">مرحباً <b>${esc(LG.st ? LG.st.name : 'بك')}</b>. هذا أول دخول لك؛ يرجى تعيين رمز سري من 4 أرقام على الأقل.</p>
       <div class="fld"><label>الرمز السري الجديد</label><input id="np1" type="password" inputmode="numeric"></div>
       <div class="fld"><label>تأكيد الرمز</label><input id="np2" type="password" inputmode="numeric"></div>
       <button class="btn pri big" data-act="lgSetPin">حفظ ودخول</button><button class="btn w" style="margin-top:8px" data-act="lgBack">رجوع</button>`;
@@ -683,7 +734,17 @@ function vLogin(){
       <div class="fld"><label>الرمز السري (4 أرقام على الأقل)</label><input id="rgPin" type="password" inputmode="numeric"></div>
       <button class="btn pri big" data-act="lgReg">تسجيل</button><button class="btn w" style="margin-top:8px" data-act="lgBack">رجوع</button>`;
   }
+  else if(LG.step === 'setup'){
+    h += `<div class="note" style="margin-bottom:10px">إعداد النظام لأول مرة: أنشئ حساب المدير. تحتاج «مفتاح الإعداد» الذي ضُبط عند النشر.</div>
+      <div class="fld"><label>اسم الشركة</label><input id="suOrg"></div>
+      <div class="fld"><label>مفتاح الإعداد</label><input id="suKey" type="password" autocomplete="off"></div>
+      <div class="fld"><label>رقمك الوظيفي</label><input id="suNum" inputmode="numeric"></div>
+      <div class="fld"><label>اسمك</label><input id="suName"></div>
+      <div class="fld"><label>رمزك السري (4 إلى 8 أرقام)</label><input id="suPin" type="password" inputmode="numeric"></div>
+      <button class="btn pri big" data-act="lgSetup">إنشاء حساب المدير</button><button class="btn w" style="margin-top:8px" data-act="lgBack">رجوع</button>`;
+  }
   h += `</div>`;
+  if(S.mode === 'firebase' && !cfg('setupDone') && LG.step === 'num') h += `<button class="btn w" data-act="lgSetupOpen">${ic('cog')} إعداد النظام لأول مرة</button>`;
   if(S.canManage) h += `<button class="btn w" data-act="openAdmin">${ic('cog')} دخول الإدارة</button>`;
   if(!S.zones.length && S.canManage) h += `<div class="note" style="margin-top:12px">النظام فارغ حالياً. ادخل إلى الإدارة لاستيراد العارضات والموظفين.</div>`;
   return h + `</div>`;
@@ -692,7 +753,9 @@ function doLogin(id, shared){
   S.me = id; S.shared = !!shared; LS.set('dh2_me', id); LS.set('dh2_shared', !!shared); lastAct = Date.now();
   LG = { step: 'num' }; S.tab = 'home'; subscribeAct(); render(true);
 }
-function logout(){ S.me = null; LS.del('dh2_me'); F = null; S.admin = null; S.tab = 'home'; subscribeAct(); render(true); }
+function logout(){
+  if(S.mode === 'firebase'){ LS.del('dh2_me'); Promise.resolve(FB.signOut(Store.fb.auth)).catch(() => {}).then(() => location.reload()); return; }
+  S.me = null; LS.del('dh2_me'); F = null; S.admin = null; S.tab = 'home'; subscribeAct(); render(true); }
 
 /* ----- الرئيسية ----- */
 function vHome(){
@@ -1148,7 +1211,7 @@ function aStaff(){
   const f = S.sf, q = f.q.trim(), list = S.staff.filter(p => !q || p.name.includes(q) || String(p.num).includes(q) || (p.section || '').includes(q)).sort((a, b) => String(a.num).localeCompare(String(b.num), 'en', { numeric: true }));
   return `<div class="g2"><button class="btn pri" data-act="staffForm">${ic('plus')} موظف جديد</button><button class="btn" data-act="importStaff">${ic('up')} استيراد جماعي</button></div>
     <div class="filters"><input placeholder="بحث بالاسم أو الرقم أو القسم" value="${esc(f.q)}" data-f="sf.q"></div><div class="sm mut">${list.length} موظف</div>
-    <div class="list">${list.slice(0, f.lim).map(p => `<button class="zr" data-act="staffForm" data-id="${esc(p.id)}"><div class="av">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><span class="nm">${esc(p.name)}</span>${p.role === 'sup' ? '<span class="tag t-inf">مشرف</span>' : ''}${p.active === false ? '<span class="tag t-da">موقوف</span>' : ''}${!p.pinH ? '<span class="tag t-wa">لم يفعّل</span>' : ''}</div><div class="xs mut">${esc(p.num)} · ${esc(p.section || '')}${p.branch ? ' · ' + esc(p.branch) : ''}</div></div></button>`).join('') || '<div class="empty">لا يوجد موظفون.</div>'}</div>
+    <div class="list">${list.slice(0, f.lim).map(p => `<button class="zr" data-act="staffForm" data-id="${esc(p.id)}"><div class="av">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><span class="nm">${esc(p.name)}</span>${p.role === 'sup' ? '<span class="tag t-inf">مشرف</span>' : ''}${p.active === false ? '<span class="tag t-da">موقوف</span>' : ''}${!(p.pinH || p.activated) ? '<span class="tag t-wa">لم يفعّل</span>' : ''}${p.role === 'admin' ? '<span class="tag t-ok">مدير</span>' : ''}</div><div class="xs mut">${esc(p.num)} · ${esc(p.section || '')}${p.branch ? ' · ' + esc(p.branch) : ''}</div></div></button>`).join('') || '<div class="empty">لا يوجد موظفون.</div>'}</div>
     ${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="sf">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
 }
 function aReview(){
@@ -1208,7 +1271,7 @@ function staffForm(p){
     <div class="g2"><div class="fld"><label>القسم</label><input id="pS" list="dlS2" value="${esc(p.section)}"><datalist id="dlS2">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
     <div class="fld"><label>الفرع</label><input id="pB" list="dlB2" value="${esc(p.branch || '')}"><datalist id="dlB2">${brs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div></div>
     <div class="fld"><label>أقسام إضافية (للمشرف أو الموظف المتنقّل، مفصولة بفاصلة)</label><input id="pX" value="${esc((p.extra || []).join('، '))}"></div>
-    <div class="g2"><div class="fld"><label>الدور</label><select id="pR"><option value="staff" ${p.role !== 'sup' ? 'selected' : ''}>موظف</option><option value="sup" ${p.role === 'sup' ? 'selected' : ''}>مشرف قسم</option></select></div>
+    <div class="g2"><div class="fld"><label>الدور</label><select id="pR"><option value="staff" ${p.role !== 'sup' && p.role !== 'admin' ? 'selected' : ''}>موظف</option><option value="sup" ${p.role === 'sup' ? 'selected' : ''}>مشرف قسم</option>${S.mode === 'firebase' ? `<option value="admin" ${p.role === 'admin' ? 'selected' : ''}>مدير</option>` : ''}</select></div>
     <div class="fld"><label>الحالة</label><select id="pA"><option value="1" ${p.active !== false ? 'selected' : ''}>فعّال</option><option value="0" ${p.active === false ? 'selected' : ''}>موقوف</option></select></div></div>
     ${p.id ? `<button class="btn w" data-act="resetPin" data-id="${esc(p.id)}">${ic('shield')} إعادة تعيين الرمز السري</button>` : '<div class="sm mut">يعيّن الموظف رمزه السري بنفسه عند أول دخول.</div>'}
     <div class="g2" style="margin-top:12px"><button class="btn pri" data-act="staffSave" data-id="${esc(p.id || '')}">حفظ</button>${p.id ? `<button class="btn dan" data-act="staffDel" data-id="${esc(p.id)}">حذف</button>` : '<button class="btn" data-act="close">إلغاء</button>'}</div>`;
@@ -1229,27 +1292,45 @@ const A = {
   showDue(){ S.zf.mine = true; S.zf.st = 'due'; S.tab = 'zones'; render(true); },
   rk(d){ S.rank[d.k] = d.v; render(true); },
   logout(){ logout(); },
-  lgNext(){
+  async lgNext(){
     const num = ($('#lgNum').value || '').trim(); if(!num) return toast('أدخل الرقم الوظيفي.');
-    LG.num = num; LG.shared = $('#lgShared').checked; const st = S.staff.find(s => String(s.num) === num);
+    LG.num = num; LG.shared = $('#lgShared').checked;
+    if(S.mode === 'firebase'){
+      const r = await fbCall('who', { num }); if(!r) return;
+      if(r.state === 'off') return toast('هذا الحساب موقوف. راجع الإدارة.');
+      if(r.state === 'none') return toast('الرقم غير مسجّل. راجع الإدارة.');
+      LG.st = null; LG.step = r.state; render(true); return;
+    } const st = S.staff.find(s => String(s.num) === num);
     if(st && st.active === false) return toast('هذا الحساب موقوف. راجع الإدارة.');
     if(st){ LG.st = st; LG.step = st.pinH ? 'pin' : 'newpin'; }
     else if(cfg('selfReg')) LG.step = 'reg'; else return toast('الرقم غير مسجّل. راجع الإدارة.');
     render(true);
   },
   lgBack(){ LG.step = 'num'; render(true); },
-  async lgPin(){ const p = $('#lgPin').value || ''; if((await hashPin(LG.st.id, p)) === LG.st.pinH) doLogin(LG.st.id, LG.shared); else toast('الرمز غير صحيح.'); },
+  lgSetupOpen(){ LG.step = 'setup'; render(true); },
+  async lgSetup(){
+    const v = id => ($('#' + id).value || '').trim(), pin = v('suPin');
+    if(!v('suKey') || !v('suNum') || v('suName').length < 3) return toast('أكمل جميع الحقول.'); if(!/^\d{4,8}$/.test(pin)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
+    if(await fbSignIn(await fbCall('bootstrap', { key: v('suKey'), num: v('suNum'), name: v('suName'), org: v('suOrg'), pin }))) toast('تم إنشاء حساب المدير. ابدأ باستيراد العارضات والموظفين من الإدارة.', 4500);
+  },
+  async lgPin(){ const p = $('#lgPin').value || '';
+    if(S.mode === 'firebase'){ if(!/^\d{4,8}$/.test(p)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.'); return fbSignIn(await fbCall('login', { num: LG.num, pin: p })); } if((await hashPin(LG.st.id, p)) === LG.st.pinH) doLogin(LG.st.id, LG.shared); else toast('الرمز غير صحيح.'); },
   async lgSetPin(){ const a = $('#np1').value, b = $('#np2').value; if(!/^\d{4,8}$/.test(a)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.'); if(a !== b) return toast('الرمزان غير متطابقين.');
+    if(S.mode === 'firebase') return fbSignIn(await fbCall('setPin', { num: LG.num, pin: a }));
     if(await Store.update('staff', LG.st.id, { pinH: await hashPin(LG.st.id, a) })) doLogin(LG.st.id, LG.shared); },
   async lgReg(){
     const name = $('#rgName').value.trim(), sec = ($('#rgSec') || {}).value || '', br = ($('#rgBr') || {}).value || '', pin = $('#rgPin').value;
     if(name.length < 3) return toast('أدخل الاسم الكامل.'); if(!sec.trim()) return toast('حدّد القسم.'); if(!/^\d{4,8}$/.test(pin)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
+    if(S.mode === 'firebase') return fbSignIn(await fbCall('register', { num: LG.num, name, section: sec.trim(), branch: br, pin }));
     if(S.staff.some(s => String(s.num) === LG.num)) return toast('الرقم مسجّل مسبقاً.');
     const id = rid(); if(await Store.set('staff', id, { num: LG.num, name, section: sec.trim(), branch: br, role: 'staff', active: true, pinH: await hashPin(id, pin), created: Date.now(), self: true, st: {} })){
       if(!staffById(id)) S.staff.push({ id, num: LG.num, name, section: sec.trim(), branch: br, st: {} }); doLogin(id, LG.shared); toast('تم التسجيل بنجاح.'); }
   },
   chgPin(){ openModal(`<h2>تغيير الرمز السري</h2><div class="fld"><label>الرمز الحالي</label><input id="cp0" type="password" inputmode="numeric"></div><div class="fld"><label>الرمز الجديد</label><input id="cp1" type="password" inputmode="numeric"></div><button class="btn pri w" data-act="chgPinSave">حفظ</button>`); },
-  async chgPinSave(){ const m = me(); if((await hashPin(m.id, $('#cp0').value)) !== m.pinH) return toast('الرمز الحالي غير صحيح.'); const n = $('#cp1').value; if(!/^\d{4,8}$/.test(n)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
+  async chgPinSave(){
+    if(S.mode === 'firebase'){ const n = $('#cp1').value; if(!/^\d{4,8}$/.test(n)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
+      if(await fbCall('changePin', { oldPin: $('#cp0').value, pin: n })){ closeModal(); toast('تم تغيير الرمز.'); } return; }
+    const m = me(); if((await hashPin(m.id, $('#cp0').value)) !== m.pinH) return toast('الرمز الحالي غير صحيح.'); const n = $('#cp1').value; if(!/^\d{4,8}$/.test(n)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
     if(await Store.update('staff', m.id, { pinH: await hashPin(m.id, n) })){ closeModal(); toast('تم تغيير الرمز.'); } },
   openAdmin(){ const m = me(); S.admin = S.canManage ? { all: true, ok: S.mode !== 'local' } : (m && m.role === 'sup' ? { all: false, sections: mySections() } : null); if(!S.admin) return; S.tab = 'admin'; render(true); window.scrollTo(0, 0); },
   adminPin(){ if(($('#pinA').value || '') === String(LS.get('dh2_apin', '1234'))){ S.admin.ok = true; render(true); } else toast('الرمز غير صحيح.'); },
@@ -1331,7 +1412,8 @@ const A = {
     if(await Store.set('staff', d.id || rid(), data)){ closeModal(); toast('تم الحفظ.'); }
   },
   staffDel(d){ if(!d.ok) return confirmBox('حذف هذا الموظف؟ يُفضّل إيقافه بدلاً من الحذف للحفاظ على سجلاته.', 'staffDel', d.id); Store.del('staff', d.id).then(closeModal); },
-  async resetPin(d){ if(await Store.update('staff', d.id, { pinH: '' })){ closeModal(); toast('سيعيّن الموظف رمزاً جديداً عند الدخول القادم.'); } },
+  async resetPin(d){ if(S.mode === 'firebase'){ if(await fbCall('resetPin', { staffId: d.id })){ closeModal(); toast('سيعيّن الموظف رمزاً جديداً عند الدخول القادم.'); } return; }
+    if(await Store.update('staff', d.id, { pinH: '' })){ closeModal(); toast('سيعيّن الموظف رمزاً جديداً عند الدخول القادم.'); } },
   importStaff(){ openModal(`<h2>استيراد الموظفين</h2><p class="sm mut" style="margin-top:0">سطر لكل موظف: <b>الرقم الوظيفي، الاسم، القسم، الفرع، الدور</b> (الدور: موظف أو مشرف، اختياري). يعيّن كل موظف رمزه السري عند أول دخول.</p>
     <textarea id="imp" style="height:220px" placeholder="1001، أحمد علي، الهواتف، فرع المنصور&#10;1002، سارة محمد، الحاسبات، فرع المنصور، مشرف"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportStaff">استيراد</button>`); },
   async doImportStaff(){
@@ -1393,7 +1475,7 @@ document.addEventListener('click', e => {
 // الفلاتر: حقول البحث والقوائم
 document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.f; if(!k || e.target.tagName === 'SELECT') return; const [o, p] = k.split('.'); S[o][p] = e.target.value; S[o].lim = o === 'zf' ? 40 : 50; clearTimeout(window._ft); window._ft = setTimeout(() => render(true), 200); });
 document.addEventListener('change', e => { const k = e.target.dataset && e.target.dataset.f; if(!k || e.target.tagName !== 'SELECT') return; const [o, p] = k.split('.'); S[o][p] = e.target.value; render(true); });
-document.addEventListener('keydown', e => { lastAct = Date.now(); if(e.key !== 'Enter') return; const id = e.target.id; const m = { lgNum: 'lgNext', lgPin: 'lgPin', np2: 'lgSetPin', codeIn: 'codeGo', codeIn2: 'codeCheck', pinA: 'adminPin' }[id]; if(m) A[m]({}, e.target, e); });
+document.addEventListener('keydown', e => { lastAct = Date.now(); if(e.key !== 'Enter') return; const id = e.target.id; const m = { lgNum: 'lgNext', lgPin: 'lgPin', np2: 'lgSetPin', suPin: 'lgSetup', codeIn: 'codeGo', codeIn2: 'codeCheck', pinA: 'adminPin' }[id]; if(m) A[m]({}, e.target, e); });
 document.addEventListener('touchstart', () => { lastAct = Date.now(); }, { passive: true });
 setInterval(() => {
   if(S.ready && ymOf() !== S.ym) subscribeMonth();
@@ -1401,8 +1483,22 @@ setInterval(() => {
   const busy = (F && S.tab === 'clean') || $('#modal').innerHTML || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
   if(!busy) render();
 }, 30000);
+// Firebase: الهوية من رمز الدخول (sid/role/admin)، والاشتراك بالبيانات بعد الدخول فقط
+function fbBoot(){
+  S.shared = LS.get('dh2_shared', false);
+  Store.listenDoc('config', 'main', d => { S.config = d || {}; scheduleRender(); });
+  FB.onAuthStateChanged(Store.fb.auth, async u => {
+    if(!u){ S.me = null; S.canManage = false; S.ready = true; render(true); return; }
+    let t = {}; try{ t = (await FB.getIdTokenResult(u)).claims || {}; }catch(e){}
+    if(!t.sid){ FB.signOut(Store.fb.auth); return; }
+    S.me = t.sid; S.role = t.role; S.canManage = !!t.admin; LS.set('dh2_me', t.sid);
+    if(!S.subscribed){ S.subscribed = true; S.ready = false; render(true); subscribeBase(); } else { subscribeAct(); render(true); }
+    setTimeout(() => { if(S.me && S.ready && S.staff.length && (!me() || me().active === false)){ toast('هذا الحساب موقوف.'); logout(); } }, 5000);
+  });
+}
 render();
 Store.init().then(() => {
+  if(S.mode === 'firebase'){ fbBoot(); return; }
   const saved = LS.get('dh2_me', null); S.shared = LS.get('dh2_shared', false);
   if(saved) S.me = saved;
   subscribeBase();

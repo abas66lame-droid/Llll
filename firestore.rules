@@ -1,0 +1,60 @@
+rules_version = '2';
+// قواعد الأمان: تُطبَّق على الخادم ولا يستطيع أي متصفح تجاوزها.
+// هوية المستخدم تأتي من رمز الدخول الذي تصدره دالة login: sid (معرّف الموظف)، role، admin.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed(){ return request.auth != null && request.auth.token.sid is string; }
+    function sid(){ return request.auth.token.sid; }
+    function isAdmin(){ return signed() && request.auth.token.admin == true; }
+    function isSup(){ return signed() && request.auth.token.role == 'sup'; }
+    function manager(){ return isAdmin() || isSup(); }
+    // الموظف الموقوف يفقد صلاحية الكتابة فوراً حتى لو بقي رمز دخوله صالحاً
+    function active(){ return signed() && get(/databases/$(database)/documents/staff/$(sid())).data.get('active', true) != false; }
+    function onlyKeys(keys){ return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function ownMonthly(id){ return id.matches(sid() + '_[0-9]{6}') && request.resource.data.staff == sid(); }
+
+    // الإعدادات العامة: تُقرأ قبل الدخول (اسم الشركة، التسجيل الذاتي)
+    match /config/{d} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /zones/{z} {
+      allow read: if signed();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (manager() && active())
+        || (active() && onlyKeys(['lastClean', 'lastBy', 'lastIdx', 'flaggedAt', 'flaggedBy'])
+            && request.resource.data.get('lastBy', '') in [resource.data.get('lastBy', ''), sid()]
+            && request.resource.data.get('flaggedBy', '') in [resource.data.get('flaggedBy', ''), sid()]);
+    }
+
+    match /staff/{s} {
+      allow read: if signed();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (s == sid() && active() && onlyKeys(['st']))
+        || (isSup() && active() && onlyKeys(['st']));
+    }
+
+    // الملخص الشهري وسجل الشهر: كل موظف يكتب مستنده فقط
+    match /sum/{d} {
+      allow read: if signed();
+      allow write: if (manager() && active()) || (active() && ownMonthly(d));
+    }
+    match /act/{d} {
+      allow read: if manager() || (signed() && d.matches(sid() + '_[0-9]{6}'));
+      allow write: if (manager() && active()) || (active() && ownMonthly(d));
+    }
+
+    // صور الإثبات: الموظف ينشئ إثباته فقط، والمراجعة للمدير والمشرف
+    match /proof/{p} {
+      allow read: if manager() || (signed() && resource.data.staff == sid());
+      allow create: if active() && request.resource.data.staff == sid() && request.resource.data.status == 'pending';
+      allow update, delete: if manager() && active();
+    }
+
+    // الرموز السرية وأقفال الأرقام: للدوال فقط، لا يقرؤها ولا يكتبها أي متصفح
+    match /secrets/{d} { allow read, write: if false; }
+    match /nums/{d} { allow read, write: if false; }
+  }
+}

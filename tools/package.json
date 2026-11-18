@@ -1,0 +1,7 @@
+{
+  "name": "display-cleaning-tools",
+  "private": true,
+  "description": "يبني ملف Firebase المحلي للتطبيق: npm install && npm run build",
+  "scripts": { "build": "node build-firebase.mjs" },
+  "devDependencies": { "esbuild": "0.28.2", "firebase": "13.2.0" }
+}

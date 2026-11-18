@@ -1,0 +1,30 @@
+# النشر التلقائي على Firebase عند كل دمج في main (أو يدوياً من تبويب Actions)
+# يحتاج ثلاثة أسرار في إعدادات المستودع: FIREBASE_SERVICE_ACCOUNT و FIREBASE_PROJECT_ID و SETUP_KEY (راجع SETUP.md)
+name: Deploy to Firebase
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency: deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Write runtime config and credentials
+        env:
+          SETUP_KEY: ${{ secrets.SETUP_KEY }}
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf 'SETUP_KEY=%s\n' "$SETUP_KEY" > functions/.env
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+      - name: Deploy hosting, rules and functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+        run: npx --yes firebase-tools@15.36.0 deploy --only hosting,firestore,functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive --force
