@@ -80,6 +80,12 @@ nav.tabs .mid span.c{width:46px;height:46px;border-radius:14px;background:var(--
 .shot .lbl{position:absolute;top:8px;right:8px;background:#000000b0;color:#fff;padding:2px 9px;border-radius:6px;font-size:12px}
 .scanl{position:absolute;left:0;right:0;height:2px;background:#4fd1c5;box-shadow:0 0 12px 3px #4fd1c588;animation:scan 1.1s ease-in-out infinite alternate;top:0}
 @keyframes scan{to{top:calc(100% - 2px)}}
+.live{position:relative;border-radius:var(--r);overflow:hidden;background:#000;border:1px solid var(--line)}
+.live video{display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;margin:0 auto}
+.live canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.lv-st{position:absolute;top:8px;right:8px;left:8px;display:flex;justify-content:space-between;gap:6px;pointer-events:none}
+.lv-st span{background:#000000b8;color:#fff;padding:3px 10px;border-radius:7px;font-size:13px}
+.lv-st .ok{background:#0f7a55e6}.lv-st .wa{background:#a8650ee6}
 .analyzing{height:220px;display:grid;place-items:center;color:#cfe;position:relative;overflow:hidden;background:#0d1b26}
 .idx{display:flex;align-items:center;gap:14px}
 .idx .n{font-size:34px;font-weight:700;line-height:1}
@@ -322,7 +328,10 @@ function analyzeDust(px, w, h, sens, opt){
 }
 const DUST_MAX = 900;
 let _wk = null, _wkBad = false;
-function runAnalysis(px, w, h, sens){
+let _aq = Promise.resolve();
+// تسلسل الطلبات: عامل واحد يعالج طلباً واحداً في كل مرة
+function runAnalysis(px, w, h, sens){ const p = _aq.then(() => runAnalysis1(px, w, h, sens)); _aq = p.catch(() => {}); return p; }
+function runAnalysis1(px, w, h, sens){
   const local = () => analyzeDust(px, w, h, sens);
   if(_wkBad || typeof Worker === 'undefined') return Promise.resolve(local());
   return new Promise(res => {
@@ -339,10 +348,11 @@ function runAnalysis(px, w, h, sens){
   });
 }
 // قصّ المنطقة المحددة من الصورة الأصلية بدقتها الكاملة (حتى DUST_MAX) ثم تحليلها
-async function analyzeRegion(img, rect, sens){
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+const srcW = im => im.videoWidth || im.naturalWidth || im.width, srcH = im => im.videoHeight || im.naturalHeight || im.height;
+async function analyzeRegion(img, rect, sens, maxS = DUST_MAX){
+  const iw = srcW(img), ih = srcH(img);
   const sx = rect.x * iw, sy = rect.y * ih, sw = rect.w * iw, sh = rect.h * ih;
-  const k = Math.min(1, DUST_MAX / Math.max(sw, sh)), w = Math.max(60, Math.round(sw * k)), h = Math.max(60, Math.round(sh * k));
+  const k = Math.min(1, maxS / Math.max(sw, sh)), w = Math.max(60, Math.round(sw * k)), h = Math.max(60, Math.round(sh * k));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
   return runAnalysis(x.getImageData(0, 0, w, h).data, w, h, sens);
@@ -371,7 +381,7 @@ function loadImg(file){
     im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(u), 1000); }; im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('img')); }; im.src = u; });
 }
 function prep(img, maxS = 720){
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height; if(!iw || !ih) throw new Error('empty');
+  const iw = srcW(img), ih = srcH(img); if(!iw || !ih) throw new Error('empty');
   const s = Math.min(1, maxS / Math.max(iw, ih)), w = Math.max(40, Math.round(iw * s)), h = Math.max(40, Math.round(ih * s));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, w, h);
@@ -404,7 +414,7 @@ function drawOverlay(cv, src, an, detail, rect){
 }
 
 /* ================= الحالة ================= */
-const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 10, selfReg: true, sound: true };
+const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 10, selfReg: true, sound: true, requireLive: false };
 const S = {
   mode: 'loading', ready: false, stale: false, canManage: false, readOnly: false,
   zones: [], staff: [], sums: [], config: {}, myAct: null, proofs: null,
@@ -788,13 +798,20 @@ function vClean(){
       ${'BarcodeDetector' in window ? `<button class="btn w" style="margin-top:8px" data-act="scanQR">${ic('qr')} أو مسح رمز QR</button>` : ''}</div>`;
   } else if(s === 'before' || s === 'after'){
     const b = s === 'before';
-    if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على الصورة لتحديد سطح العارضة فقط، دون الجدار أو الأرضية أو الزجاج. التحليل يقتصر على المنطقة المحددة.</p></div>
+    if(!F.busy && F.live && LIVE.stream) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
+        <div class="lv-st"><span id="lvS" class="wa">جارٍ تشغيل الكاميرا…</span><span id="lvI"></span></div></div>
+      <div class="note" style="margin:8px 0">ضع سطح العارضة داخل الإطار من مسافة 20 إلى 40 سم. الدوائر الحمراء حبيبات مكتشفة لحظياً؛ النتيجة النهائية تُحسب عند الالتقاط بدقة كاملة.</div>
+      <button class="btn pri big" data-act="liveCap">${ic('cam')} التقاط وتحليل</button><div style="height:8px"></div>
+      <div class="g2">${LIVE.canTorch ? `<button class="btn ${LIVE.torch ? 'pri' : ''}" id="lvTorch" data-act="liveTorch">${ic('fire')} الضوء</button>` : ''}<button class="btn" data-act="liveStop">إيقاف الكاميرا</button></div>`;
+    else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على الصورة لتحديد سطح العارضة فقط، دون الجدار أو الأرضية أو الزجاج. التحليل يقتصر على المنطقة المحددة.</p></div>
       <div class="shot"><canvas id="roiCv" style="touch-action:none;cursor:crosshair"></canvas></div><div style="height:10px"></div>
       <button class="btn pri big" data-act="roiGo">${ic('search')} تحليل المنطقة المحددة</button><div style="height:8px"></div><button class="btn w" data-act="shoot" data-w="${s}">إعادة التصوير</button>`;
     else if(F.busy) h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ تحليل الصورة…<div class="xs" style="opacity:.7">كشف الحبيبات الدقيقة على السطح</div></div></div>`;
     else h += `<div class="card"><h3>${ic('cam')} ${b ? (scan ? 'تصوير العارضة' : 'تصوير العارضة قبل التنظيف') : 'تصوير العارضة بعد التنظيف'}</h3>
-      <div class="note"><b>تعليمات التصوير:</b><ul><li>اقترب من السطح (20 إلى 40 سم) بحيث يملأ سطح العارضة معظم الصورة؛ الصورة البعيدة لا تُظهر الغبار.</li><li>فعّل الفلاش أو استخدم ضوءاً جانبياً؛ فالضوء المائل يُبرز حبيبات الغبار.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر، وثبّته لتجنّب الاهتزاز.</li><li>بعد التصوير ستحدد بإصبعك منطقة السطح المراد تحليلها.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
-      <div style="height:12px"></div><button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}">${ic('cam')} التقاط الصورة</button>
+      <div class="note"><b>تعليمات التصوير:</b><ul><li>اقترب من السطح (20 إلى 40 سم) بحيث يملأ سطح العارضة معظم الصورة؛ الصورة البعيدة لا تُظهر الغبار.</li><li>فعّل الفلاش أو استخدم ضوءاً جانبياً؛ فالضوء المائل يُبرز حبيبات الغبار.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر، وثبّته لتجنّب الاهتزاز.</li><li>في الفحص المباشر ضع السطح داخل الإطار؛ وفي الصورة العادية ستحدد المنطقة بإصبعك بعد التصوير.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
+      <div style="height:12px"></div>${liveAvail() ? `<button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}">${ic('eye')} فحص مباشر بالكاميرا</button>
+      ${cfg('requireLive') ? '' : `<button class="btn w" style="margin-top:8px" data-act="shoot" data-w="${b ? 'before' : 'after'}" data-photo="1">${ic('cam')} التقاط صورة عادية</button>`}`
+      : `<button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}" data-photo="1">${ic('cam')} التقاط الصورة</button><div class="xs mut" style="margin-top:6px">الفحص المباشر غير متاح في هذه الصفحة؛ يتطلب فتح التطبيق عبر رابط https.</div>`}
       ${b ? '' : `<button class="btn w" style="margin-top:8px" data-act="backClean">رجوع إلى التنظيف</button>`}</div>`;
   } else if(s === 'beforeRes' || s === 'scanRes'){
     const an = F.before.an, v = verdict(an.idx);
@@ -851,6 +868,7 @@ function rf(){ render(true); }
 function afterRender(){
   if(F && S.tab === 'clean') document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); });
   if(F && F.pick) roiInit();
+  if(LIVE.stream){ const v = $('#lvV'); if(!v) stopLive(); else if(v.srcObject !== LIVE.stream){ v.srcObject = LIVE.stream; v.play().catch(() => {}); v.onloadedmetadata = drawLive; } }
   if(S.tab === 'admin' && S.atab === 'labels' && window.QRCode) document.querySelectorAll('.qr[data-code]').forEach(el => { if(!el.childNodes.length){ try{ new QRCode(el, { text: 'DUST-' + el.dataset.code, width: 92, height: 92 }); }catch(e){} } });
 }
 function pickPhoto(){
@@ -882,17 +900,97 @@ async function analyzePick(){
   const pk = F.pick; if(!pk) return;
   const iw = pk.img.naturalWidth || pk.img.width, ih = pk.img.naturalHeight || pk.img.height;
   if(pk.rect.w * iw < 120 || pk.rect.h * ih < 120) return toast('المنطقة المحددة صغيرة جداً. اسحب لتحديد منطقة أكبر.');
-  const which = pk.which; F.busy = true; rf();
+  F.pick = null; await finishShot(pk.which, pk.img, pk.p, pk.rect, false);
+}
+async function finishShot(which, img, p, rect, live){
+  F.busy = true; F.step = which; rf();
   try{
-    const an = await analyzeRegion(pk.img, pk.rect, cfg('sens') || 1); await sleep(300);
-    F[which] = { an, canvas: pk.p.canvas, rect: pk.rect, thumb: thumb(pk.p.canvas), sig: signature(pk.p.g, pk.p.w, pk.p.h), t: Date.now() };
-    F.busy = false; F.pick = null;
+    const an = await analyzeRegion(img, rect, cfg('sens') || 1); await sleep(300);
+    F[which] = { an, canvas: p.canvas, rect, thumb: thumb(p.canvas), sig: signature(p.g, p.w, p.h), t: Date.now(), live: !!live };
+    F.busy = false;
     if(which === 'before') F.step = F.mode === 'scan' ? 'scanRes' : 'beforeRes';
     else { compute(); F.step = 'result'; }
     tone(which === 'before' || F.res.pass); rf(); window.scrollTo({ top: 0, behavior: 'smooth' });
     if(F.step === 'result' && F.res.pass) saveClean(false);
   }catch(e){ F.busy = false; rf(); toast('تعذّر تحليل الصورة. حاول مرة أخرى.'); }
 }
+/* ================= الفحص المباشر بالكاميرا =================
+   بث حي من الكاميرا الخلفية + إطار توجيه ثابت. كل ~300ms يُحلَّل ما داخل الإطار بدقة 560px
+   (للتوجيه فقط)، وعند الالتقاط يُؤخذ إطار كامل الدقة ويُحلَّل بالمحرك نفسه حتى 900px.
+   يتطلب سياقاً آمناً (https أو localhost)؛ وإلا يُستخدم التصوير العادي تلقائياً. */
+const GUIDE = { x: 0.1, y: 0.14, w: 0.8, h: 0.66 };
+const LIVE = { stream: null, on: false, an: null, torch: false, prev: null, good: 0, msg: '' };
+const liveAvail = () => !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+async function startLive(which){
+  try{
+    const st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    stopLive(); LIVE.stream = st; LIVE.on = true; LIVE.an = null; LIVE.prev = null; LIVE.good = 0; LIVE.torch = false;
+    const tr = st.getVideoTracks()[0];
+    try{ const c = tr.getCapabilities ? tr.getCapabilities() : {}; LIVE.canTorch = !!c.torch; if(c.focusMode && c.focusMode.includes('continuous')) await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }catch(e){}
+    F.pick = null; F.live = { which }; F.step = which; rf(); liveLoop();
+  }catch(e){
+    toast(e && e.name === 'NotAllowedError' ? 'لم يُسمح باستخدام الكاميرا. فعّل الإذن من إعدادات المتصفح.' : 'الكاميرا المباشرة غير متاحة هنا؛ سيُستخدم التصوير العادي.', 3600);
+    if(!(e && e.name === 'NotAllowedError')) shoot(which);
+  }
+}
+function stopLive(){
+  LIVE.on = false; if(LIVE.stream){ LIVE.stream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} }); LIVE.stream = null; }
+  if(F) F.live = null;
+}
+async function toggleTorch(){
+  const tr = LIVE.stream && LIVE.stream.getVideoTracks()[0]; if(!tr) return;
+  try{ await tr.applyConstraints({ advanced: [{ torch: !LIVE.torch }] }); LIVE.torch = !LIVE.torch; const b = $('#lvTorch'); if(b) b.classList.toggle('pri', LIVE.torch); }catch(e){ toast('تعذّر تشغيل الضوء.'); }
+}
+// بصمة صغيرة لقياس حركة الهاتف بين إطارين
+const _mc = document.createElement('canvas'); _mc.width = 32; _mc.height = 24;
+function motionSig(v){ const x = _mc.getContext('2d', { willReadFrequently: true }); x.drawImage(v, 0, 0, 32, 24); const d = x.getImageData(0, 0, 32, 24).data, o = new Float32Array(768); for(let i = 0; i < 768; i++) o[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]; return o; }
+function liveStatus(an, still){
+  if(an.mean < 45) return ['wa', 'الإضاءة ضعيفة: فعّل الضوء أو اقترب من مصدر إنارة'];
+  if(an.mean > 235) return ['wa', 'إضاءة زائدة: أمِل الهاتف لتجنّب الانعكاس'];
+  if(!still) return ['wa', 'ثبّت الهاتف'];
+  if(an.sharp < 8) return ['wa', 'الصورة غير واضحة: ابتعد قليلاً لتركيز العدسة'];
+  if(an.valid < 0.5) return ['wa', 'وجّه الإطار إلى سطح العارضة'];
+  return ['ok', 'جاهز للالتقاط'];
+}
+function drawLive(){
+  const v = $('#lvV'), cv = $('#lvC'); if(!v || !cv) return;
+  const W = cv.clientWidth, H = cv.clientHeight; if(cv.width !== W) cv.width = W; if(cv.height !== H) cv.height = H;
+  // حساب موضع الفيديو داخل العنصر (object-fit: contain)
+  const vw = v.videoWidth || 1, vh = v.videoHeight || 1, s = Math.min(W / vw, H / vh), ox = (W - vw * s) / 2, oy = (H - vh * s) / 2, dw = vw * s, dh = vh * s;
+  const x = cv.getContext('2d'); x.clearRect(0, 0, W, H);
+  const gx = ox + GUIDE.x * dw, gy = oy + GUIDE.y * dh, gw = GUIDE.w * dw, gh = GUIDE.h * dh;
+  x.fillStyle = 'rgba(0,0,0,.42)'; x.fillRect(0, 0, W, gy); x.fillRect(0, gy + gh, W, H - gy - gh); x.fillRect(0, gy, gx, gh); x.fillRect(gx + gw, gy, W - gx - gw, gh);
+  const ok = LIVE.good >= 2, col = ok ? '#2ad48f' : '#ffb340', L = Math.min(gw, gh) * 0.14;
+  x.strokeStyle = col; x.lineWidth = 4; x.beginPath();
+  [[gx, gy, 1, 1], [gx + gw, gy, -1, 1], [gx, gy + gh, 1, -1], [gx + gw, gy + gh, -1, -1]].forEach(([a, b, sx, sy]) => { x.moveTo(a, b + sy * L); x.lineTo(a, b); x.lineTo(a + sx * L, b); });
+  x.stroke();
+  const an = LIVE.an; if(an){ x.strokeStyle = 'rgba(255,60,60,.95)'; x.lineWidth = 1.4; const sx = gw / an.w, sy = gh / an.h;
+    for(const p of an.parts.slice(0, 600)){ x.beginPath(); x.arc(gx + p[0] * sx, gy + p[1] * sy, 3.5, 0, 7); x.stroke(); } }
+}
+async function liveLoop(){
+  while(LIVE.on){
+    const v = $('#lvV');
+    if(!v || !v.videoWidth || v.readyState < 2 || F && F.busy){ await sleep(150); continue; }
+    try{
+      const m = motionSig(v), still = !LIVE.prev || corr(Array.from(m), Array.from(LIVE.prev)) > 0.985; LIVE.prev = m;
+      const an = await analyzeRegion(v, GUIDE, cfg('sens') || 1, 560); if(!LIVE.on) break;
+      LIVE.an = an; const [k, msg] = liveStatus(an, still); LIVE.good = k === 'ok' ? LIVE.good + 1 : 0;
+      const vd = verdict(an.idx), st = $('#lvS'), ix = $('#lvI');
+      if(st){ st.className = k; st.textContent = msg; }
+      if(ix){ ix.textContent = 'مؤشر تقريبي ' + an.idx + ' · ' + vd.t; }
+      drawLive();
+    }catch(e){ await sleep(400); }
+    await sleep(120);
+  }
+}
+async function liveCapture(){
+  const v = $('#lvV'); if(!v || !v.videoWidth) return;
+  const which = F.live.which, c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0); stopLive();
+  const p = prep(c);
+  await finishShot(which, c, p, { ...GUIDE }, true);
+}
+
 function compute(){
   const z = zoneById(F.zoneId) || {}, b = F.before.an.idx, a = F.after.an.idx;
   const red = b > 0 ? Math.max(0, (b - a) / b) : 0, sim = corr(F.before.sig, F.after.sig), dur = (F.after.t - F.before.t) / 1000;
@@ -1082,6 +1180,7 @@ function aSet(){
     <div class="tg"><div><b>إلزام رمز العارضة</b><div class="sm mut">إدخال رمز الملصق أو مسح QR قبل التنظيف.</div></div>${sw('requireCode')}</div>
     <div class="tg"><div><b>الحد الأدنى لمدة التنظيف</b><div class="sm mut">الزمن بين صورتي قبل وبعد.</div></div>${opt('minSec', [0, 15, 30, 45, 60, 90, 120], ' ث')}</div>
     <div class="tg"><div><b>نسبة عيّنة التدقيق</b><div class="sm mut">نسبة العمليات التي تُحفظ صورها للمراجعة العشوائية.</div></div>${opt('auditRate', [0, 5, 10, 20, 50, 100], '%')}</div>
+    <div class="tg"><div><b>إلزام الفحص المباشر</b><div class="sm mut">يمنع رفع صور من المعرض حيث تتوفر الكاميرا المباشرة (يتطلب فتح التطبيق عبر https).</div></div>${sw('requireLive')}</div>
     <div class="tg"><div><b>الأصوات والاهتزاز</b></div>${sw('sound')}</div></div>
     <div class="card"><h3>معايرة كشف الغبار</h3><p class="sm mut" style="margin-top:0">تختلف الإضاءة وأنواع الأسطح بين الصالات. نظّف سطح عارضة جيداً ثم صوّره بالفلاش، وسيضبط النظام الحساسية بحيث يُعدّ هذا المستوى «نظيفاً».</p>
     <div class="tg"><div><b>الحساسية الحالية</b></div>${opt('sens', [0.5, 0.75, 1, 1.25, 1.5, 2], '×')}</div><button class="btn pri w" data-act="calibrate">${ic('cam')} معايرة بصورة سطح نظيف</button></div>
@@ -1183,7 +1282,10 @@ const A = {
       pickZone(z.id, true); rf(); }catch(e){ toast('تعذّرت قراءة الرمز. أدخله يدوياً.'); }
   },
   flowCancel(){ F = null; clearInterval(tmrI); render(true); },
-  shoot(d){ shoot(d.w); },
+  shoot(d){ if(liveAvail() && !d.photo) startLive(d.w); else shoot(d.w); },
+  liveCap(){ liveCapture(); },
+  liveTorch(){ toggleTorch(); },
+  liveStop(){ stopLive(); rf(); },
   roiGo(){ analyzePick(); },
   toggleDetail(d, el){ S.detail = !S.detail; document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F && F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); }); document.querySelectorAll('[data-act=toggleDetail]').forEach(c => c.checked = S.detail); },
   goClean(){ F.step = 'cleaning'; F.cleanStart = Date.now(); rf(); tick(); },
