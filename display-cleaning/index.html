@@ -199,7 +199,7 @@ const initials = n => { const p = String(n || '').trim().split(/\s+/); return es
    1) التحليل على منطقة يحددها الموظف (سطح العارضة فقط) وبدقة أعلى (حتى 900px للمنطقة).
    2) فتح مورفولوجي بعناصر خطية في 4 اتجاهات: الحبيبة تختفي في كل الاتجاهات، أما الخيوط
       والحواف والنقوش فتبقى في اتجاه واحد على الأقل، فتُستبعد تلقائياً.
-   3) عتبة إحصائية محلية (المئين 95 لكل كتلة 24×24) تتكيّف مع نسيج كل سطح.
+   3) عتبة إحصائية محلية (المئين 90 لكل كتلة 24×24) تتكيّف مع نسيج كل سطح.
    4) مرشحات شكل (حجم، استطالة) ولون (الغبار رمادي محايد) واستبعاد اللمعان والمناطق المحترقة.
    5) يعمل داخل Web Worker حتى لا تتجمد الواجهة، مع بديل على الخيط الرئيسي. */
 function analyzeDust(px, w, h, sens, opt){
@@ -270,14 +270,14 @@ function analyzeDust(px, w, h, sens, opt){
   const S = 24, BX = Math.ceil(w / S), BY = Math.ceil(h / S), q95 = new Float32Array(BX * BY), buf = new Float32Array(S * S);
   for(let by = 0; by < BY; by++) for(let bx = 0; bx < BX; bx++){
     let n = 0; for(let y = by * S; y < Math.min(h, by * S + S); y++) for(let x = bx * S; x < Math.min(w, bx * S + S); x++){ const t = Tb[y * w + x]; buf[n++] = t > 0 ? t : 0; }
-    const a = buf.subarray(0, n).sort(); q95[by * BX + bx] = a[Math.min(n - 1, (n * 0.95) | 0)];
+    const a = buf.subarray(0, n).sort(); q95[by * BX + bx] = a[Math.min(n - 1, (n * (opt.qq || 0.9)) | 0)];
   }
   const qAt = (x, y) => { // استيفاء ثنائي الخطية بين مراكز الكتل
     let fx = x / S - 0.5, fy = y / S - 0.5; fx = Math.max(0, Math.min(BX - 1, fx)); fy = Math.max(0, Math.min(BY - 1, fy));
     const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(BX - 1, x0 + 1), y1 = Math.min(BY - 1, y0 + 1), ax = fx - x0, ay = fy - y0;
     return (q95[y0 * BX + x0] * (1 - ax) + q95[y0 * BX + x1] * ax) * (1 - ay) + (q95[y1 * BX + x0] * (1 - ax) + q95[y1 * BX + x1] * ax) * ay;
   };
-  const base = opt.base || 5, kE = opt.kE ?? 0.5, kQ = opt.kQ ?? 1.5;
+  const base = opt.base || 4, kE = opt.kE ?? 0.5, kQ = opt.kQ ?? 1.5;
   const B0 = R + 1, cand = new Uint8Array(N), thrMap = new Float32Array(N);
   let validN = 0;
   for(let y = B0; y < h - B0; y++) for(let x = B0; x < w - B0; x++){
@@ -315,47 +315,48 @@ function analyzeDust(px, w, h, sens, opt){
   const area = Math.max(validN, N * 0.05);
   const density = parts.length / (area / 10000);
   const K = opt.K || 10;
-  const idx = Math.round(100 * (1 - Math.exp(-density * sens / K)));
+  const d0 = opt.d0 || 0, idx = Math.round(100 * (1 - Math.exp(-Math.max(0, density - d0) * sens / K))); // d0 = خط أساس السطح النظيف من المعايرة
   const GX = 8, GY = Math.max(4, Math.min(14, Math.round(GX * h / w)));
   const heat = new Array(GX * GY).fill(0), cellV = new Array(GX * GY).fill(0);
   for(let y = B0; y < h - B0; y += 2) for(let x = B0; x < w - B0; x += 2) if(thrMap[y * w + x]) cellV[Math.min(GY - 1, (y / h * GY) | 0) * GX + Math.min(GX - 1, (x / w * GX) | 0)] += 4;
   for(const p of parts) heat[Math.min(GY - 1, (p[1] / h * GY) | 0) * GX + Math.min(GX - 1, (p[0] / w * GX) | 0)]++;
   // خلية "مغبّرة" إذا تجاوزت كثافتها ما يعادل مؤشر ~35
-  const cellD = heat.map((v, k) => cellV[k] > area / (GX * GY) * 0.3 ? v / (cellV[k] / 10000) : 0);
+  const cellD = heat.map((v, k) => cellV[k] > area / (GX * GY) * 0.3 ? Math.max(0, v / (cellV[k] / 10000) - d0) : 0);
   const dThr = K * 0.43 / sens;
   const zonesDusty = cellD.filter(v => v >= dThr).length, cellsValid = cellV.filter(v => v > area / (GX * GY) * 0.3).length;
   return { v: 2, idx, n: parts.length, density, parts: parts.slice(0, 2000), mean, sharp, heat: cellD, GX, GY, cellThr: dThr, zonesDusty, cellsValid, w, h, R, valid: validN / N, rej };
 }
-const DUST_MAX = 900;
+const DUST_MAX = 1200;
 let _wk = null, _wkBad = false;
 let _aq = Promise.resolve();
 // تسلسل الطلبات: عامل واحد يعالج طلباً واحداً في كل مرة
-function runAnalysis(px, w, h, sens){ const p = _aq.then(() => runAnalysis1(px, w, h, sens)); _aq = p.catch(() => {}); return p; }
-function runAnalysis1(px, w, h, sens){
-  const local = () => analyzeDust(px, w, h, sens);
+function runAnalysis(px, w, h, sens, opt){ const p = _aq.then(() => runAnalysis1(px, w, h, sens, opt)); _aq = p.catch(() => {}); return p; }
+function runAnalysis1(px, w, h, sens, opt){
+  const local = () => analyzeDust(px, w, h, sens, opt);
   if(_wkBad || typeof Worker === 'undefined') return Promise.resolve(local());
   return new Promise(res => {
     let done = false; const fin = r => { if(!done){ done = true; res(r); } };
     try{
-      if(!_wk){ const src = analyzeDust.toString() + '\nonmessage = e => { const d = e.data; try{ postMessage({ ok: 1, r: analyzeDust(d.px, d.w, d.h, d.sens) }); }catch(x){ postMessage({ ok: 0 }); } };';
+      if(!_wk){ const src = analyzeDust.toString() + '\nonmessage = e => { const d = e.data; try{ postMessage({ ok: 1, r: analyzeDust(d.px, d.w, d.h, d.sens, d.opt) }); }catch(x){ postMessage({ ok: 0 }); } };';
         _wk = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); }
       const fail = () => { _wkBad = true; try{ _wk.terminate(); }catch(e){} _wk = null; fin(local()); };
       _wk.onmessage = e => e.data && e.data.ok ? fin(e.data.r) : fail();
       _wk.onerror = fail;
-      _wk.postMessage({ px, w, h, sens });
+      _wk.postMessage({ px, w, h, sens, opt });
       setTimeout(() => { if(!done) fail(); }, 25000);
     }catch(e){ _wkBad = true; fin(local()); }
   });
 }
 // قصّ المنطقة المحددة من الصورة الأصلية بدقتها الكاملة (حتى DUST_MAX) ثم تحليلها
 const srcW = im => im.videoWidth || im.naturalWidth || im.width, srcH = im => im.videoHeight || im.naturalHeight || im.height;
-async function analyzeRegion(img, rect, sens, maxS = DUST_MAX){
+async function analyzeRegion(img, rect, sens, maxS = DUST_MAX, opt){
+  opt = opt || { d0: +cfg('d0') || 0 };
   const iw = srcW(img), ih = srcH(img);
   const sx = rect.x * iw, sy = rect.y * ih, sw = rect.w * iw, sh = rect.h * ih;
   const k = Math.min(1, maxS / Math.max(sw, sh)), w = Math.max(60, Math.round(sw * k)), h = Math.max(60, Math.round(sh * k));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
-  return runAnalysis(x.getImageData(0, 0, w, h).data, w, h, sens);
+  return runAnalysis(x.getImageData(0, 0, w, h).data, w, h, sens, opt);
 }
 function signature(g, w, h){
   const SX = 24, SY = 18, o = new Float32Array(SX * SY), c = new Float32Array(SX * SY);
@@ -862,9 +863,9 @@ function vClean(){
   } else if(s === 'before' || s === 'after'){
     const b = s === 'before';
     if(!F.busy && F.live && LIVE.stream) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
-        <div class="lv-st"><span id="lvS" class="wa">جارٍ تشغيل الكاميرا…</span><span id="lvI"></span></div></div>
-      <div class="note" style="margin:8px 0">ضع سطح العارضة داخل الإطار من مسافة 20 إلى 40 سم. الدوائر الحمراء حبيبات مكتشفة لحظياً؛ النتيجة النهائية تُحسب عند الالتقاط بدقة كاملة.</div>
-      <button class="btn pri big" data-act="liveCap">${ic('cam')} التقاط وتحليل</button><div style="height:8px"></div>
+        <div class="lv-st"><span id="lvS" class="wa">جارٍ تشغيل الكاميرا…</span></div></div>
+      <div class="note" style="margin:8px 0">ضع سطح العارضة داخل الإطار من مسافة 20 إلى 40 سم. انتظر حتى يصبح الإطار أخضر ثم التقط؛ يُحلَّل الغبار على الصورة الملتقطة بدقتها الكاملة.</div>
+      <button class="btn big" id="lvCapBtn" data-act="liveCap">${ic('cam')} التقاط وتحليل</button><div style="height:8px"></div>
       <div class="g2">${LIVE.canTorch ? `<button class="btn ${LIVE.torch ? 'pri' : ''}" id="lvTorch" data-act="liveTorch">${ic('fire')} الضوء</button>` : ''}<button class="btn" data-act="liveStop">إيقاف الكاميرا</button></div>`;
     else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على الصورة لتحديد سطح العارضة فقط، دون الجدار أو الأرضية أو الزجاج. التحليل يقتصر على المنطقة المحددة.</p></div>
       <div class="shot"><canvas id="roiCv" style="touch-action:none;cursor:crosshair"></canvas></div><div style="height:10px"></div>
@@ -986,7 +987,7 @@ const LIVE = { stream: null, on: false, an: null, torch: false, prev: null, good
 const liveAvail = () => !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 async function startLive(which){
   try{
-    const st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    const st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } } });
     stopLive(); LIVE.stream = st; LIVE.on = true; LIVE.an = null; LIVE.prev = null; LIVE.good = 0; LIVE.torch = false;
     const tr = st.getVideoTracks()[0];
     try{ const c = tr.getCapabilities ? tr.getCapabilities() : {}; LIVE.canTorch = !!c.torch; if(c.focusMode && c.focusMode.includes('continuous')) await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }catch(e){}
@@ -1004,15 +1005,24 @@ async function toggleTorch(){
   const tr = LIVE.stream && LIVE.stream.getVideoTracks()[0]; if(!tr) return;
   try{ await tr.applyConstraints({ advanced: [{ torch: !LIVE.torch }] }); LIVE.torch = !LIVE.torch; const b = $('#lvTorch'); if(b) b.classList.toggle('pri', LIVE.torch); }catch(e){ toast('تعذّر تشغيل الضوء.'); }
 }
-// بصمة صغيرة لقياس حركة الهاتف بين إطارين
-const _mc = document.createElement('canvas'); _mc.width = 32; _mc.height = 24;
-function motionSig(v){ const x = _mc.getContext('2d', { willReadFrequently: true }); x.drawImage(v, 0, 0, 32, 24); const d = x.getImageData(0, 0, 32, 24).data, o = new Float32Array(768); for(let i = 0; i < 768; i++) o[i] = d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]; return o; }
-function liveStatus(an, still){
-  if(an.mean < 45) return ['wa', 'الإضاءة ضعيفة: فعّل الضوء أو اقترب من مصدر إنارة'];
-  if(an.mean > 235) return ['wa', 'إضاءة زائدة: أمِل الهاتف لتجنّب الانعكاس'];
-  if(!still) return ['wa', 'ثبّت الهاتف'];
-  if(an.sharp < 8) return ['wa', 'الصورة غير واضحة: ابتعد قليلاً لتركيز العدسة'];
-  if(an.valid < 0.5) return ['wa', 'وجّه الإطار إلى سطح العارضة'];
+// الفحص المباشر للتوجيه فقط: إضاءة وثبات ووضوح من إطار صغير 160×120 (أقل من 1ms)، بلا تحليل غبار.
+// تحليل الغبار يتم مرة واحدة على الصورة الملتقطة بدقتها الكاملة، فلا أرقام تقريبية مضلِّلة ولا تقطيع في البث.
+const _mc = document.createElement('canvas'); _mc.width = 160; _mc.height = 120;
+function liveQuality(v){
+  const x = _mc.getContext('2d', { willReadFrequently: true });
+  const sx = GUIDE.x * v.videoWidth, sy = GUIDE.y * v.videoHeight, sw = GUIDE.w * v.videoWidth, sh = GUIDE.h * v.videoHeight;
+  x.drawImage(v, sx, sy, sw, sh, 0, 0, 160, 120);
+  const d = x.getImageData(0, 0, 160, 120).data, g = new Float32Array(19200);
+  let sum = 0; for(let i = 0; i < 19200; i++){ g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; sum += g[i]; }
+  let l2 = 0, n = 0; for(let y = 1; y < 119; y++) for(let x2 = 1; x2 < 159; x2++){ const i = y * 160 + x2, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - 160] - g[i + 160]; l2 += l * l; n++; }
+  const sig = new Float32Array(192); for(let y = 0; y < 120; y++) for(let x2 = 0; x2 < 160; x2++) sig[((y / 10) | 0) * 16 + ((x2 / 10) | 0)] += g[y * 160 + x2];
+  return { mean: sum / 19200, sharp: l2 / n, sig };
+}
+function liveStatus(q){
+  if(q.mean < 45) return ['wa', 'الإضاءة ضعيفة: فعّل الضوء أو اقترب من مصدر إنارة'];
+  if(q.mean > 235) return ['wa', 'إضاءة زائدة: أمِل الهاتف لتجنّب الانعكاس'];
+  if(!q.still) return ['wa', 'ثبّت الهاتف'];
+  if(q.blur) return ['wa', 'الصورة غير واضحة: انتظر التركيز أو ابتعد قليلاً'];
   return ['ok', 'جاهز للالتقاط'];
 }
 function drawLive(){
@@ -1027,23 +1037,24 @@ function drawLive(){
   x.strokeStyle = col; x.lineWidth = 4; x.beginPath();
   [[gx, gy, 1, 1], [gx + gw, gy, -1, 1], [gx, gy + gh, 1, -1], [gx + gw, gy + gh, -1, -1]].forEach(([a, b, sx, sy]) => { x.moveTo(a, b + sy * L); x.lineTo(a, b); x.lineTo(a + sx * L, b); });
   x.stroke();
-  const an = LIVE.an; if(an){ x.strokeStyle = 'rgba(255,60,60,.95)'; x.lineWidth = 1.4; const sx = gw / an.w, sy = gh / an.h;
-    for(const p of an.parts.slice(0, 600)){ x.beginPath(); x.arc(gx + p[0] * sx, gy + p[1] * sy, 3.5, 0, 7); x.stroke(); } }
 }
 async function liveLoop(){
+  let peak = 0, peakT = 0;
   while(LIVE.on){
     const v = $('#lvV');
-    if(!v || !v.videoWidth || v.readyState < 2 || F && F.busy){ await sleep(150); continue; }
+    if(!v || !v.videoWidth || v.readyState < 2 || F && F.busy){ await sleep(200); continue; }
     try{
-      const m = motionSig(v), still = !LIVE.prev || corr(Array.from(m), Array.from(LIVE.prev)) > 0.985; LIVE.prev = m;
-      const an = await analyzeRegion(v, GUIDE, cfg('sens') || 1, 560); if(!LIVE.on) break;
-      LIVE.an = an; const [k, msg] = liveStatus(an, still); LIVE.good = k === 'ok' ? LIVE.good + 1 : 0;
-      const vd = verdict(an.idx), st = $('#lvS'), ix = $('#lvI');
+      const q = liveQuality(v), now = Date.now();
+      q.still = !LIVE.prev || corr(Array.from(q.sig), Array.from(LIVE.prev)) > 0.99; LIVE.prev = q.sig;
+      // الوضوح نسبي: نقارن بأفضل وضوح خلال آخر 3 ثوانٍ لأن قيمته المطلقة تختلف بين الأسطح
+      if(q.sharp > peak || now - peakT > 3000){ peak = q.sharp; peakT = now; } q.blur = q.sharp < peak * 0.45;
+      const [k, msg] = liveStatus(q); LIVE.good = k === 'ok' ? LIVE.good + 1 : 0;
+      const st = $('#lvS'), cap = $('#lvCapBtn');
       if(st){ st.className = k; st.textContent = msg; }
-      if(ix){ ix.textContent = 'مؤشر تقريبي ' + an.idx + ' · ' + vd.t; }
+      if(cap) cap.classList.toggle('pri', LIVE.good >= 2);
       drawLive();
-    }catch(e){ await sleep(400); }
-    await sleep(120);
+    }catch(e){}
+    await sleep(250);
   }
 }
 async function liveCapture(){
@@ -1246,7 +1257,7 @@ function aSet(){
     <div class="tg"><div><b>إلزام الفحص المباشر</b><div class="sm mut">يمنع رفع صور من المعرض حيث تتوفر الكاميرا المباشرة (يتطلب فتح التطبيق عبر https).</div></div>${sw('requireLive')}</div>
     <div class="tg"><div><b>الأصوات والاهتزاز</b></div>${sw('sound')}</div></div>
     <div class="card"><h3>معايرة كشف الغبار</h3><p class="sm mut" style="margin-top:0">تختلف الإضاءة وأنواع الأسطح بين الصالات. نظّف سطح عارضة جيداً ثم صوّره بالفلاش، وسيضبط النظام الحساسية بحيث يُعدّ هذا المستوى «نظيفاً».</p>
-    <div class="tg"><div><b>الحساسية الحالية</b></div>${opt('sens', [0.5, 0.75, 1, 1.25, 1.5, 2], '×')}</div><button class="btn pri w" data-act="calibrate">${ic('cam')} معايرة بصورة سطح نظيف</button></div>
+    <div class="tg"><div><b>الحساسية الحالية</b></div>${opt('sens', [0.5, 0.75, 1, 1.25, 1.5, 2], '×')}</div><div class="sm mut" style="margin:6px 0">${cfg('d0') ? 'معايَر: خط أساس السطح ' + (+cfg('d0')).toFixed(2) : 'غير معايَر بعد. المعايرة من عارضاتكم تجعل الأرقام واقعية.'}</div><button class="btn pri w" data-act="calibrate">${ic('cam')} معايرة من عارضة مغبّرة ثم نظيفة</button></div>
     <div class="card"><h3>صيانة البيانات</h3><p class="sm mut" style="margin-top:0">حذف صور الإثبات الأقدم من 30 يوماً لتوفير السعة. لا يؤثر على النقاط أو التقارير.</p><button class="btn w" data-act="prune">حذف صور الإثبات القديمة</button></div>
     ${S.mode === 'local' ? `<div class="card"><h3>الوضع المحلي</h3><p class="sm mut" style="margin-top:0">البيانات محفوظة على هذا الجهاز فقط. للعمل المشترك بين جميع الموظفين، افتح النظام من رابطه في Claude وشاركه مع الفريق.</p><div class="g2"><button class="btn" data-act="chgAdminPin">تغيير رمز الإدارة</button><button class="btn dan" data-act="wipe">مسح جميع البيانات</button></div></div>` : ''}`;
 }
@@ -1292,6 +1303,7 @@ const A = {
   showDue(){ S.zf.mine = true; S.zf.st = 'due'; S.tab = 'zones'; render(true); },
   rk(d){ S.rank[d.k] = d.v; render(true); },
   logout(){ logout(); },
+  closeModal(){ closeModal(); },
   async lgNext(){
     const num = ($('#lgNum').value || '').trim(); if(!num) return toast('أدخل الرقم الوظيفي.');
     LG.num = num; LG.shared = $('#lgShared').checked;
@@ -1442,13 +1454,23 @@ const A = {
   togCfg(d){ saveCfg({ [d.k]: !cfg(d.k) }); },
   editOrg(){ openModal(`<h2>اسم الشركة / الفرع</h2><input id="on" value="${esc(cfg('orgName'))}"><div style="height:10px"></div><button class="btn pri w" data-act="orgSave">حفظ</button>`); },
   async orgSave(){ const v = $('#on').value.trim(); if(v && await saveCfg({ orgName: v })) closeModal(); },
-  async calibrate(){
+  // معايرة بنقطتين: صورة لعارضة مغبّرة (يُفترض مؤشرها ≈ 70) ثم صورة للمكان نفسه بعد تنظيفه جيداً (≈ 0).
+  // تُحسب الحساسية وخط الأساس (حبيبات النسيج الطبيعية في السطح النظيف) فتصبح الأرقام مطابقة لعارضاتكم.
+  calibrate(){ S.cal = {}; openModal(`<h2>معايرة من عارضاتكم</h2><ol class="sm" style="padding-inline-start:18px;line-height:1.9"><li>اختر عارضة عليها غبار واضح، وصوّر سطحها من قرب (20 إلى 40 سم) بإضاءة جيدة.</li><li>نظّفها جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة والزاوية نفسيهما.</li></ol><p class="xs mut">يُحلَّل وسط الصورة (80%). كرّر المعايرة عند تغيير نوع العارضات أو الإضاءة.</p><button class="btn pri w" data-act="calShot" data-k="dirty">${ic('cam')} 1) تصوير العارضة المغبّرة</button>`); },
+  async calShot(d){
     const f = await pickPhoto(); if(!f) return;
-    toast('جارٍ تحليل صورة المعايرة…');
-    try{ const an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1);
-      // السطح النظيف يجب أن يعطي مؤشراً ≤ 8. نخفّض الحساسية فقط إذا قرأ السطح النظيف أعلى من ذلك.
-      const s = an.idx > 8 ? Math.max(0.3, Math.min(1, 0.834 / an.density)) : 1;
-      if(await saveCfg({ sens: Math.round(s * 100) / 100 })) toast('تمت المعايرة. مؤشر السطح النظيف ' + an.idx + ' · الحساسية ×' + s.toFixed(2)); }catch(e){ toast('تعذّرت قراءة الصورة.'); }
+    toast('جارٍ التحليل…');
+    let an; try{ an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1, DUST_MAX, { d0: 0 }); }catch(e){ return toast('تعذّرت قراءة الصورة.'); }
+    if(qualityBad(an)) toast(qualityBad(an) + ' يُفضّل إعادة التصوير.', 4000);
+    S.cal = S.cal || {}; S.cal[d.k] = an.density;
+    if(d.k === 'dirty') return openModal(`<h2>معايرة من عارضاتكم</h2><p class="sm">سُجّلت صورة العارضة المغبّرة (${an.n} حبيبة).</p><p class="sm">الآن نظّف العارضة جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة نفسها.</p><button class="btn pri w" data-act="calShot" data-k="clean">${ic('cam')} 2) تصوير العارضة بعد التنظيف</button>`);
+    const dd = S.cal.dirty, dc = S.cal.clean, K = 10;
+    if(!(dd > dc * 1.4 && dd - dc > 0.4)) return openModal(`<h2>تعذّرت المعايرة</h2><p class="sm">الفرق بين الصورتين صغير جداً (${dd.toFixed(2)} مقابل ${dc.toFixed(2)})، فلا يستطيع المحرك التمييز بينهما بهذه الطريقة في التصوير.</p><ul class="sm"><li>اقترب أكثر من السطح.</li><li>استخدم ضوءاً جانبياً مائلاً (مصباح الهاتف من الجانب) لإبراز الغبار.</li><li>اختر عارضة غبارها أوضح.</li></ul><button class="btn pri w" data-act="calibrate">إعادة المعايرة</button>`);
+    const d0 = Math.round(dc * 1.1 * 100) / 100, sens = Math.round(Math.max(0.2, Math.min(5, 1.204 * K / (dd - d0))) * 100) / 100;
+    if(await saveCfg({ sens, d0 })){
+      const idx = dens => Math.round(100 * (1 - Math.exp(-Math.max(0, dens - d0) * sens / K)));
+      openModal(`<h2>تمت المعايرة</h2><p class="sm">بالإعدادات الجديدة: العارضة المغبّرة ≈ <b>${idx(dd)}</b>، وبعد التنظيف ≈ <b>${idx(dc)}</b>.</p><p class="xs mut">الحساسية ×${sens} · خط الأساس ${d0}</p><button class="btn pri w" data-act="closeModal">تم</button>`);
+    }
   },
   async prune(){
     toast('جارٍ الحذف…'); let n = 0;
