@@ -188,66 +188,164 @@ const IC = {
 const ic = (n, s) => `<svg class="i" viewBox="0 0 24 24" ${s ? `style="width:${s}px;height:${s}px"` : ''}><path d="${IC[n] || ''}"/></svg>`;
 const initials = n => { const p = String(n || '').trim().split(/\s+/); return esc((p[0] || '؟').slice(0, 1) + (p[1] ? p[1].slice(0, 1) : '')); };
 
-/* ================= محرك كشف الغبار =================
-   1) تنعيم خفيف 3×3 لإزالة ضوضاء الحساس وضغط JPEG
-   2) طرح الإضاءة المحلية (نافذة 13×13) لإبراز التفاصيل الدقيقة فقط
-   3) عتبة إحصائية متكيفة (MAD) لكل صورة
-   4) عدّ المكونات الصغيرة المتراصة فقط (حبيبات)، واستبعاد الحواف والنقوش
-   5) تجميع النتائج في شبكة 12×9 لإظهار "مناطق" الغبار بدل آلاف النقاط */
-function analyzeGray(g0, w, h, sens){
-  sens = sens || 1;
-  const N = w * h, g = new Float32Array(N);
-  for(let y = 0; y < h; y++) for(let x = 0; x < w; x++){
-    let s = 0, c = 0;
-    for(let dy = -1; dy <= 1; dy++){ const yy = y + dy; if(yy < 0 || yy >= h) continue; for(let dx = -1; dx <= 1; dx++){ const xx = x + dx; if(xx < 0 || xx >= w) continue; s += g0[yy * w + xx]; c++; } }
-    g[y * w + x] = s / c;
+/* ================= محرك كشف الغبار (الإصدار 2) =================
+   المشكلة في الإصدار الأول: حبكة القماش ونقوش السطح والخلفية تُقرأ كغبار.
+   1) التحليل على منطقة يحددها الموظف (سطح العارضة فقط) وبدقة أعلى (حتى 900px للمنطقة).
+   2) فتح مورفولوجي بعناصر خطية في 4 اتجاهات: الحبيبة تختفي في كل الاتجاهات، أما الخيوط
+      والحواف والنقوش فتبقى في اتجاه واحد على الأقل، فتُستبعد تلقائياً.
+   3) عتبة إحصائية محلية (المئين 95 لكل كتلة 24×24) تتكيّف مع نسيج كل سطح.
+   4) مرشحات شكل (حجم، استطالة) ولون (الغبار رمادي محايد) واستبعاد اللمعان والمناطق المحترقة.
+   5) يعمل داخل Web Worker حتى لا تتجمد الواجهة، مع بديل على الخيط الرئيسي. */
+function analyzeDust(px, w, h, sens, opt){
+  sens = sens || 1; opt = opt || {};
+  const N = w * h, L = new Float32Array(N), C = new Float32Array(N);
+  for(let i = 0, j = 0; i < N; i++, j += 4){
+    const r = px[j], g = px[j + 1], b = px[j + 2];
+    L[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    C[i] = Math.max(r, g, b) - Math.min(r, g, b);
   }
-  let sum = 0; for(let i = 0; i < N; i++) sum += g0[i];
+  // تنعيم ثنائي الحدود 3×3 (قابل للفصل) لإزالة ضوضاء الحساس وضغط JPEG
+  const tmp = new Float32Array(N), Ls = new Float32Array(N);
+  for(let y = 0; y < h; y++){ const o = y * w; for(let x = 0; x < w; x++){ const a = L[o + (x > 0 ? x - 1 : x)], c = L[o + (x < w - 1 ? x + 1 : x)]; tmp[o + x] = (a + 2 * L[o + x] + c) / 4; } }
+  for(let y = 0; y < h; y++){ const up = (y > 0 ? y - 1 : y) * w, dn = (y < h - 1 ? y + 1 : y) * w, o = y * w; for(let x = 0; x < w; x++) Ls[o + x] = (tmp[up + x] + 2 * tmp[o + x] + tmp[dn + x]) / 4; }
+  // جودة الصورة
+  let sum = 0; for(let i = 0; i < N; i++) sum += L[i];
   const mean = sum / N;
   let ls = 0, ls2 = 0, lc = 0;
-  for(let y = 1; y < h - 1; y += 2) for(let x = 1; x < w - 1; x += 2){ const i = y * w + x, l = 4 * g0[i] - g0[i - 1] - g0[i + 1] - g0[i - w] - g0[i + w]; ls += l; ls2 += l * l; lc++; }
+  for(let y = 1; y < h - 1; y += 2) for(let x = 1; x < w - 1; x += 2){ const i = y * w + x, l = 4 * L[i] - L[i - 1] - L[i + 1] - L[i - w] - L[i + w]; ls += l; ls2 += l * l; lc++; }
   const sharp = lc ? ls2 / lc - (ls / lc) ** 2 : 0;
-  const W1 = w + 1, I = new Float64Array(W1 * (h + 1));
-  for(let y = 0; y < h; y++){ let row = 0; for(let x = 0; x < w; x++){ row += g[y * w + x]; I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + row; } }
-  const r = 6, hp = new Float32Array(N), hist = new Uint32Array(256);
-  for(let y = 0; y < h; y++){
-    const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
-    for(let x = 0; x < w; x++){
-      const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
-      const s = I[(y1 + 1) * W1 + x1 + 1] - I[y0 * W1 + x1 + 1] - I[(y1 + 1) * W1 + x0] + I[y0 * W1 + x0];
-      const v = g[y * w + x] - s / ((x1 - x0 + 1) * (y1 - y0 + 1));
-      hp[y * w + x] = v; hist[Math.min(255, Math.abs(v) | 0)]++;
-    }
-  }
-  let acc = 0, med = 0; for(let i = 0; i < 256; i++){ acc += hist[i]; if(acc >= N / 2){ med = i + 0.5; break; } }
-  const thr = Math.max(10, 4 * med * 1.4826);
-  const B = 6, mask = new Uint8Array(N);
-  for(let y = B; y < h - B; y++) for(let x = B; x < w - B; x++){ const i = y * w + x, v = hp[i]; if(v > thr) mask[i] = 1; else if(v < -thr) mask[i] = 2; }
-  const seen = new Uint8Array(N), stack = new Int32Array(N), parts = [];
-  let edgeArea = 0;
-  for(let i = 0; i < N; i++){
-    if(!mask[i] || seen[i]) continue;
-    const m = mask[i]; let sp = 0, size = 0, minx = 1e9, maxx = -1, miny = 1e9, maxy = -1, sx = 0, sy = 0;
-    stack[sp++] = i; seen[i] = 1;
-    while(sp){
-      const j = stack[--sp], x = j % w, y = (j / w) | 0; size++; sx += x; sy += y;
-      if(x < minx) minx = x; if(x > maxx) maxx = x; if(y < miny) miny = y; if(y > maxy) maxy = y;
-      for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++){
-        if(!dx && !dy) continue; const nx = x + dx, ny = y + dy; if(nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        const k = ny * w + nx; if(mask[k] === m && !seen[k]){ seen[k] = 1; stack[sp++] = k; }
+
+  // 1) فتح/إغلاق مورفولوجي بعناصر خطية في 4 اتجاهات.
+  //    الحبيبة أصغر من العنصر في كل الاتجاهات فتختفي في كل فتح ⇒ تظهر في min.
+  //    الخيوط والحواف والنقوش الطولية تبقى في اتجاه واحد على الأقل ⇒ min≈0.
+  const R = opt.R || Math.max(3, Math.min(8, Math.round(Math.max(w, h) / 220)));
+  const line = (src, dst, dx, dy, isMax) => {
+    const st = dy * w + dx;
+    for(let y = R; y < h - R; y++){ // المنطقة الداخلية: بدون فحص الحدود (المسار السريع)
+      for(let x = R, i = y * w + R; x < w - R; x++, i++){
+        let m = src[i];
+        if(isMax){ for(let k = 1, o = st; k <= R; k++, o += st){ const a = src[i + o], b = src[i - o]; if(a > m) m = a; if(b > m) m = b; } }
+        else { for(let k = 1, o = st; k <= R; k++, o += st){ const a = src[i + o], b = src[i - o]; if(a < m) m = a; if(b < m) m = b; } }
+        dst[i] = m;
       }
     }
-    const bw = maxx - minx + 1, bh = maxy - miny + 1;
-    if(size <= 36 && bw <= 9 && bh <= 9) parts.push([sx / size, sy / size, size]); else edgeArea += size;
+    for(let y = 0; y < h; y++) for(let x = 0; x < w; x++){
+      if(y >= R && y < h - R && x >= R && x < w - R) continue;
+      let m = src[y * w + x];
+      for(let k = 1; k <= R; k++){
+        let xa = x + k * dx, ya = y + k * dy, xb = x - k * dx, yb = y - k * dy;
+        if(xa < 0) xa = 0; else if(xa >= w) xa = w - 1; if(ya < 0) ya = 0; else if(ya >= h) ya = h - 1;
+        if(xb < 0) xb = 0; else if(xb >= w) xb = w - 1; if(yb < 0) yb = 0; else if(yb >= h) yb = h - 1;
+        const va = src[ya * w + xa], vb = src[yb * w + xb];
+        if(isMax){ if(va > m) m = va; if(vb > m) m = vb; } else { if(va < m) m = va; if(vb < m) m = vb; }
+      }
+      dst[y * w + x] = m;
+    }
+  };
+  const Tb = new Float32Array(N).fill(1e9), Td = new Float32Array(N).fill(1e9), Tmx = new Float32Array(N);
+  const A = new Float32Array(N), B = new Float32Array(N);
+  for(const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]){
+    line(Ls, A, dx, dy, false); line(A, B, dx, dy, true);            // فتح
+    for(let i = 0; i < N; i++){ const t = Ls[i] - B[i]; if(t < Tb[i]) Tb[i] = t; if(t > Tmx[i]) Tmx[i] = t; }
+    line(Ls, A, dx, dy, true); line(A, B, dx, dy, false);            // إغلاق
+    for(let i = 0; i < N; i++){ const t = B[i] - Ls[i]; if(t < Td[i]) Td[i] = t; }
   }
-  const area = Math.max(N * 0.25, (w - 2 * B) * (h - 2 * B) - edgeArea * 3);
+  // 2) طاقة النسيج الاتجاهي: (أقصى − أدنى) استجابة عبر الاتجاهات. عالية في القماش المحبوك
+  //    والنقوش، ومنخفضة على السطح الأملس حتى لو كان مغبّراً. تُستخدم لرفع العتبة محلياً.
+  const W1 = w + 1, H1 = h + 1;
+  const integ = f => { const I = new Float64Array(W1 * H1); for(let y = 0; y < h; y++){ let row = 0; for(let x = 0; x < w; x++){ row += f(y * w + x); I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + row; } } return I; };
+  const boxAt = (I, x, y, r) => { const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r), y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+    return (I[(y1 + 1) * W1 + x1 + 1] - I[y0 * W1 + x1 + 1] - I[(y1 + 1) * W1 + x0] + I[y0 * W1 + x0]) / ((x1 - x0 + 1) * (y1 - y0 + 1)); };
+  const IE = integ(i => Tmx[i] - Tb[i]), IL = integ(i => Ls[i]), IC = integ(i => C[i]);
+  const rw = Math.max(12, R * 4);
+  // 3) عتبة إحصائية محلية: لكل كتلة 24×24 نحسب المئين 95 لاستجابة الحبيبات.
+  //    نسيج السطح نفسه (حبكة القماش، المسام) يرفع هذا المئين فترتفع العتبة؛ أما الغبار فنادراً ما
+  //    يتجاوز 2% من البكسلات حتى عندما يكون كثيفاً، فلا يؤثر في المئين ويظهر كقيمة شاذة.
+  const S = 24, BX = Math.ceil(w / S), BY = Math.ceil(h / S), q95 = new Float32Array(BX * BY), buf = new Float32Array(S * S);
+  for(let by = 0; by < BY; by++) for(let bx = 0; bx < BX; bx++){
+    let n = 0; for(let y = by * S; y < Math.min(h, by * S + S); y++) for(let x = bx * S; x < Math.min(w, bx * S + S); x++){ const t = Tb[y * w + x]; buf[n++] = t > 0 ? t : 0; }
+    const a = buf.subarray(0, n).sort(); q95[by * BX + bx] = a[Math.min(n - 1, (n * 0.95) | 0)];
+  }
+  const qAt = (x, y) => { // استيفاء ثنائي الخطية بين مراكز الكتل
+    let fx = x / S - 0.5, fy = y / S - 0.5; fx = Math.max(0, Math.min(BX - 1, fx)); fy = Math.max(0, Math.min(BY - 1, fy));
+    const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(BX - 1, x0 + 1), y1 = Math.min(BY - 1, y0 + 1), ax = fx - x0, ay = fy - y0;
+    return (q95[y0 * BX + x0] * (1 - ax) + q95[y0 * BX + x1] * ax) * (1 - ay) + (q95[y1 * BX + x0] * (1 - ax) + q95[y1 * BX + x1] * ax) * ay;
+  };
+  const base = opt.base || 5, kE = opt.kE ?? 0.5, kQ = opt.kQ ?? 1.5;
+  const B0 = R + 1, cand = new Uint8Array(N), thrMap = new Float32Array(N);
+  let validN = 0;
+  for(let y = B0; y < h - B0; y++) for(let x = B0; x < w - B0; x++){
+    const i = y * w + x, bg = boxAt(IL, x, y, rw);
+    if(bg < 14 || bg > 247) continue;                 // مناطق مظلمة جداً أو محترقة: لا يُحكم عليها
+    validN++;
+    const thr = base + kE * boxAt(IE, x, y, rw) + kQ * qAt(x, y); thrMap[i] = thr;
+    if(Tb[i] > thr && Ls[i] < 246) cand[i] = 1;      // حبيبة فاتحة (الغبار على الأسطح الداكنة والملونة)
+    else if(bg > 165 && Td[i] > thr * 1.15) cand[i] = 2; // حبيبة داكنة على سطح فاتح
+  }
+  // 4) المكونات المتصلة + مرشحات الشكل واللون
+  const seen = new Uint8Array(N), stack = new Int32Array(N), parts = [];
+  const maxA = Math.max(6, Math.round(R * R * 1.3)), maxD = 2 * R;
+  let rej = 0;
+  for(let i = 0; i < N; i++){
+    if(!cand[i] || seen[i]) continue;
+    const m = cand[i]; let sp = 0, size = 0, minx = 1e9, maxx = -1, miny = 1e9, maxy = -1, sx = 0, sy = 0, peak = 0, cs = 0, pk = i;
+    stack[sp++] = i; seen[i] = 1;
+    while(sp){
+      const j = stack[--sp], x = j % w, y = (j / w) | 0; size++; sx += x; sy += y; cs += C[j];
+      const z = (m === 1 ? Tb[j] : Td[j]) / (thrMap[j] || 1); if(z > peak){ peak = z; pk = j; }
+      if(x < minx) minx = x; if(x > maxx) maxx = x; if(y < miny) miny = y; if(y > maxy) maxy = y;
+      for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++){
+        const nx = x + dx, ny = y + dy; if(nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const k = ny * w + nx; if(cand[k] === m && !seen[k]){ seen[k] = 1; stack[sp++] = k; }
+      }
+    }
+    const bw = maxx - minx + 1, bh = maxy - miny + 1, cx = sx / size, cy = sy / size;
+    const elong = Math.max(bw, bh) / Math.min(bw, bh);
+    const bgC = boxAt(IC, cx | 0, cy | 0, rw);
+    const ok = size <= maxA && bw <= maxD && bh <= maxD && elong <= 2.6 && peak >= 1.25 && cs / size <= bgC * 1.25 + 18;
+    if(ok) parts.push([cx, cy, size, m]); else rej++;
+  }
+  // 5) المؤشر: كثافة الحبيبات لكل 10,000 بكسل صالح
+  const area = Math.max(validN, N * 0.05);
   const density = parts.length / (area / 10000);
-  const idx = Math.round(100 * (1 - Math.exp(-density * sens / 8)));
-  const GX = 12, GY = 9, heat = new Array(GX * GY).fill(0);
+  const K = opt.K || 10;
+  const idx = Math.round(100 * (1 - Math.exp(-density * sens / K)));
+  const GX = 8, GY = Math.max(4, Math.min(14, Math.round(GX * h / w)));
+  const heat = new Array(GX * GY).fill(0), cellV = new Array(GX * GY).fill(0);
+  for(let y = B0; y < h - B0; y += 2) for(let x = B0; x < w - B0; x += 2) if(thrMap[y * w + x]) cellV[Math.min(GY - 1, (y / h * GY) | 0) * GX + Math.min(GX - 1, (x / w * GX) | 0)] += 4;
   for(const p of parts) heat[Math.min(GY - 1, (p[1] / h * GY) | 0) * GX + Math.min(GX - 1, (p[0] / w * GX) | 0)]++;
-  const cellArea = area / (GX * GY), cellThr = Math.max(3, cellArea / 10000 * 3.5 / sens);
-  const zonesDusty = heat.filter(v => v >= cellThr).length;
-  return { idx, n: parts.length, density, parts: parts.slice(0, 1500), mean, sharp, heat, GX, GY, cellThr, zonesDusty, w, h };
+  // خلية "مغبّرة" إذا تجاوزت كثافتها ما يعادل مؤشر ~35
+  const cellD = heat.map((v, k) => cellV[k] > area / (GX * GY) * 0.3 ? v / (cellV[k] / 10000) : 0);
+  const dThr = K * 0.43 / sens;
+  const zonesDusty = cellD.filter(v => v >= dThr).length, cellsValid = cellV.filter(v => v > area / (GX * GY) * 0.3).length;
+  return { v: 2, idx, n: parts.length, density, parts: parts.slice(0, 2000), mean, sharp, heat: cellD, GX, GY, cellThr: dThr, zonesDusty, cellsValid, w, h, R, valid: validN / N, rej };
+}
+const DUST_MAX = 900;
+let _wk = null, _wkBad = false;
+function runAnalysis(px, w, h, sens){
+  const local = () => analyzeDust(px, w, h, sens);
+  if(_wkBad || typeof Worker === 'undefined') return Promise.resolve(local());
+  return new Promise(res => {
+    let done = false; const fin = r => { if(!done){ done = true; res(r); } };
+    try{
+      if(!_wk){ const src = analyzeDust.toString() + '\nonmessage = e => { const d = e.data; try{ postMessage({ ok: 1, r: analyzeDust(d.px, d.w, d.h, d.sens) }); }catch(x){ postMessage({ ok: 0 }); } };';
+        _wk = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); }
+      const fail = () => { _wkBad = true; try{ _wk.terminate(); }catch(e){} _wk = null; fin(local()); };
+      _wk.onmessage = e => e.data && e.data.ok ? fin(e.data.r) : fail();
+      _wk.onerror = fail;
+      _wk.postMessage({ px, w, h, sens });
+      setTimeout(() => { if(!done) fail(); }, 25000);
+    }catch(e){ _wkBad = true; fin(local()); }
+  });
+}
+// قصّ المنطقة المحددة من الصورة الأصلية بدقتها الكاملة (حتى DUST_MAX) ثم تحليلها
+async function analyzeRegion(img, rect, sens){
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const sx = rect.x * iw, sy = rect.y * ih, sw = rect.w * iw, sh = rect.h * ih;
+  const k = Math.min(1, DUST_MAX / Math.max(sw, sh)), w = Math.max(60, Math.round(sw * k)), h = Math.max(60, Math.round(sh * k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  return runAnalysis(x.getImageData(0, 0, w, h).data, w, h, sens);
 }
 function signature(g, w, h){
   const SX = 24, SY = 18, o = new Float32Array(SX * SY), c = new Float32Array(SX * SY);
@@ -272,7 +370,7 @@ function loadImg(file){
   return new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image();
     im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(u), 1000); }; im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('img')); }; im.src = u; });
 }
-function prep(img, maxS = 520){
+function prep(img, maxS = 720){
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height; if(!iw || !ih) throw new Error('empty');
   const s = Math.min(1, maxS / Math.max(iw, ih)), w = Math.max(40, Math.round(iw * s)), h = Math.max(40, Math.round(ih * s));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -282,19 +380,27 @@ function prep(img, maxS = 520){
   return { canvas: c, g, w, h };
 }
 function thumb(src, W = 160){ const c = document.createElement('canvas'); c.width = W; c.height = Math.round(src.height * W / src.width); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.55); }
-function drawOverlay(cv, src, an, detail){
+function drawOverlay(cv, src, an, detail, rect){
   cv.width = src.width; cv.height = src.height;
   const x = cv.getContext('2d'); x.drawImage(src, 0, 0);
-  const cw = cv.width / an.GX, ch = cv.height / an.GY, mx = Math.max(an.cellThr * 2, ...an.heat);
+  const r = rect || { x: 0, y: 0, w: 1, h: 1 }, rx = r.x * cv.width, ry = r.y * cv.height, rw = r.w * cv.width, rh = r.h * cv.height;
+  if(rect){ // تعتيم ما خارج منطقة التحليل
+    x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, cv.width, ry); x.fillRect(0, ry + rh, cv.width, cv.height - ry - rh); x.fillRect(0, ry, rx, rh); x.fillRect(rx + rw, ry, cv.width - rx - rw, rh);
+    x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 2; x.setLineDash([6, 4]); x.strokeRect(rx, ry, rw, rh); x.setLineDash([]);
+  }
+  if(!an) return;
+  const cw = rw / an.GX, ch = rh / an.GY, mx = Math.max(an.cellThr * 2.5, ...an.heat);
   x.lineWidth = 1.5;
   an.heat.forEach((v, k) => {
     if(v < an.cellThr) return;
-    const a = Math.min(1, v / mx), cx = (k % an.GX) * cw, cy = ((k / an.GX) | 0) * ch;
-    x.fillStyle = a > 0.6 ? `rgba(200,40,40,${0.10 + 0.14 * a})` : `rgba(230,150,30,${0.08 + 0.12 * a})`;
+    const a = Math.min(1, v / mx), cx = rx + (k % an.GX) * cw, cy = ry + ((k / an.GX) | 0) * ch;
+    x.fillStyle = a > 0.6 ? `rgba(200,40,40,${0.12 + 0.14 * a})` : `rgba(230,150,30,${0.10 + 0.12 * a})`;
     x.fillRect(cx + 1, cy + 1, cw - 2, ch - 2);
-    x.strokeStyle = a > 0.6 ? 'rgba(220,50,50,.85)' : 'rgba(240,160,40,.85)'; x.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
   });
-  if(detail){ x.fillStyle = 'rgba(255,60,60,.9)'; for(const p of an.parts.slice(0, 600)){ x.fillRect(p[0] - 1, p[1] - 1, 2.2, 2.2); } }
+  if(detail){
+    const sx = rw / an.w, sy = rh / an.h; x.strokeStyle = 'rgba(255,40,40,.95)'; x.lineWidth = 1.3;
+    for(const p of an.parts.slice(0, 1500)){ x.beginPath(); x.arc(rx + p[0] * sx, ry + p[1] * sy, 3.2, 0, 7); x.stroke(); }
+  }
 }
 
 /* ================= الحالة ================= */
@@ -682,9 +788,12 @@ function vClean(){
       ${'BarcodeDetector' in window ? `<button class="btn w" style="margin-top:8px" data-act="scanQR">${ic('qr')} أو مسح رمز QR</button>` : ''}</div>`;
   } else if(s === 'before' || s === 'after'){
     const b = s === 'before';
-    if(F.busy) h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ تحليل الصورة…<div class="xs" style="opacity:.7">كشف الحبيبات الدقيقة على السطح</div></div></div>`;
+    if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على الصورة لتحديد سطح العارضة فقط، دون الجدار أو الأرضية أو الزجاج. التحليل يقتصر على المنطقة المحددة.</p></div>
+      <div class="shot"><canvas id="roiCv" style="touch-action:none;cursor:crosshair"></canvas></div><div style="height:10px"></div>
+      <button class="btn pri big" data-act="roiGo">${ic('search')} تحليل المنطقة المحددة</button><div style="height:8px"></div><button class="btn w" data-act="shoot" data-w="${s}">إعادة التصوير</button>`;
+    else if(F.busy) h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ تحليل الصورة…<div class="xs" style="opacity:.7">كشف الحبيبات الدقيقة على السطح</div></div></div>`;
     else h += `<div class="card"><h3>${ic('cam')} ${b ? (scan ? 'تصوير العارضة' : 'تصوير العارضة قبل التنظيف') : 'تصوير العارضة بعد التنظيف'}</h3>
-      <div class="note"><b>تعليمات التصوير:</b><ul><li>فعّل الفلاش؛ فهو يُظهر حبيبات الغبار الدقيقة.</li><li>صوّر السطح من مسافة 20 إلى 30 سم.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
+      <div class="note"><b>تعليمات التصوير:</b><ul><li>اقترب من السطح (20 إلى 40 سم) بحيث يملأ سطح العارضة معظم الصورة؛ الصورة البعيدة لا تُظهر الغبار.</li><li>فعّل الفلاش أو استخدم ضوءاً جانبياً؛ فالضوء المائل يُبرز حبيبات الغبار.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر، وثبّته لتجنّب الاهتزاز.</li><li>بعد التصوير ستحدد بإصبعك منطقة السطح المراد تحليلها.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
       <div style="height:12px"></div><button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}">${ic('cam')} التقاط الصورة</button>
       ${b ? '' : `<button class="btn w" style="margin-top:8px" data-act="backClean">رجوع إلى التنظيف</button>`}</div>`;
   } else if(s === 'beforeRes' || s === 'scanRes'){
@@ -728,7 +837,7 @@ function vClean(){
   return h;
 }
 function anCard(key, an, v){
-  return `<div class="shot"><canvas data-ov="${key}"></canvas><span class="lbl">${an.zonesDusty} منطقة غبار من ${an.GX * an.GY}</span></div>
+  return `<div class="shot"><canvas data-ov="${key}"></canvas><span class="lbl">${an.v === 2 ? `${an.n} حبيبة · ${an.zonesDusty} منطقة من ${an.cellsValid}` : `${an.zonesDusty} منطقة غبار من ${an.GX * an.GY}`}</span></div>
     <label class="row sm" style="margin:6px 0"><input type="checkbox" style="width:auto" data-act="toggleDetail" ${S.detail ? 'checked' : ''}> إظهار الحبيبات المكتشفة</label>
     <div class="card idx"><div><div class="xs mut">مؤشر الغبار</div><div class="n" style="color:${v.c}">${an.idx}</div></div><div style="flex:1"><span class="tag ${v.k}" style="font-size:13px">${v.t}</span>
     <div class="bar" style="margin-top:8px"><i style="width:${an.idx}%;background:${v.c}"></i></div><div class="xs mut" style="margin-top:4px">المناطق المظلّلة تمثّل تركّز الغبار؛ الأحمر للتركّز العالي.</div></div></div>`;
@@ -740,7 +849,8 @@ function flowList(list){
 window.flowSearch = q => { F.f.q = q; const el = $('#fList'); if(el) el.innerHTML = flowList(filterZones(S.zones, F.f, F.f.mine)); };
 function rf(){ render(true); }
 function afterRender(){
-  if(F && S.tab === 'clean') document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail); });
+  if(F && S.tab === 'clean') document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); });
+  if(F && F.pick) roiInit();
   if(S.tab === 'admin' && S.atab === 'labels' && window.QRCode) document.querySelectorAll('.qr[data-code]').forEach(el => { if(!el.childNodes.length){ try{ new QRCode(el, { text: 'DUST-' + el.dataset.code, width: 92, height: 92 }); }catch(e){} } });
 }
 function pickPhoto(){
@@ -749,17 +859,39 @@ function pickPhoto(){
 }
 async function shoot(which){
   const f = await pickPhoto(); if(!f) return;
-  F.busy = true; F.step = which; rf();
   try{
-    const p = prep(await loadImg(f)); await sleep(50);
-    const an = analyzeGray(p.g, p.w, p.h, cfg('sens') || 1); await sleep(700);
-    F[which] = { an, canvas: p.canvas, thumb: thumb(p.canvas), sig: signature(p.g, p.w, p.h), t: Date.now() };
-    F.busy = false;
+    const img = await loadImg(f), p = prep(img);
+    const prev = which === 'after' && F.before && F.before.rect;
+    F.pick = { which, img, p, rect: prev ? { ...prev } : { x: 0.15, y: 0.15, w: 0.7, h: 0.7 } };
+    F.step = which; rf(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  }catch(e){ toast('تعذّرت قراءة الصورة. حاول مرة أخرى.'); }
+}
+// تحديد منطقة التحليل بالسحب على الصورة
+function roiInit(){
+  const cv = $('#roiCv'); if(!cv || cv._on) return; cv._on = 1;
+  const pk = F.pick; drawOverlay(cv, pk.p.canvas, null, false, pk.rect);
+  let st = null;
+  const pt = e => { const b = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - b.left) / b.width)), Math.max(0, Math.min(1, (e.clientY - b.top) / b.height))]; };
+  cv.addEventListener('pointerdown', e => { st = pt(e); cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+  cv.addEventListener('pointermove', e => { if(!st) return; const q = pt(e);
+    const r = { x: Math.min(st[0], q[0]), y: Math.min(st[1], q[1]), w: Math.abs(q[0] - st[0]), h: Math.abs(q[1] - st[1]) };
+    if(r.w > 0.04 && r.h > 0.04){ pk.rect = r; drawOverlay(cv, pk.p.canvas, null, false, r); } });
+  const end = () => { st = null; }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+}
+async function analyzePick(){
+  const pk = F.pick; if(!pk) return;
+  const iw = pk.img.naturalWidth || pk.img.width, ih = pk.img.naturalHeight || pk.img.height;
+  if(pk.rect.w * iw < 120 || pk.rect.h * ih < 120) return toast('المنطقة المحددة صغيرة جداً. اسحب لتحديد منطقة أكبر.');
+  const which = pk.which; F.busy = true; rf();
+  try{
+    const an = await analyzeRegion(pk.img, pk.rect, cfg('sens') || 1); await sleep(300);
+    F[which] = { an, canvas: pk.p.canvas, rect: pk.rect, thumb: thumb(pk.p.canvas), sig: signature(pk.p.g, pk.p.w, pk.p.h), t: Date.now() };
+    F.busy = false; F.pick = null;
     if(which === 'before') F.step = F.mode === 'scan' ? 'scanRes' : 'beforeRes';
     else { compute(); F.step = 'result'; }
     tone(which === 'before' || F.res.pass); rf(); window.scrollTo({ top: 0, behavior: 'smooth' });
     if(F.step === 'result' && F.res.pass) saveClean(false);
-  }catch(e){ F.busy = false; rf(); toast('تعذّرت قراءة الصورة. حاول مرة أخرى.'); }
+  }catch(e){ F.busy = false; rf(); toast('تعذّر تحليل الصورة. حاول مرة أخرى.'); }
 }
 function compute(){
   const z = zoneById(F.zoneId) || {}, b = F.before.an.idx, a = F.after.an.idx;
@@ -1052,11 +1184,12 @@ const A = {
   },
   flowCancel(){ F = null; clearInterval(tmrI); render(true); },
   shoot(d){ shoot(d.w); },
-  toggleDetail(d, el){ S.detail = !S.detail; document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F && F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail); }); document.querySelectorAll('[data-act=toggleDetail]').forEach(c => c.checked = S.detail); },
+  roiGo(){ analyzePick(); },
+  toggleDetail(d, el){ S.detail = !S.detail; document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F && F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); }); document.querySelectorAll('[data-act=toggleDetail]').forEach(c => c.checked = S.detail); },
   goClean(){ F.step = 'cleaning'; F.cleanStart = Date.now(); rf(); tick(); },
-  backClean(){ F.step = 'cleaning'; rf(); tick(); },
+  backClean(){ F.pick = null; F.step = 'cleaning'; rf(); tick(); },
   toAfter(){ F.step = 'after'; rf(); },
-  retry(){ F.step = 'cleaning'; F.after = null; F.res = null; rf(); tick(); },
+  retry(){ F.step = 'cleaning'; F.after = null; F.res = null; F.pick = null; rf(); tick(); },
   saveAttempt(){ saveClean(true); },
   confirmClean(){ quick('k'); },
   sendFlag(){ quick('f'); },
@@ -1127,8 +1260,11 @@ const A = {
   async orgSave(){ const v = $('#on').value.trim(); if(v && await saveCfg({ orgName: v })) closeModal(); },
   async calibrate(){
     const f = await pickPhoto(); if(!f) return;
-    try{ const p = prep(await loadImg(f)), an = analyzeGray(p.g, p.w, p.h, 1); const s = an.density > 0.01 ? Math.max(0.3, Math.min(3, 0.667 / an.density)) : 3;
-      if(await saveCfg({ sens: Math.round(s * 100) / 100 })) toast('تمت المعايرة. الحساسية ×' + s.toFixed(2)); }catch(e){ toast('تعذّرت قراءة الصورة.'); }
+    toast('جارٍ تحليل صورة المعايرة…');
+    try{ const an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1);
+      // السطح النظيف يجب أن يعطي مؤشراً ≤ 8. نخفّض الحساسية فقط إذا قرأ السطح النظيف أعلى من ذلك.
+      const s = an.idx > 8 ? Math.max(0.3, Math.min(1, 0.834 / an.density)) : 1;
+      if(await saveCfg({ sens: Math.round(s * 100) / 100 })) toast('تمت المعايرة. مؤشر السطح النظيف ' + an.idx + ' · الحساسية ×' + s.toFixed(2)); }catch(e){ toast('تعذّرت قراءة الصورة.'); }
   },
   async prune(){
     toast('جارٍ الحذف…'); let n = 0;
