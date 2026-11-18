@@ -7,7 +7,8 @@ service cloud.firestore {
     function sid(){ return request.auth.token.sid; }
     function isAdmin(){ return signed() && request.auth.token.admin == true; }
     function isSup(){ return signed() && request.auth.token.role == 'sup'; }
-    function manager(){ return isAdmin() || isSup(); }
+    function isInsp(){ return signed() && request.auth.token.role == 'insp'; }
+    function manager(){ return isAdmin() || isSup() || isInsp(); }
     // الموظف الموقوف يفقد صلاحية الكتابة فوراً حتى لو بقي رمز دخوله صالحاً
     function active(){ return signed() && get(/databases/$(database)/documents/staff/$(sid())).data.get('active', true) != false; }
     function onlyKeys(keys){ return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
@@ -23,7 +24,7 @@ service cloud.firestore {
       allow read: if signed();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (manager() && active())
-        || (active() && onlyKeys(['lastClean', 'lastBy', 'lastIdx', 'flaggedAt', 'flaggedBy'])
+        || (active() && onlyKeys(['lastClean', 'lastBy', 'lastIdx', 'flaggedAt', 'flaggedBy', 'ops', 'lc'])
             && request.resource.data.get('lastBy', '') in [resource.data.get('lastBy', ''), sid()]
             && request.resource.data.get('flaggedBy', '') in [resource.data.get('flaggedBy', ''), sid()]);
     }
@@ -33,7 +34,7 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
       allow update: if isAdmin()
         || (s == sid() && active() && onlyKeys(['st']))
-        || (isSup() && active() && onlyKeys(['st']));
+        || ((isSup() || isInsp()) && active() && onlyKeys(['st']));
     }
 
     // الملخص الشهري وسجل الشهر: كل موظف يكتب مستنده فقط
@@ -44,6 +45,22 @@ service cloud.firestore {
     match /act/{d} {
       allow read: if manager() || (signed() && d.matches(sid() + '_[0-9]{6}'));
       allow write: if (manager() && active()) || (active() && ownMonthly(d));
+    }
+
+    // الجدول الشهري: يرفعه المدير ويقرؤه الجميع
+    match /plan/{ym} {
+      allow read: if signed();
+      allow write: if isAdmin();
+    }
+    // المواقع الإضافية التي يطلبها الموظف لنفسه هذا الشهر
+    match /xtra/{d} {
+      allow read: if manager() || (signed() && d.matches(sid() + '_[0-9]{6}'));
+      allow write: if active() && ownMonthly(d);
+    }
+    // الفحص الميداني اليومي للمفتش العام
+    match /insp/{day} {
+      allow read: if signed();
+      allow write: if (isInsp() || isAdmin()) && active();
     }
 
     // صور الإثبات: الموظف ينشئ إثباته فقط، والمراجعة للمدير والمشرف

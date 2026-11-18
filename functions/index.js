@@ -19,7 +19,7 @@ const SETUP_KEY = defineString('SETUP_KEY', { default: '' });
 const db = getFirestore();
 const PIN_RE = /^\d{4,8}$/;
 const MAX_FAILS = 5, LOCK_MS = 15 * 60 * 1000;
-const ROLES = ['staff', 'sup', 'admin'];
+const ROLES = ['staff', 'sup', 'insp', 'admin'];
 
 const fail = (code, msg) => { throw new HttpsError(code, msg); };
 const clean = (s, n = 80) => String(s == null ? '' : s).trim().slice(0, n);

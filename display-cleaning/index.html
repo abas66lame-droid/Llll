@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نظام متابعة نظافة العارضات</title>
+<title>نظام متابعة نظافة المواقع</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
@@ -196,7 +196,7 @@ const initials = n => { const p = String(n || '').trim().split(/\s+/); return es
 
 /* ================= محرك كشف الغبار (الإصدار 2) =================
    المشكلة في الإصدار الأول: حبكة القماش ونقوش السطح والخلفية تُقرأ كغبار.
-   1) التحليل على منطقة يحددها الموظف (سطح العارضة فقط) وبدقة أعلى (حتى 900px للمنطقة).
+   1) التحليل على منطقة يحددها الموظف (السطح فقط) وبدقة أعلى (حتى 900px للمنطقة).
    2) فتح مورفولوجي بعناصر خطية في 4 اتجاهات: الحبيبة تختفي في كل الاتجاهات، أما الخيوط
       والحواف والنقوش فتبقى في اتجاه واحد على الأقل، فتُستبعد تلقائياً.
    3) عتبة إحصائية محلية (المئين 90 لكل كتلة 24×24) تتكيّف مع نسيج كل سطح.
@@ -394,7 +394,14 @@ function prep(img, maxS = 720){
   for(let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
   return { canvas: c, g, w, h };
 }
-function thumb(src, W = 160){ const c = document.createElement('canvas'); c.width = W; c.height = Math.round(src.height * W / src.width); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.55); }
+// مصغّرة لمنطقة التحليل (مع هامش) ليرى المدقق السطح نفسه بوضوح
+function thumbRect(src, r, W = 360){
+  if(!r) return thumb(src, W);
+  const m = 0.06, x = Math.max(0, r.x - m), y = Math.max(0, r.y - m), w = Math.min(1 - x, r.w + 2 * m), h = Math.min(1 - y, r.h + 2 * m);
+  const sw = w * src.width, sh = h * src.height, c = document.createElement('canvas'); c.width = W; c.height = Math.round(sh * W / sw);
+  c.getContext('2d').drawImage(src, x * src.width, y * src.height, sw, sh, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.6);
+}
+function thumb(src, W = 320){ const c = document.createElement('canvas'); c.width = W; c.height = Math.round(src.height * W / src.width); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.55); }
 function drawOverlay(cv, src, an, detail, rect){
   cv.width = src.width; cv.height = src.height;
   const x = cv.getContext('2d'); x.drawImage(src, 0, 0);
@@ -419,7 +426,17 @@ function drawOverlay(cv, src, an, detail, rect){
 }
 
 /* ================= الحالة ================= */
-const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 10, selfReg: true, sound: true, requireLive: false };
+const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
+  flow: 'single', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
+/* فئات العناصر: كل فئة = جولات يومية بنوافذ زمنية. السطر: «تنظيف|فحص HH:MM-HH:MM الوصف».
+   extra = يُسمح بتنظيف إضافي (بنقاط مخفّضة) بعد إنجاز جولات اليوم. تُعدَّل من الإعدادات. */
+const CATS_DEF = {
+  A: { name: 'A — كثيرة الاستخدام', rules: 'تنظيف 08:00-11:00 تنظيف صباحي\nفحص 12:00-15:00 فحص منتصف اليوم\nفحص 18:00-21:00 فحص قبل نهاية الدوام', extra: true },
+  B: { name: 'B — مرة يومياً ويُسمح بالإضافي', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: true },
+  C: { name: 'C — مرة يومياً فقط', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: false },
+  G: { name: 'G — كل ساعتين (مثل الزجاج)', rules: 'تنظيف 09:00-11:00\nتنظيف 11:00-13:00\nتنظيف 13:00-15:00\nتنظيف 15:00-17:00\nتنظيف 17:00-19:00\nتنظيف 19:00-21:00', extra: false }
+};
+const cats = () => Object.assign({}, CATS_DEF, S.config.cats || {});
 const S = {
   mode: 'loading', ready: false, stale: false, canManage: false, readOnly: false,
   zones: [], staff: [], sums: [], config: {}, myAct: null, proofs: null,
@@ -574,7 +591,7 @@ const Store = {
 };
 
 /* ================= الاشتراكات ================= */
-let unMonth = null, unAct = null, unProof = null, rq = 0;
+let unMonth = null, unAct = null, unProof = null, unPlan = null, unXtra = null, unInsp = null, rq = 0;
 function scheduleRender(){ if(rq) return; rq = requestAnimationFrame(() => { rq = 0; render(); }); }
 function subscribeBase(){
   let pend = 4; const fin = () => { if(--pend <= 0 && !S.ready){ S.ready = true; clearTimeout(tm); scheduleRender(); } };
@@ -589,12 +606,19 @@ function subscribeBase(){
 function subscribeMonth(fin){
   if(unMonth) unMonth(); S.ym = ymOf(); let first = true;
   unMonth = Store.listen('sum', ['ym', '==', S.ym], null, a => { if(a) S.sums = a; if(first){ first = false; fin && fin(); } scheduleRender(); });
+  if(unPlan) unPlan(); unPlan = Store.listenDoc('plan', S.ym, d => { S.plan = d; scheduleRender(); });
   subscribeAct();
 }
 function subscribeAct(){
   if(unAct){ unAct(); unAct = null; } S.myAct = null;
+  if(unXtra){ unXtra(); unXtra = null; } S.xtra = null;
   if(!S.me) return;
+  unXtra = Store.listenDoc('xtra', S.me + '_' + S.ym, d => { S.xtra = d; scheduleRender(); });
   unAct = Store.listenDoc('act', S.me + '_' + S.ym, d => { S.myAct = d || { e: [] }; scheduleRender(); });
+}
+function subscribeInsp(){
+  const k = dayKey(); if(unInsp && S.inspDay === k) return;
+  if(unInsp) unInsp(); S.inspDay = k; unInsp = Store.listenDoc('insp', k, d => { S.insp = d; scheduleRender(); });
 }
 function subscribeProofs(){
   if(unProof) return;
@@ -609,7 +633,7 @@ const ACH = [
   ['n250', '250 عملية معتمدة', s => (s.lifeN || 0) >= 250],
   ['q85', 'إزالة 85% من الغبار في عملية واحدة', s => !!s.q85],
   ['perf25', '25 نتيجة ممتازة', s => (s.lifePerf || 0) >= 25],
-  ['res20', 'معالجة 20 عارضة متأخرة', s => (s.lifeRes || 0) >= 20],
+  ['res20', 'معالجة 20 موقعاً متأخراً أو مُبلَّغاً عنه', s => (s.lifeRes || 0) >= 20],
   ['early', 'عملية قبل العاشرة صباحاً', s => !!s.early],
   ['str10', 'التزام 10 أيام متتالية', s => (s.bestStreak || 0) >= 10],
   ['flag10', '10 بلاغات مؤكدة', s => (s.lifeFlag || 0) >= 10],
@@ -621,13 +645,66 @@ const zoneById = id => S.zones.find(z => z.id === id);
 const staffById = id => S.staff.find(s => s.id === id);
 const me = () => staffById(S.me);
 const mySum = () => S.sums.find(s => s.staff === S.me) || null;
-function zoneState(z){
-  const iv = (z.interval || 24) * HOUR, last = z.lastClean || 0, el = last ? (Date.now() - last) / iv : 9;
-  const flagged = !!(z.flaggedAt && z.flaggedAt > last);
-  let fresh = Math.max(0, Math.round(100 * (1 - el))); if(flagged) fresh = Math.min(fresh, 10);
-  const due = el >= 1 || flagged, st = due ? 'da' : el >= 0.75 ? 'wa' : 'ok';
-  return { el, fresh, flagged, due, st };
+/* ----- المواقع والعناصر والجولات ----- */
+const hm = m => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+const _rc = {};
+function parseRounds(txt){
+  txt = String(txt || ''); if(_rc[txt]) return _rc[txt];
+  const out = [];
+  txt.split(/\n/).forEach(l => { const m = l.trim().match(/^(تنظيف|فحص)\s+(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})\s*(.*)$/);
+    if(m){ const f = +m[2] * 60 + +m[3], to = +m[4] * 60 + +m[5]; if(to > f) out.push({ t: m[1] === 'فحص' ? 'k' : 'c', f, to, label: m[6].trim() }); } });
+  return _rc[txt] = out;
 }
+const catOf = c => cats()[c] || cats().B;
+const roundsOf = el => parseRounds(catOf(el.c).rules);
+// عناصر الموقع: [{k:'زجاج', c:'G'}, {k:'رفوف', c:'B'}]. الموقع القديم بلا عناصر = عنصر «عام» من الفئة B
+function zEls(z){ return Array.isArray(z.els) && z.els.length ? z.els : [{ k: 'عام', c: 'B' }]; }
+const zNum = z => String(z.num || z.code || '');
+const zoneByNum = n => { n = String(n || '').trim(); return n ? S.zones.find(z => zNum(z) === n) : null; };
+const zTitle = z => (z.num ? z.num + ' — ' : '') + z.name;
+function parseEls(txt){
+  const out = [];
+  String(txt || '').split(/[+\/،,;\n]/).forEach(p => { p = p.trim(); if(!p) return; const m = p.match(/^(.+?)\s*[:：]\s*([A-Za-z])$/);
+    const k = (m ? m[1] : p).trim(), c = (m ? m[2] : 'B').toUpperCase(); if(k && !out.some(e => e.k === k)) out.push({ k, c }); });
+  return out;
+}
+const elsText = els => els.map(e => e.k + ':' + e.c).join('، ');
+const dayStart = (ts = Date.now()) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// سجل عمليات اليوم لكل عنصر: z.ops[عنصر] = [ts للتنظيف، -ts للفحص]
+function elOps(z, k){ const t0 = dayStart(); return (((z.ops || {})[k]) || []).filter(x => Math.abs(x) >= t0); }
+function roundSt(z, el, r){
+  const t0 = dayStart(), from = t0 + r.f * 60000, to = t0 + r.to * 60000, now = Date.now();
+  const hit = elOps(z, el.k).some(x => { const ts = Math.abs(x); return ts >= from && ts < to && (r.t === 'k' || x > 0); });
+  return hit ? 'done' : now < from ? 'soon' : now < to ? 'now' : 'late';
+}
+function zoneState(z){
+  const flagged = !!(z.flaggedAt && z.flaggedAt >= (z.lastClean || 0));
+  let late = 0, now = 0, tot = 0, done = 0;
+  zEls(z).forEach(el => roundsOf(el).forEach(r => { const s = roundSt(z, el, r); tot++; if(s === 'late') late++; else if(s === 'now') now++; else if(s === 'done') done++; }));
+  const due = flagged || late > 0, st = due ? 'da' : now ? 'wa' : 'ok';
+  return { el: (tot ? (late * 2 + now) / tot : 0) + (flagged ? 5 : 0), fresh: tot ? Math.round(100 * done / tot) : 100, flagged, due, st, late, now, tot, done };
+}
+/* ----- الجدول الشهري والمواقع الإضافية ----- */
+// plan/{YYYYMM}.rows = ['رقم الموظف|رقم الموقع|العنصر أو *|أيام الأسبوع 0-6 أو فارغ = يومياً']
+const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function parseDays(t){ t = String(t || '').trim(); if(!t || /يومي|كل الأيام|الكل/.test(t)) return ''; let o = ''; DAYS.forEach((d, i) => { if(t.includes(d.replace(/^ال/, ''))) o += i; }); if(!o && /^[0-6]+$/.test(t)) o = t; return o; }
+const daysText = d => !d ? 'يومياً' : d.split('').map(i => DAYS[+i]).join('، ');
+function planRows(p){ return (((p === undefined ? S.plan : p) || {}).rows || []).map(r => { const [n, l, e, d] = String(r).split('|'); return { n: n || '', l: l || '', e: e || '*', d: d || '' }; }); }
+// مهام الموظف اليوم: من الجدول (حسب يوم الأسبوع) + مواقعه الإضافية لهذا الشهر
+function tasksFor(staff){
+  if(!staff) return [];
+  const dow = String(new Date().getDay()), map = new Map();
+  const add = (z, ek, src) => zEls(z).forEach(el => { if(ek !== '*' && el.k !== ek) return; const key = z.id + '|' + el.k; if(!map.has(key) || src === 'plan') map.set(key, { z, el, src }); });
+  planRows().forEach(r => { if(String(r.n) === String(staff.num) && (!r.d || r.d.includes(dow))){ const z = zoneByNum(r.l); if(z) add(z, r.e, 'plan'); } });
+  ((S.xtra && S.xtra.z) || []).forEach(x => { const [zid, ek] = String(x).split('|'); const z = zoneById(zid); if(z) add(z, ek || '*', 'extra'); });
+  return [...map.values()];
+}
+function taskRounds(list){
+  const out = [], ord = { late: 0, now: 1, soon: 2, done: 3 };
+  list.forEach(t => roundsOf(t.el).forEach((r, i) => out.push(Object.assign({ r, i, st: roundSt(t.z, t.el, r) }, t))));
+  return out.sort((a, b) => ord[a.st] - ord[b.st] || a.r.f - b.r.f);
+}
+const hasPlan = () => planRows().length > 0;
 function levelOf(p){ let i = 0; LEVELS.forEach((l, k) => { if(p >= l[0]) i = k; }); const n = LEVELS[i + 1]; return { i, name: LEVELS[i][1], next: n ? n[0] : null, nextName: n ? n[1] : '', prog: n ? (p - LEVELS[i][0]) / (n[0] - LEVELS[i][0]) : 1 }; }
 function streakNow(st){ if(!st || !st.lastDay) return 0; const y = dayKey(Date.now() - DAY); return st.lastDay === dayKey() || st.lastDay === y ? (st.streak || 0) : 0; }
 function myTodayEntries(){ const t0 = new Date(); t0.setHours(0, 0, 0, 0); return ((S.myAct && S.myAct.e) || []).filter(e => e[0] >= t0.getTime()); }
@@ -635,7 +712,7 @@ function missions(entries){
   const c = entries.filter(e => e[2] === 'c');
   return [
     { t: 'إنجاز 5 عمليات تنظيف معتمدة', done: c.length >= 5, p: Math.min(5, c.length) + '/5' },
-    { t: 'معالجة عارضة متأخرة أو مُبلَّغ عنها', done: c.some(e => e[7] & 1) },
+    { t: 'معالجة موقع مُبلَّغ عنه أو جولة متأخرة', done: c.some(e => e[7] & 1) },
     { t: 'تحقيق نتيجة ممتازة (مؤشر أقل من 15)', done: c.some(e => e[7] & 2) }
   ];
 }
@@ -659,18 +736,18 @@ function tone(ok = true){
 /* ================= واجهة عامة ================= */
 function openModal(h){ $('#modal').innerHTML = `<div class="modal-bg" data-act="bg"><div class="modal">${h}</div></div>`; }
 function closeModal(){ $('#modal').innerHTML = ''; }
-function stTag(z){ const s = zoneState(z); return s.flagged ? '<span class="tag t-da">بلاغ مفتوح</span>' : s.due ? '<span class="tag t-da">متأخرة</span>' : s.st === 'wa' ? '<span class="tag t-wa">تستحق قريباً</span>' : '<span class="tag t-ok">ملتزمة</span>'; }
+function stTag(z){ const s = zoneState(z); return s.flagged ? '<span class="tag t-da">بلاغ مفتوح</span>' : s.due ? `<span class="tag t-da">متأخر (${s.late})</span>` : s.st === 'wa' ? '<span class="tag t-wa">مطلوب الآن</span>' : '<span class="tag t-ok">ملتزم</span>'; }
 function zoneRow(z, act){
   const s = zoneState(z), by = staffById(z.lastBy);
   return `<button class="zr" data-act="${act || 'zoneSheet'}" data-id="${esc(z.id)}"><span class="dot d-${s.st}"></span>
-    <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><span class="nm">${esc(z.name)}</span>${stTag(z)}</div>
-    <div class="xs mut">${esc(z.section || '')}${z.branch ? ' · ' + esc(z.branch) : ''} · ${ago(z.lastClean)}${by ? ' · ' + esc(by.name) : ''}${z.lastIdx != null && z.lastClean ? ' · مؤشر ' + z.lastIdx : ''}</div></div></button>`;
+    <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><span class="nm">${esc(zTitle(z))}</span>${stTag(z)}</div>
+    <div class="xs mut">${esc(z.section || '')}${z.branch ? ' · ' + esc(z.branch) : ''} · ${zEls(z).map(e => esc(e.k)).join('، ')} · ${s.done}/${s.tot} جولات · ${ago(z.lastClean)}${by ? ' · ' + esc(by.name) : ''}</div></div></button>`;
 }
 function filterZones(list, f, mine){
   const q = (f.q || '').trim().toLowerCase(), ms = mine ? mySections() : null;
   return list.filter(z => (!ms || !ms.length || ms.includes(z.section)) && (!f.sec || z.section === f.sec) && (!f.br || z.branch === f.br)
     && (!f.st || (f.st === 'due' ? zoneState(z).due : f.st === 'flag' ? zoneState(z).flagged : f.st === 'wa' ? zoneState(z).st === 'wa' : zoneState(z).st === 'ok'))
-    && (!q || (z.name + ' ' + (z.code || '') + ' ' + (z.section || '')).toLowerCase().includes(q)))
+    && (!q || (z.name + ' ' + zNum(z) + ' ' + (z.section || '') + ' ' + zEls(z).map(e => e.k).join(' ')).toLowerCase().includes(q)))
     .sort((a, b) => zoneState(b).el - zoneState(a).el + (zoneState(b).flagged - zoneState(a).flagged) * 50);
 }
 function filterBar(f, key, opts = {}){
@@ -678,7 +755,7 @@ function filterBar(f, key, opts = {}){
   return `<div class="filters"><input placeholder="بحث بالاسم أو الرمز" value="${esc(f.q)}" data-f="${key}.q" style="flex:2;min-width:180px">
     ${brs.length > 1 ? `<select data-f="${key}.br"><option value="">كل الفروع</option>${brs.map(b => `<option ${f.br === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` : ''}
     ${opts.noSec ? '' : `<select data-f="${key}.sec"><option value="">كل الأقسام</option>${secs.map(b => `<option ${f.sec === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>`}
-    <select data-f="${key}.st"><option value="">كل الحالات</option><option value="due" ${f.st === 'due' ? 'selected' : ''}>متأخرة</option><option value="flag" ${f.st === 'flag' ? 'selected' : ''}>عليها بلاغ</option><option value="wa" ${f.st === 'wa' ? 'selected' : ''}>تستحق قريباً</option><option value="ok" ${f.st === 'ok' ? 'selected' : ''}>ملتزمة</option></select></div>`;
+    <select data-f="${key}.st"><option value="">كل الحالات</option><option value="due" ${f.st === 'due' ? 'selected' : ''}>متأخرة</option><option value="flag" ${f.st === 'flag' ? 'selected' : ''}>عليها بلاغ</option><option value="wa" ${f.st === 'wa' ? 'selected' : ''}>مطلوبة الآن</option><option value="ok" ${f.st === 'ok' ? 'selected' : ''}>ملتزمة</option></select></div>`;
 }
 
 /* ================= الرسم ================= */
@@ -699,16 +776,16 @@ function render(force){
 }
 function renderHeader(){
   const m = me();
-  $('#hdr').innerHTML = `<div class="brand"><div class="lg">${ic('shield')}</div><div style="min-width:0"><b>${esc(cfg('orgName'))}</b><small>نظام متابعة نظافة العارضات</small></div></div><div class="sp"></div>
+  $('#hdr').innerHTML = `<div class="brand"><div class="lg">${ic('shield')}</div><div style="min-width:0"><b>${esc(cfg('orgName'))}</b><small>نظام متابعة نظافة المواقع</small></div></div><div class="sp"></div>
     ${S.mode === 'cloud' || S.mode === 'firebase' ? `<span class="mode">${S.stale ? 'غير متصل' : 'متصل'}</span>` : S.mode === 'local' ? '<span class="mode">وضع محلي</span>' : ''}
-    ${(S.canManage || (m && m.role === 'sup')) && S.tab !== 'admin' ? `<button class="hbtn" data-act="openAdmin">${ic('cog', 18)}<span>الإدارة</span></button>` : ''}
+    ${(S.canManage || (m && m.role === 'sup')) && S.tab !== 'admin' ? `<button class="hbtn" data-act="openAdmin">${ic('cog', 18)}<span>${m && m.role === 'sup' ? 'التدقيق' : 'الإدارة'}</span></button>` : ''}
     ${S.tab === 'admin' && S.me ? `<button class="hbtn" data-act="tab" data-t="home">${ic('back', 18)}<span>رجوع</span></button>` : ''}`;
 }
 function renderNav(){
   const show = S.me && S.tab !== 'admin';
   $('#navw').style.display = show ? '' : 'none'; document.body.style.paddingBottom = show ? '84px' : '20px';
   if(!show) return;
-  const t = [['home', 'home', 'الرئيسية'], ['zones', 'grid', 'العارضات'], ['clean', 'cam', 'تنظيف'], ['rank', 'chart', 'الترتيب'], ['acc', 'user', 'حسابي']];
+  const t = [['home', 'home', 'الرئيسية'], ['zones', 'grid', 'المواقع'], ['clean', 'cam', 'تنظيف'], ['rank', 'chart', 'الترتيب'], ['acc', 'user', 'حسابي']];
   $('#nav').innerHTML = t.map(([k, i, n]) => `<button class="${S.tab === k ? 'on' : ''} ${k === 'clean' ? 'mid' : ''}" data-act="tab" data-t="${k}">${k === 'clean' ? `<span class="c">${ic(i, 22)}</span>` : ic(i, 22)}${n}</button>`).join('');
 }
 
@@ -751,7 +828,7 @@ function vLogin(){
   h += `</div>`;
   if(S.mode === 'firebase' && !cfg('setupDone') && LG.step === 'num') h += `<button class="btn w" data-act="lgSetupOpen">${ic('cog')} إعداد النظام لأول مرة</button>`;
   if(S.canManage) h += `<button class="btn w" data-act="openAdmin">${ic('cog')} دخول الإدارة</button>`;
-  if(!S.zones.length && S.canManage) h += `<div class="note" style="margin-top:12px">النظام فارغ حالياً. ادخل إلى الإدارة لاستيراد العارضات والموظفين.</div>`;
+  if(!S.zones.length && S.canManage) h += `<div class="note" style="margin-top:12px">النظام فارغ حالياً. ادخل إلى الإدارة لاستيراد المواقع والموظفين.</div>`;
   return h + `</div>`;
 }
 function doLogin(id, shared){
@@ -765,37 +842,100 @@ function logout(){
 /* ----- الرئيسية ----- */
 function vHome(){
   const m = me(); if(!m) return vLogin();
+  if(m.role === 'insp') return vInspect();
   const sm = mySum() || {}, st = m.st || {}, lv = levelOf(st.life || 0), stk = streakNow(st), today = myTodayEntries(), ms = missions(today);
   const ranked = S.sums.filter(s => staffById(s.staff) && (staffById(s.staff).section === m.section)).sort((a, b) => (b.pts || 0) - (a.pts || 0));
   const rk = ranked.findIndex(s => s.staff === m.id);
-  const secs = mySections(), myZ = S.zones.filter(z => !secs.length || secs.includes(z.section));
-  const due = myZ.filter(z => zoneState(z).due).sort((a, b) => zoneState(b).el - zoneState(a).el + (zoneState(b).flagged - zoneState(a).flagged) * 50);
-  const comp = myZ.length ? Math.round(100 * (myZ.length - due.length) / myZ.length) : 0;
+  const T = taskRounds(tasksFor(m)), nDone = T.filter(t => t.st === 'done').length, nLate = T.filter(t => t.st === 'late').length;
   let h = `<div class="ttl"><div><h2>مرحباً، ${esc(m.name.split(' ')[0])}</h2><div class="sm mut">${esc(m.section || '')}${m.branch ? ' · ' + esc(m.branch) : ''} · المستوى: ${lv.name}</div></div></div>
     <div class="g4">
+      <div class="kpi"><div class="l">مهام اليوم</div><div class="v" style="color:${!T.length ? '' : nLate ? 'var(--da)' : nDone === T.length ? 'var(--ok)' : ''}">${nDone}<span class="sm mut"> / ${T.length}</span></div></div>
       <div class="kpi"><div class="l">نقاط ${MONTHS[new Date().getMonth()]}</div><div class="v">${sm.pts || 0}</div></div>
       <div class="kpi"><div class="l">ترتيبك في القسم</div><div class="v">${rk >= 0 ? rk + 1 : '—'}<span class="sm mut"> / ${ranked.length || '—'}</span></div></div>
-      <div class="kpi"><div class="l">أيام الالتزام المتتالية</div><div class="v">${stk}</div></div>
-      <div class="kpi"><div class="l">التزام عارضات قسمك</div><div class="v" style="color:${comp >= 80 ? 'var(--ok)' : comp >= 50 ? 'var(--wa)' : 'var(--da)'}">${comp}%</div></div></div>
-    <div class="card"><h3>${ic('list')} المهام اليومية <span class="sp"></span><span class="tag t-pri">+15 نقطة عند إكمالها</span></h3>
-      ${ms.map(x => `<div class="mission ${x.done ? 'done' : ''}"><div class="ck">${x.done ? ic('check') : ''}</div><div class="t" style="flex:1">${x.t}</div>${x.p ? `<span class="sm mut">${x.p}</span>` : ''}</div>`).join('')}</div>
-    <div class="g2"><button class="btn pri big" data-act="startClean">${ic('cam')} بدء عملية تنظيف</button><button class="btn big" data-act="startScan">${ic('flag')} فحص وبلاغ</button></div>`;
-  h += `<div class="ttl"><h3 style="margin:0;font-size:15px">العارضات المتأخرة في قسمك</h3><span class="sp"></span><span class="tag t-da">${due.length}</span></div>`;
-  h += due.length ? `<div class="list">${due.slice(0, 8).map(z => zoneRow(z, 'cleanZone')).join('')}</div>${due.length > 8 ? `<button class="btn w" data-act="showDue">عرض جميع المتأخرة (${due.length})</button>` : ''}` : `<div class="card empty">لا توجد عارضات متأخرة في قسمك.</div>`;
+      <div class="kpi"><div class="l">أيام الالتزام المتتالية</div><div class="v">${stk}</div></div></div>`;
+  if(m.role === 'sup'){ subscribeProofs(); const pend = (S.proofs || []).filter(p => p.status === 'pending' && mySections().includes(p.section)).length;
+    h += `<div class="card row"><div style="flex:1"><b>${ic('eye')} التدقيق</b><div class="sm mut">${pend} صورة بانتظار تدقيقك في أقسامك.</div></div><button class="btn pri" data-act="openAdmin">فتح التدقيق</button></div>`; }
+  h += `<div class="g2"><button class="btn pri big" data-act="startClean">${ic('qr')} مسح موقع وتنظيفه</button><button class="btn big" data-act="startScan">${ic('flag')} فحص وبلاغ</button></div>`;
+  // مهامي اليوم
+  h += `<div class="ttl"><h3 style="margin:0;font-size:15px">${ic('list')} مهامي اليوم</h3><span class="sp"></span>${T.length ? `<span class="tag ${nLate ? 't-da' : 't-ok'}">${nDone}/${T.length}</span>` : ''}</div>`;
+  if(T.length){
+    const open = T.filter(t => t.st === 'late' || t.st === 'now'), later = T.filter(t => t.st === 'soon'), done = T.filter(t => t.st === 'done');
+    h += open.length ? `<div class="list">${open.map(taskRow).join('')}</div>` : `<div class="card empty">${later.length ? 'لا مهام مستحقة الآن. المهمة التالية الساعة ' + hm(later[0].r.f) + '.' : 'أنجزت كل مهام اليوم. أحسنت!'}</div>`;
+    if(later.length) h += `<details class="card"><summary class="sm"><b>لاحقاً اليوم (${later.length})</b></summary><div class="list" style="margin:8px 0 0">${later.map(taskRow).join('')}</div></details>`;
+    if(done.length) h += `<details class="card"><summary class="sm"><b>المنجزة (${done.length})</b></summary><div class="list" style="margin:8px 0 0">${done.map(taskRow).join('')}</div></details>`;
+  } else {
+    h += `<div class="card empty">${hasPlan() ? 'لا توجد مواقع مسندة لك اليوم في الجدول.' : 'لم يُرفع جدول التنظيف لهذا الشهر بعد.'} يمكنك إضافة مواقع إضافية أو مسح أي موقع وتنظيفه.</div>`;
+  }
+  // مواقعي الإضافية
+  const X = (S.xtra && S.xtra.z) || [];
+  h += `<div class="card"><h3>${ic('plus')} مواقعي الإضافية هذا الشهر <span class="sp"></span><button class="btn sm" data-act="addXtra">إضافة موقع</button></h3>
+    ${X.length ? X.map(x => { const [zid, ek] = String(x).split('|'), z = zoneById(zid); return z ? `<div class="row sm" style="padding:6px 0;border-top:1px solid var(--line2)"><span style="flex:1">${esc(zTitle(z))}${ek && ek !== '*' ? ' · ' + esc(ek) : ''}</span><button class="btn sm" data-act="rmXtra" data-v="${esc(x)}">${ic('x', 14)}</button></div>` : ''; }).join('') : '<p class="sm mut" style="margin:0">مواقع تطلبها إضافةً إلى جدولك، وتظهر ضمن مهامك اليومية.</p>'}</div>`;
+  h += `<div class="card"><h3>${ic('award')} أهداف اليوم <span class="sp"></span><span class="tag t-pri">+15 نقطة عند إكمالها</span></h3>
+      ${ms.map(x => `<div class="mission ${x.done ? 'done' : ''}"><div class="ck">${x.done ? ic('check') : ''}</div><div class="t" style="flex:1">${x.t}</div>${x.p ? `<span class="sm mut">${x.p}</span>` : ''}</div>`).join('')}</div>`;
   const top = S.sums.slice().sort((a, b) => (b.pts || 0) - (a.pts || 0)).slice(0, 3).filter(s => staffById(s.staff));
   if(top.length) h += `<div class="card"><h3>${ic('award')} الأعلى أداءً هذا الشهر على مستوى الشركة</h3>${top.map((s, i) => { const p = staffById(s.staff); return `<div class="lb" style="padding:8px 0"><span class="rk t">${i + 1}</span><div class="av">${initials(p.name)}</div><div style="flex:1"><b>${esc(p.name)}</b><div class="xs mut">${esc(p.section || '')}</div></div><b>${s.pts || 0}</b></div>`; }).join('')}</div>`;
   return h;
 }
+function taskRow(t){
+  const stc = { late: ['متأخرة', 't-da', 'da'], now: ['الآن', 't-wa', 'wa'], soon: ['لاحقاً', 't-inf', 'ok'], done: ['أُنجزت', 't-ok', 'ok'] }[t.st], fl = zoneState(t.z).flagged;
+  return `<button class="zr" data-act="doTask" data-id="${esc(t.z.id)}" data-k="${esc(t.el.k)}" data-t="${t.r.t}" data-l="${esc(t.r.label || ((t.r.t === 'k' ? 'فحص ' : 'تنظيف ') + hm(t.r.f) + '–' + hm(t.r.to)))}"><span class="dot d-${fl ? 'da' : stc[2]}"></span>
+    <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><span class="nm">${esc(zTitle(t.z))}</span>${fl ? '<span class="tag t-da">بلاغ</span>' : `<span class="tag ${stc[1]}">${stc[0]}</span>`}</div>
+    <div class="xs mut">${esc(t.el.k)} (${esc(t.el.c)}) · ${t.r.t === 'k' ? 'فحص' : 'تنظيف'}${t.r.label ? ': ' + esc(t.r.label) : ''} · ${hm(t.r.f)}–${hm(t.r.to)}${t.src === 'extra' ? ' · إضافي' : ''}</div></div></button>`;
+}
 
-/* ----- العارضات ----- */
+/* ----- المفتش العام: عيّنة يومية عشوائية (20% افتراضياً) من كل مواقع الشركة للفحص الميداني ----- */
+function hash32(t){ let h = 2166136261; for(let i = 0; i < t.length; i++){ h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+// العيّنة ثابتة طوال اليوم (مشتقة من التاريخ) فلا تتغيّر بإعادة الفتح، وتختلف كل يوم
+function inspSample(day = dayKey()){
+  const n = Math.ceil(S.zones.length * (+cfg('inspRate') || 20) / 100);
+  return S.zones.slice().sort((a, b) => hash32(day + '|' + a.id) - hash32(day + '|' + b.id)).slice(0, n)
+    .sort((a, b) => (a.section || '').localeCompare(b.section || '', 'ar') || zNum(a).localeCompare(zNum(b), 'en', { numeric: true }));
+}
+function inspView(full){
+  subscribeInsp(); subscribeProofs();
+  const L = inspSample(), it = (S.insp && S.insp.it) || {}, done = L.filter(z => it[z.id]).length, bad = L.filter(z => it[z.id] && it[z.id].r === 'bad').length;
+  let h = `<div class="g4" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">عيّنة اليوم</div><div class="v">${L.length}</div></div>
+    <div class="kpi"><div class="l">تم فحصها</div><div class="v">${done}</div></div><div class="kpi"><div class="l">غير مطابقة</div><div class="v" style="color:${bad ? 'var(--da)' : ''}">${bad}</div></div></div>
+    <div class="note">يُختار يومياً ${cfg('inspRate')}% من مواقع الشركة عشوائياً. افحص كل موقع ميدانياً ثم أكّد النتيجة. «غير مطابق» يخصم ${cfg('inspPen')} نقاط ممن نظّفه اليوم ويُدرج الموقع كبلاغ عاجل.</div>`;
+  h += L.length ? `<div class="list">${L.map(z => { const r = it[z.id], zs = zoneState(z);
+    return `<button class="zr" data-act="${full ? 'inspOpen' : 'inspOpen'}" data-id="${esc(z.id)}"><span class="dot d-${r ? (r.r === 'ok' ? 'ok' : 'da') : 'wa'}"></span><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><span class="nm">${esc(zTitle(z))}</span>${r ? (r.r === 'ok' ? '<span class="tag t-ok">مطابق</span>' : '<span class="tag t-da">غير مطابق</span>') : '<span class="tag t-wa">لم يُفحص</span>'}</div>
+      <div class="xs mut">${esc(z.section || '')}${z.branch ? ' · ' + esc(z.branch) : ''} · ${zs.done}/${zs.tot} جولات اليوم · ${ago(z.lastClean)}${r && r.note ? ' · ' + esc(r.note) : ''}</div></div></button>`; }).join('')}</div>` : '<div class="card empty">لا توجد مواقع مسجّلة.</div>';
+  return h;
+}
+function vInspect(){
+  const m = me();
+  return `<div class="ttl"><div><h2>مرحباً، ${esc(m.name.split(' ')[0])}</h2><div class="sm mut">الفحص الميداني · ${new Date().toLocaleDateString('ar-IQ', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div></div>` + inspView(false);
+}
+async function inspSave(zid, res){
+  const z = zoneById(zid); if(!z) return;
+  if(needCode()){ toast('امسح باركود الموقع لتأكيد وجودك.'); const raw = await scanBarcode(); if(raw == null) return; if(codeFrom(raw) !== zNum(z)) return toast('الباركود لا يطابق هذا الموقع.'); }
+  const day = dayKey(), ts = Date.now(), t0 = dayStart(), note = (($('#inN') || {}).value || '').trim();
+  const cl = [...new Set(zEls(z).map(e => (z.lc || {})[e.k]).filter(lc => lc && lc.t >= t0).map(lc => lc.by))];
+  const item = { r: res, by: S.me || 'admin', ts, note, cl: cl.join(','), th: S.inspTh || '' };
+  const cur = (S.insp && S.insp.day === day ? S.insp.it : null) || {};
+  if(!(await Store.set('insp', day, { day, it: Object.assign({}, cur, { [zid]: item }) }))) return;
+  S.inspTh = '';
+  if(res === 'bad'){
+    const pen = +cfg('inspPen') || 0, ym = ymOf(ts);
+    for(const id of cl){
+      const sm = S.sums.find(x => x.staff === id && x.ym === ym), st = staffById(id);
+      if(sm && pen) await Store.update('sum', sm.id, { pts: Math.max(0, (sm.pts || 0) - pen), insp: (sm.insp || 0) + 1 });
+      if(st && pen) await Store.update('staff', st.id, { st: { life: Math.max(0, ((st.st || {}).life || 0) - pen) } });
+    }
+    await Store.update('zones', zid, { flaggedAt: ts, flaggedBy: S.me || 'admin' });
+  }
+  closeModal(); tone(res === 'ok'); toast(res === 'ok' ? 'سُجّل: مطابق.' : 'سُجّل: غير مطابق' + (cl.length ? '، وخُصمت النقاط' : '') + '، وأُدرج الموقع كبلاغ.');
+}
+
+/* ----- المواقع ----- */
 function vZones(){
   const f = S.zf, list = filterZones(S.zones, f, f.mine);
-  let h = `<div class="ttl"><h2>العارضات</h2><span class="sp"></span><div class="seg" style="width:auto"><button class="${f.mine ? 'on' : ''}" data-act="zMine" data-v="1">قسمي</button><button class="${!f.mine ? 'on' : ''}" data-act="zMine" data-v="">الكل</button></div></div>`;
+  let h = `<div class="ttl"><h2>المواقع</h2><span class="sp"></span><div class="seg" style="width:auto"><button class="${f.mine ? 'on' : ''}" data-act="zMine" data-v="1">قسمي</button><button class="${!f.mine ? 'on' : ''}" data-act="zMine" data-v="">الكل</button></div></div>`;
   const all = f.mine ? S.zones.filter(z => mySections().includes(z.section)) : S.zones;
   const c = { ok: 0, wa: 0, da: 0 }; all.forEach(z => c[zoneState(z).st]++);
-  h += `<div class="g4" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">ملتزمة</div><div class="v" style="color:var(--ok)">${c.ok}</div></div><div class="kpi"><div class="l">تستحق قريباً</div><div class="v" style="color:var(--wa)">${c.wa}</div></div><div class="kpi"><div class="l">متأخرة</div><div class="v" style="color:var(--da)">${c.da}</div></div></div>`;
+  h += `<div class="g4" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">ملتزمة</div><div class="v" style="color:var(--ok)">${c.ok}</div></div><div class="kpi"><div class="l">مطلوبة الآن</div><div class="v" style="color:var(--wa)">${c.wa}</div></div><div class="kpi"><div class="l">متأخرة</div><div class="v" style="color:var(--da)">${c.da}</div></div></div>`;
   h += filterBar(f, 'zf', { noSec: f.mine });
-  h += `<div class="sm mut">${list.length} عارضة</div>`;
+  h += `<div class="sm mut">${list.length} موقع</div>`;
   h += list.length ? `<div class="list">${list.slice(0, f.lim).map(z => zoneRow(z)).join('')}</div>${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="zf">عرض المزيد (${list.length - f.lim})</button>` : ''}` : `<div class="card empty">لا توجد نتائج.</div>`;
   return h;
 }
@@ -827,56 +967,81 @@ function vAcc(){
   const m = me(), st = m.st || {}, sm = mySum() || {}, lv = levelOf(st.life || 0);
   const E = ((S.myAct && S.myAct.e) || []).slice().reverse().slice(0, 25);
   const tn = { c: 'تنظيف معتمد', x: 'محاولة غير مكتملة', f: 'بلاغ غبار', k: 'فحص', r: 'خصم بعد المراجعة' };
-  return `<div class="card"><div class="row"><div class="av" style="width:54px;height:54px;font-size:18px">${initials(m.name)}</div><div style="flex:1"><b style="font-size:16px">${esc(m.name)}</b><div class="sm mut">الرقم الوظيفي ${esc(m.num)} · ${esc(m.section || '')}${m.role === 'sup' ? ' · مشرف' : ''}</div></div></div>
+  return `<div class="card"><div class="row"><div class="av" style="width:54px;height:54px;font-size:18px">${initials(m.name)}</div><div style="flex:1"><b style="font-size:16px">${esc(m.name)}</b><div class="sm mut">الرقم الوظيفي ${esc(m.num)} · ${esc(m.section || '')}${m.role === 'sup' ? ' · مدقق' : m.role === 'insp' ? ' · مفتش عام' : ''}</div></div></div>
     <div style="margin-top:12px" class="row sm"><b>المستوى: ${lv.name}</b><span class="sp"></span><span class="mut">${st.life || 0} نقطة إجمالية</span></div>
     <div class="bar" style="margin-top:6px"><i style="width:${Math.round(lv.prog * 100)}%"></i></div><div class="xs mut" style="margin-top:4px">${lv.next ? `${lv.next - (st.life || 0)} نقطة للوصول إلى مستوى «${lv.nextName}»` : 'أعلى مستوى'}</div></div>
     <div class="g4">
       <div class="kpi"><div class="l">عمليات هذا الشهر</div><div class="v">${sm.n || 0}</div></div>
       <div class="kpi"><div class="l">متوسط نسبة الإزالة</div><div class="v">${sm.n ? Math.round((sm.redSum || 0) / sm.n * 100) : 0}%</div></div>
-      <div class="kpi"><div class="l">عارضات متأخرة عولجت</div><div class="v">${sm.res || 0}</div></div>
+      <div class="kpi"><div class="l">مواقع متأخرة عولجت</div><div class="v">${sm.res || 0}</div></div>
       <div class="kpi"><div class="l">أفضل سلسلة التزام</div><div class="v">${st.bestStreak || 0}</div></div></div>
     <div class="card"><h3>${ic('award')} الإنجازات (${ACH.filter(a => a[2](st)).length}/${ACH.length})</h3><div class="ach">${ACH.map(a => `<div class="${a[2](st) ? '' : 'lock'}">${ic('star')}<span>${a[1]}</span></div>`).join('')}</div></div>
-    <div class="card"><h3>${ic('clock')} سجل هذا الشهر</h3>${E.length ? `<div class="tw"><table><tr><th>الوقت</th><th>العارضة</th><th>النوع</th><th>قبل/بعد</th><th>نقاط</th></tr>${E.map(e => { const z = zoneById(e[1]); return `<tr><td>${new Date(e[0]).toLocaleString('ar-IQ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(z ? z.name : '—')}</td><td>${tn[e[2]] || ''}${e[6] ? ' <span class="tag t-wa">قيد المراجعة</span>' : ''}</td><td>${e[2] === 'c' || e[2] === 'x' ? e[3] + ' / ' + e[4] : e[3] ?? ''}</td><td>${e[5] > 0 ? '+' : ''}${e[5]}</td></tr>`; }).join('')}</table></div>` : '<p class="sm mut">لا توجد عمليات هذا الشهر.</p>'}</div>
+    <div class="card"><h3>${ic('clock')} سجل هذا الشهر</h3>${E.length ? `<div class="tw"><table><tr><th>الوقت</th><th>الموقع</th><th>النوع</th><th>قبل/بعد</th><th>نقاط</th></tr>${E.map(e => { const z = zoneById(e[1]); return `<tr><td>${new Date(e[0]).toLocaleString('ar-IQ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td>${esc(z ? z.name : '—')}</td><td>${tn[e[2]] || ''}${e[6] ? ' <span class="tag t-wa">قيد المراجعة</span>' : ''}</td><td>${e[2] === 'c' || e[2] === 'x' ? e[3] + ' / ' + e[4] : e[3] ?? ''}</td><td>${e[5] > 0 ? '+' : ''}${e[5]}</td></tr>`; }).join('')}</table></div>` : '<p class="sm mut">لا توجد عمليات هذا الشهر.</p>'}</div>
     <div class="g2"><button class="btn" data-act="chgPin">${ic('shield')} تغيير الرمز السري</button><button class="btn dan" data-act="logout">${ic('out')} تسجيل الخروج</button></div>`;
 }
 
 /* ================= عملية التنظيف ================= */
 const needCode = () => !!cfg('requireCode');
-function newFlow(mode, zid){ F = { mode, step: 'zone', startT: Date.now(), f: { q: '', st: '', mine: true, lim: 30 } }; if(zid) pickZone(zid, false); }
-function pickZone(id, codeOk){ const z = zoneById(id); if(!z) return; const s = zoneState(z); F.zoneId = id; F.wasDue = s.due; F.wasFlag = s.flagged; F.step = needCode() && !codeOk ? 'code' : 'before'; }
-const STEPS = ['العارضة', 'قبل', 'التنظيف', 'بعد', 'النتيجة'];
+// mode: clean | scan (فحص). el = العنصر (زجاج/رفوف…)، rlabel = اسم الجولة إن بدأت من قائمة المهام
+function newFlow(mode, zid, el, rlabel){ F = { mode, step: 'zone', startT: Date.now(), el: el || '', rlabel: rlabel || '', f: { q: '', st: '', mine: true, lim: 30 } }; if(zid) pickZone(zid, false); }
+function pickZone(id, codeOk){ const z = zoneById(id); if(!z) return; F.zoneId = id; F.wasFlag = zoneState(z).flagged; if(needCode() && !codeOk){ F.step = 'code'; return; } flowAfterZone(); }
+// بعد تحديد الموقع: اختيار العنصر إن تعدّد، ثم تحديد هل هي جولة مستحقة أم تنظيف إضافي
+function flowAfterZone(){
+  const z = zoneById(F.zoneId), els = zEls(z);
+  if(!F.el){ if(els.length === 1) F.el = els[0].k; else { F.step = 'el'; return; } }
+  const el = els.find(e => e.k === F.el) || els[0]; F.el = el.k;
+  F.single = F.mode === 'clean' && cfg('flow') !== 'pair';
+  if(F.mode === 'clean'){
+    const rs = roundsOf(el).filter(r => r.t === 'c'), st = rs.map(r => roundSt(z, el, r));
+    F.onTime = st.includes('now'); F.wasDue = st.includes('late');
+    F.extra = !F.wasFlag && !st.some(x => x === 'now' || x === 'late');
+    if(F.extra && !catOf(el.c).extra){
+      const nx = rs.find((r, i) => st[i] === 'soon');
+      F.step = 'blocked'; F.blockMsg = nx ? `الجولة التالية لـ«${el.k}» تبدأ الساعة ${hm(nx.f)}. التنظيف قبلها لا يُحتسب.` : `أُنجز تنظيف «${el.k}» لهذا اليوم، وفئته (${el.c}) لا تسمح بتنظيف إضافي.`;
+      return;
+    }
+  }
+  F.step = F.mode === 'scan' ? 'before' : F.single ? 'after' : 'before';
+}
+const STEPS = ['الموقع', 'قبل', 'التنظيف', 'بعد', 'النتيجة'], STEPS1 = ['الموقع', 'التصوير', 'النتيجة'];
 function vClean(){
-  if(!S.zones.length) return `<div class="card empty">لا توجد عارضات مسجّلة بعد.</div>`;
+  if(!S.zones.length) return `<div class="card empty">لا توجد مواقع مسجّلة بعد.</div>`;
   if(!F) newFlow('clean');
   const z = zoneById(F.zoneId), scan = F.mode === 'scan', s = F.step;
-  const n = { zone: 0, code: 0, before: 1, beforeRes: 1, cleaning: 2, after: 3, result: 4, scanRes: 4 }[s];
+  const n = F.single ? { zone: 0, code: 0, el: 0, blocked: 0, after: 1, result: 2 }[s] : { zone: 0, code: 0, el: 0, blocked: 0, before: 1, beforeRes: 1, cleaning: 2, after: 3, result: 4, scanRes: 4 }[s];
   let h = `<div class="ttl"><h2>${scan ? 'فحص وبلاغ' : 'عملية تنظيف'}</h2><span class="sp"></span>${s !== 'zone' ? `<button class="btn sm" data-act="flowCancel">${ic('x', 16)} إلغاء</button>` : ''}</div>`;
-  if(!scan) h += `<div class="steps">${STEPS.map((t, i) => `<div class="${i <= n ? 'on' : ''}"><i></i>${t}</div>`).join('')}</div>`;
-  if(z && s !== 'zone') h += `<div class="list">${zoneRow(z, 'noop')}</div>`;
+  if(!scan) h += `<div class="steps">${(F.single ? STEPS1 : STEPS).map((t, i) => `<div class="${i <= n ? 'on' : ''}"><i></i>${t}</div>`).join('')}</div>`;
+  if(z && s !== 'zone') h += `<div class="list">${zoneRow(z, 'noop')}</div>${F.el && s !== 'el' ? `<div class="row sm" style="margin:-4px 0 8px"><span class="tag t-pri">${esc(F.el)}</span>${F.rlabel ? `<span class="mut">${esc(F.rlabel)}</span>` : ''}${F.extra ? '<span class="tag t-inf">تنظيف إضافي</span>' : ''}</div>` : ''}`;
   if(s === 'zone'){
     const list = filterZones(S.zones, F.f, F.f.mine);
-    h += `<div class="card"><div class="row"><input id="codeIn" inputmode="numeric" placeholder="رمز ملصق العارضة"><button class="btn pri" data-act="codeGo">فتح</button></div>
-      ${'BarcodeDetector' in window ? `<button class="btn w" style="margin-top:8px" data-act="scanQR">${ic('qr')} مسح رمز QR</button>` : ''}</div>
-      <div class="row"><div class="seg" style="flex:1"><button class="${F.f.mine ? 'on' : ''}" data-act="fMine" data-v="1">عارضات قسمي</button><button class="${!F.f.mine ? 'on' : ''}" data-act="fMine" data-v="">كل العارضات</button></div></div>
+    h += `<div class="card"><button class="btn pri big" data-act="scanQR">${ic('qr')} مسح باركود الموقع</button>
+      ${needCode() ? '' : `<div class="row" style="margin-top:8px"><input id="codeIn" inputmode="numeric" placeholder="أو اكتب رقم الموقع"><button class="btn" data-act="codeGo">فتح</button></div>`}</div>
+      <div class="row"><div class="seg" style="flex:1"><button class="${F.f.mine ? 'on' : ''}" data-act="fMine" data-v="1">مواقع قسمي</button><button class="${!F.f.mine ? 'on' : ''}" data-act="fMine" data-v="">كل المواقع</button></div></div>
       <div class="filters"><input id="fQ" placeholder="بحث بالاسم" value="${esc(F.f.q)}" oninput="flowSearch(this.value)"></div>
       <div id="fList">${flowList(list)}</div>`;
   } else if(s === 'code'){
-    h += `<div class="card"><h3>${ic('shield')} تأكيد الموقع</h3><p class="sm mut">أدخل الرمز المطبوع على ملصق العارضة.</p>
-      <div class="row"><input id="codeIn2" inputmode="numeric" style="font-size:20px;text-align:center;letter-spacing:5px"><button class="btn pri" data-act="codeCheck">تأكيد</button></div>
-      ${'BarcodeDetector' in window ? `<button class="btn w" style="margin-top:8px" data-act="scanQR">${ic('qr')} أو مسح رمز QR</button>` : ''}</div>`;
+    h += `<div class="card"><h3>${ic('shield')} تأكيد الوجود في الموقع</h3><p class="sm mut">امسح الباركود الملصق على الموقع رقم <b>${esc(zNum(z))}</b>.</p>
+      <button class="btn pri big" data-act="scanQR">${ic('qr')} مسح الباركود</button>
+      <details style="margin-top:10px"><summary class="sm mut">تعذّر المسح؟</summary><p class="xs mut">أدخل الرقم يدوياً. ستُحال العملية للمدقق للتأكد.</p>
+      <div class="row"><input id="codeIn2" inputmode="numeric" style="font-size:18px;text-align:center"><button class="btn" data-act="codeCheck">تأكيد</button></div></details></div>`;
+  } else if(s === 'el'){
+    h += `<div class="card"><h3>اختر ما ستنظّفه في هذا الموقع</h3><div class="list" style="margin:0">${zEls(z).map(el => { const rs = roundsOf(el), st = rs.map(r => roundSt(z, el, r)), d = st.filter(x => x === 'done').length;
+      return `<button class="zr" data-act="pickEl" data-k="${esc(el.k)}"><span class="dot d-${st.includes('late') ? 'da' : st.includes('now') ? 'wa' : 'ok'}"></span><div style="flex:1"><span class="nm">${esc(el.k)}</span> <span class="tag t-inf">${esc(el.c)}</span><div class="xs mut">${d} من ${rs.length} جولات اليوم</div></div></button>`; }).join('')}</div></div>`;
+  } else if(s === 'blocked'){
+    h += `<div class="card" style="text-align:center"><div style="color:var(--wa)">${ic('clock', 34)}</div><p>${esc(F.blockMsg)}</p><button class="btn pri w" data-act="flowHome">العودة إلى مهامي</button></div>`;
   } else if(s === 'before' || s === 'after'){
     const b = s === 'before';
     if(!F.busy && F.live && LIVE.stream) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
         <div class="lv-st"><span id="lvS" class="wa">جارٍ تشغيل الكاميرا…</span></div></div>
-      <div class="note" style="margin:8px 0">اقترب حتى يملأ سطح العارضة الإطار كاملاً دون خلفية (20 إلى 40 سم). انتظر حتى يصبح الإطار أخضر ثم التقط؛ يُحلَّل الغبار على الصورة الملتقطة بدقتها الكاملة.</div>
+      <div class="note" style="margin:8px 0">اقترب حتى يملأ السطح الإطار كاملاً دون خلفية (20 إلى 40 سم). انتظر حتى يصبح الإطار أخضر ثم التقط؛ يُحلَّل الغبار على الصورة الملتقطة بدقتها الكاملة.</div>
       <button class="btn big" id="lvCapBtn" data-act="liveCap">${ic('cam')} التقاط وتحليل</button><div style="height:8px"></div>
       <div class="g2">${LIVE.canTorch ? `<button class="btn ${LIVE.torch ? 'pri' : ''}" id="lvTorch" data-act="liveTorch">${ic('fire')} الضوء</button>` : ''}<button class="btn" data-act="liveStop">إيقاف الكاميرا</button></div>`;
-    else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك لتحديد سطح العارضة فقط. أي جزء من الجدار أو الأرضية أو الخلفية داخل الإطار يُحسب كسطح نظيف ويخفض النتيجة.</p></div>
+    else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد السطح</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك لتحديد السطح فقط. أي جزء من الجدار أو الأرضية أو الخلفية داخل الإطار يُحسب كسطح نظيف ويخفض النتيجة.</p></div>
       <div class="shot"><canvas id="roiCv" style="touch-action:none;cursor:crosshair"></canvas></div><div style="height:10px"></div>
       <button class="btn pri big" data-act="roiGo">${ic('search')} تحليل المنطقة المحددة</button><div style="height:8px"></div><button class="btn w" data-act="shoot" data-w="${s}">إعادة التصوير</button>`;
     else if(F.busy) h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ تحليل الصورة…<div class="xs" style="opacity:.7">كشف الحبيبات الدقيقة على السطح</div></div></div>`;
-    else h += `<div class="card"><h3>${ic('cam')} ${b ? (scan ? 'تصوير العارضة' : 'تصوير العارضة قبل التنظيف') : 'تصوير العارضة بعد التنظيف'}</h3>
-      <div class="note"><b>تعليمات التصوير:</b><ul><li>اقترب من السطح (20 إلى 40 سم) بحيث يملأ سطح العارضة معظم الصورة؛ الصورة البعيدة لا تُظهر الغبار.</li><li>فعّل الفلاش أو استخدم ضوءاً جانبياً؛ فالضوء المائل يُبرز حبيبات الغبار.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر، وثبّته لتجنّب الاهتزاز.</li><li>في الفحص المباشر ضع السطح داخل الإطار؛ وفي الصورة العادية ستحدد المنطقة بإصبعك بعد التصوير.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
+    else h += `<div class="card"><h3>${ic('cam')} ${b ? (scan ? 'تصوير الموقع' : 'التصوير قبل التنظيف') : 'التصوير بعد التنظيف'}</h3>
+      <div class="note"><b>تعليمات التصوير:</b><ul><li>اقترب من السطح (20 إلى 40 سم) بحيث يملأ السطح معظم الصورة؛ الصورة البعيدة لا تُظهر الغبار.</li><li>فعّل الفلاش أو استخدم ضوءاً جانبياً؛ فالضوء المائل يُبرز حبيبات الغبار.</li><li>أمِل الهاتف قليلاً لتجنّب الانعكاس المباشر، وثبّته لتجنّب الاهتزاز.</li><li>في الفحص المباشر ضع السطح داخل الإطار؛ وفي الصورة العادية ستحدد المنطقة بإصبعك بعد التصوير.</li>${b ? '' : '<li>صوّر الموضع نفسه وبالزاوية نفسها.</li>'}</ul></div>
       <div style="height:12px"></div>${liveAvail() ? `<button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}">${ic('eye')} فحص مباشر بالكاميرا</button>
       ${cfg('requireLive') ? '' : `<button class="btn w" style="margin-top:8px" data-act="shoot" data-w="${b ? 'before' : 'after'}" data-photo="1">${ic('cam')} التقاط صورة عادية</button>`}`
       : `<button class="btn pri big" data-act="shoot" data-w="${b ? 'before' : 'after'}" data-photo="1">${ic('cam')} التقاط الصورة</button><div class="xs mut" style="margin-top:6px">الفحص المباشر غير متاح في هذه الصفحة؛ يتطلب فتح التطبيق عبر رابط https.</div>`}
@@ -887,11 +1052,11 @@ function vClean(){
     const bad = qualityBad(an);
     if(bad) h += `<div class="note wa">${ic('alert', 16)} ${bad} يُفضّل إعادة التصوير للحصول على نتيجة دقيقة.</div>`;
     if(s === 'beforeRes'){
-      if(an.idx < 15) h += `<div class="card"><p style="margin-top:0">العارضة نظيفة وفق التحليل. يمكنك تسجيلها كفحص معتمد أو المتابعة بالتنظيف.</p><div class="g2"><button class="btn pri" data-act="confirmClean">تسجيل كنظيفة</button><button class="btn" data-act="goClean">متابعة التنظيف</button></div></div>`;
+      if(an.idx < 15) h += `<div class="card"><p style="margin-top:0">الموقع نظيف وفق التحليل. يمكنك تسجيلها كفحص معتمد أو المتابعة بالتنظيف.</p><div class="g2"><button class="btn pri" data-act="confirmClean">تسجيل كنظيفة</button><button class="btn" data-act="goClean">متابعة التنظيف</button></div></div>`;
       else h += `<button class="btn pri big" data-act="goClean">بدء التنظيف</button>`;
     } else {
-      if(an.idx >= 35) h += `<div class="card"><p style="margin-top:0">العارضة تحتاج تنظيفاً. سيؤدي البلاغ إلى إدراجها كمهمة عاجلة بنقاط إضافية لمن ينظّفها.</p><button class="btn pri w" data-act="sendFlag">${ic('flag')} إرسال بلاغ</button><div style="height:8px"></div><button class="btn w" data-act="scanToClean">تنظيفها بنفسي الآن</button></div>`;
-      else h += `<div class="card"><p style="margin-top:0">العارضة بحالة جيدة.</p><button class="btn pri w" data-act="sendCheck">تسجيل الفحص</button></div>`;
+      if(an.idx >= 35) h += `<div class="card"><p style="margin-top:0">الموقع يحتاج تنظيفاً. سيؤدي البلاغ إلى إدراجها كمهمة عاجلة بنقاط إضافية لمن ينظّفها.</p><button class="btn pri w" data-act="sendFlag">${ic('flag')} إرسال بلاغ</button><div style="height:8px"></div><button class="btn w" data-act="scanToClean">تنظيفها بنفسي الآن</button></div>`;
+      else h += `<div class="card"><p style="margin-top:0">الموقع بحالة جيدة.</p><button class="btn pri w" data-act="sendCheck">تسجيل الفحص</button></div>`;
     }
     h += `<button class="btn w" style="margin-top:8px" data-act="shoot" data-w="before">إعادة التصوير</button>`;
   } else if(s === 'cleaning'){
@@ -900,6 +1065,22 @@ function vClean(){
       <div class="timer" id="tmr">${left > 0 ? left : ic('check', 40)}</div><div class="sm mut" id="tmrL">${left > 0 ? 'ثانية متبقية (الحد الأدنى للعملية)' : 'يمكنك الآن تصوير النتيجة'}</div>
       <div class="note" style="margin:12px 0;text-align:right"><b>إرشادات:</b><ul><li>استخدم قطعة مايكروفايبر جافة للغبار الخفيف.</li><li>لا يُرش المنظف مباشرة على الشاشات؛ يُرش على القطعة.</li><li>امسح باتجاه واحد من الأعلى إلى الأسفل، مع الحواف وخلف الأجهزة.</li></ul></div>
       <button class="btn pri big" id="doneBtn" data-act="toAfter" ${left > 0 ? 'disabled' : ''}>تصوير بعد التنظيف</button></div>`;
+  } else if(s === 'result' && F.res && F.res.single){
+    const R = F.res, v = verdict(R.a);
+    h += `<div class="shot"><canvas data-ov="after"></canvas><span class="lbl">التقييم المبدئي · ${R.a}</span></div>
+      <label class="row sm" style="margin:6px 0"><input type="checkbox" style="width:auto" data-act="toggleDetail" ${S.detail ? 'checked' : ''}> إظهار الحبيبات المكتشفة</label>`;
+    if(!F.saved){
+      h += `<div class="card idx"><div><div class="xs mut">مؤشر الغبار</div><div class="n" style="color:${v.c}">${R.a}</div></div><div style="flex:1"><span class="tag ${v.k}" style="font-size:13px">${v.t}</span>
+        <div class="sm" style="margin-top:6px">${R.pass ? 'التقييم المبدئي: مقبول.' : 'التقييم المبدئي مرتفع. يُفضّل إكمال التنظيف وإعادة التصوير، أو الإرسال للمدقق.'}</div></div></div>
+        ${qualityBad(F.after.an) ? `<div class="note wa">${ic('alert', 16)} ${qualityBad(F.after.an)}</div>` : ''}
+        <button class="btn pri big" data-act="submitClean">${ic('check')} تم التنظيف</button><div style="height:8px"></div>
+        <button class="btn w" data-act="retry">إعادة التصوير</button>`;
+    } else {
+      h += `<div class="card" style="text-align:center">${R.held ? `<b style="font-size:17px;color:var(--wa)">أُرسلت للمدقق</b><div class="sm mut">${R.held} نقطة معلّقة حتى اعتماده.</div>` : `<div class="ok-anim">${ic('check')}</div><b style="font-size:17px">تم تسجيل التنظيف</b><div class="total">+${R.total}</div>`}
+        <div style="text-align:right">${R.lines.map(l => `<div class="pl"><span>${l[0]}</span><b>${typeof l[1] === 'number' ? '+' + l[1] : l[1]}</b></div>`).join('')}</div>
+        ${F.newAch && F.newAch.length ? `<div class="note" style="margin-top:10px;text-align:right"><b>إنجاز جديد:</b> ${F.newAch.map(a => a[1]).join('، ')}</div>` : ''}</div>
+        <button class="btn pri big" data-act="flowHome">${ic('list')} العودة إلى مهامي</button>`;
+    }
   } else if(s === 'result'){
     const R = F.res;
     h += `<div class="cmp"><div class="shot"><canvas data-ov="before"></canvas><span class="lbl">قبل · ${R.b}</span></div><div class="shot"><canvas data-ov="after"></canvas><span class="lbl">بعد · ${R.a}</span></div></div>
@@ -911,7 +1092,7 @@ function vClean(){
         ${R.sus ? `<div class="note wa" style="margin-top:10px;text-align:right">أُحيلت هذه العملية إلى المراجعة: ${R.susWhy}.</div>` : ''}
         ${F.newAch && F.newAch.length ? `<div class="note" style="margin-top:10px;text-align:right"><b>إنجاز جديد:</b> ${F.newAch.map(a => a[1]).join('، ')}</div>` : ''}
         <div class="xs mut" style="margin-top:6px">${F.saved ? 'تم الحفظ' : 'جارٍ الحفظ…'}</div></div>
-        <button class="btn pri big" data-act="flowNext">العارضة التالية</button><div style="height:8px"></div><button class="btn w" data-act="flowHome">الرئيسية</button>`;
+        <button class="btn pri big" data-act="flowNext">العودة إلى مهامي</button><div style="height:8px"></div><button class="btn w" data-act="flowHome">الرئيسية</button>`;
     } else {
       h += `<div class="card" style="text-align:center"><b style="font-size:17px;color:var(--wa)">لم تُعتمد العملية بعد</b>
         <p class="sm mut">مؤشر الغبار بعد التنظيف ${R.a}. شرط الاعتماد: مؤشر 35 أو أقل، أو إزالة 40% على الأقل بمؤشر لا يتجاوز 55.</p>
@@ -937,7 +1118,27 @@ function afterRender(){
   if(F && S.tab === 'clean') document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); });
   if(F && F.pick) roiInit();
   if(LIVE.stream){ const v = $('#lvV'); if(!v) stopLive(); else if(v.srcObject !== LIVE.stream){ v.srcObject = LIVE.stream; v.play().catch(() => {}); v.onloadedmetadata = drawLive; } }
-  if(S.tab === 'admin' && S.atab === 'labels' && window.QRCode) document.querySelectorAll('.qr[data-code]').forEach(el => { if(!el.childNodes.length){ try{ new QRCode(el, { text: 'DUST-' + el.dataset.code, width: 92, height: 92 }); }catch(e){} } });
+  if(S.tab === 'admin' && S.atab === 'labels' && window.QRCode) document.querySelectorAll('.qr[data-code]').forEach(el => { if(!el.childNodes.length){ try{ new QRCode(el, { text: el.dataset.code, width: 92, height: 92 }); }catch(e){} } });
+}
+/* ----- قراءة الباركود من صورة: BarcodeDetector إن توفر (أندرويد)، وإلا مكتبة ZXing (تعمل على iPhone) ----- */
+const codeFrom = raw => { const t = String(raw || '').trim(), m = t.match(/(\d+)\s*$/) || t.match(/(\d+)/); return m ? m[1] : t; };
+async function scanBarcode(){
+  const f = await pickPhoto(); if(!f) return null;
+  let img; try{ img = await loadImg(f); }catch(e){ toast('تعذّرت قراءة الصورة.'); return null; }
+  if('BarcodeDetector' in window){ try{ const r = await new BarcodeDetector().detect(img); if(r.length) return r[0].rawValue; }catch(e){} }
+  try{
+    if(!window.ZXing){ toast('جارٍ تحميل قارئ الباركود…'); await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'); }
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const rd = new ZXing.MultiFormatReader(); rd.setHints(new Map([[ZXing.DecodeHintType.TRY_HARDER, true]]));
+    // الباركود الخطي لا يُقرأ إلا أفقياً: نجرّب الصورة كما هي ثم مدوّرة 90° وبحجمين
+    for(const mx of [1600, 900]) for(const rot of [0, 1]){
+      const k = Math.min(1, mx / Math.max(iw, ih)), w = Math.round(iw * k), h = Math.round(ih * k), c = document.createElement('canvas');
+      c.width = rot ? h : w; c.height = rot ? w : h; const x = c.getContext('2d'); if(rot){ x.translate(h, 0); x.rotate(Math.PI / 2); } x.drawImage(img, 0, 0, w, h);
+      try{ return rd.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c)))).getText(); }catch(e){}
+    }
+    toast('لم يُقرأ الباركود. قرّب الكاميرا واجعله واضحاً وسط الصورة.', 3800);
+  }catch(e){ toast('تعذّر تحميل قارئ الباركود (يحتاج اتصالاً بالإنترنت). اكتب رقم الموقع.', 4200); }
+  return null;
 }
 function pickPhoto(){
   return new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.setAttribute('capture', 'environment'); i.style.display = 'none';
@@ -974,12 +1175,12 @@ async function finishShot(which, img, p, rect, live){
   F.busy = true; F.step = which; rf();
   try{
     const an = await analyzeRegion(img, rect, cfg('sens') || 1); await sleep(300);
-    F[which] = { an, canvas: p.canvas, rect, thumb: thumb(p.canvas), sig: signature(p.g, p.w, p.h), t: Date.now(), live: !!live };
+    F[which] = { an, canvas: p.canvas, rect, thumb: thumbRect(p.canvas, rect), sig: signature(p.g, p.w, p.h), t: Date.now(), live: !!live };
     F.busy = false;
     if(which === 'before') F.step = F.mode === 'scan' ? 'scanRes' : 'beforeRes';
     else { compute(); F.step = 'result'; }
     tone(which === 'before' || F.res.pass); rf(); window.scrollTo({ top: 0, behavior: 'smooth' });
-    if(F.step === 'result' && F.res.pass) saveClean(false);
+    if(F.step === 'result' && F.res.pass && !F.res.single) saveClean(false);
   }catch(e){ F.busy = false; rf(); toast('تعذّر تحليل الصورة. حاول مرة أخرى.'); }
 }
 /* ================= الفحص المباشر بالكاميرا =================
@@ -1069,7 +1270,26 @@ async function liveCapture(){
   await finishShot(which, c, p, { ...GUIDE }, true);
 }
 
+// صورة واحدة بعد التنظيف: التقييم المبدئي من المؤشر. المؤشر المرتفع لا يرفض العملية بل يعلّق نقاطها حتى يحكم المدقق
+function computeSingle(){
+  const a = F.after.an.idx, pass = a <= 35;
+  const R = { a, b: null, red: 0, sim: 1, dur: 0, pass, perfect: pass && a < 15, lines: [], total: 0, single: true, extra: !!F.extra };
+  R.lines.push([F.extra ? 'تنظيف إضافي' : 'إنجاز التنظيف', 10]);
+  const q = Math.round(Math.max(0, 35 - a) / 35 * 10); if(q) R.lines.push(['جودة النتيجة (المؤشر ' + a + ')', q]);
+  if(F.wasFlag) R.lines.push(['معالجة موقع مُبلَّغ عنه', 15]); else if(F.onTime) R.lines.push(['في موعد الجولة', 3]);
+  if(R.perfect) R.lines.push(['نتيجة ممتازة', 5]);
+  const base = R.lines.reduce((x, l) => x + (typeof l[1] === 'number' ? l[1] : 0), 0);
+  const st = (me() || {}).st || {}, prev = streakNow(st), stk = st.lastDay === dayKey() ? prev : prev + 1, mult = 1 + Math.min(Math.max(stk - 1, 0), 10) * 0.03;
+  if(mult > 1) R.lines.push(['مضاعف الالتزام (' + stk + ' أيام)', '×' + mult.toFixed(2)]);
+  if(F.extra) R.lines.push(['تنظيف إضافي', '×0.5']);
+  const why = []; if(!pass) why.push('التقييم المبدئي مرتفع (' + a + ')'); if(F.manual) why.push('رقم الموقع أُدخل يدوياً');
+  R.sus = why.length > 0; R.susWhy = why.join('، ');
+  R.total = Math.max(1, Math.round(base * mult * (F.extra ? 0.5 : 1)));
+  if(!pass){ R.held = R.total; R.lines.push(['معلّقة حتى اعتماد المدقق', '']); }
+  F.res = R;
+}
 function compute(){
+  if(!F.before || F.single){ computeSingle(); return; }
   const z = zoneById(F.zoneId) || {}, b = F.before.an.idx, a = F.after.an.idx;
   const red = b > 0 ? Math.max(0, (b - a) / b) : 0, sim = corr(F.before.sig, F.after.sig), dur = (F.after.t - F.before.t) / 1000;
   const pass = a <= 35 || (red >= 0.4 && a <= 55);
@@ -1077,14 +1297,14 @@ function compute(){
   if(pass){
     R.lines.push(['إنجاز عملية التنظيف', 10]);
     const q = Math.round(red * 10); if(q) R.lines.push(['جودة الإزالة (' + Math.round(red * 100) + '%)', q]);
-    if(F.wasDue) R.lines.push([F.wasFlag ? 'معالجة عارضة مُبلَّغ عنها' : 'معالجة عارضة متأخرة', F.wasFlag ? 15 : 10]);
+    if(F.wasDue) R.lines.push([F.wasFlag ? 'معالجة موقع مُبلَّغ عنه' : 'معالجة موقع متأخر', F.wasFlag ? 15 : 10]);
     if(R.perfect) R.lines.push(['نتيجة ممتازة', 5]);
     const base = R.lines.reduce((x, l) => x + l[1], 0);
     const st = (me() || {}).st || {}, prev = streakNow(st), stk = st.lastDay === dayKey() ? prev : prev + 1;
     const mult = 1 + Math.min(Math.max(stk - 1, 0), 10) * 0.03;
     if(mult > 1) R.lines.push(['مضاعف الالتزام (' + stk + ' أيام)', '×' + mult.toFixed(2)]);
     const recent = z.lastClean && (F.startT - z.lastClean) < (z.interval || 24) * HOUR * 0.25 && !F.wasFlag;
-    if(recent) R.lines.push(['العارضة نُظّفت مؤخراً', '×0.3']);
+    if(recent) R.lines.push(['الموقع نُظّف مؤخراً', '×0.3']);
     const why = []; if(sim < 0.45) why.push('عدم تطابق صورتي قبل وبعد'); if(dur < (cfg('minSec') || 0)) why.push('مدة أقل من الحد الأدنى');
     R.sus = why.length > 0; R.susWhy = why.join('، ');
     if(R.sus) R.lines.push(['قيد المراجعة', '×0.5']);
@@ -1092,14 +1312,14 @@ function compute(){
   } else { R.total = 2; R.lines.push(['محاولة غير مكتملة', 2]); }
   F.res = R;
 }
-// تسجيل عملية: يحدّث سجل الشهر + الملخص الشهري + بيانات الموظف + العارضة + (إثبات عند الحاجة)
+// تسجيل عملية: يحدّث سجل الشهر + الملخص الشهري + بيانات الموظف + الموقع + (إثبات عند الحاجة)
 async function record(type, R, extra = {}){
   const m = me(), z = zoneById(F.zoneId), ts = Date.now(), ym = ymOf(ts), d = dOf(ts), dk = dayKey(ts);
   if(!m || !z) return false;
   // المهام قبل وبعد
   const todayBefore = myTodayEntries(), misBefore = missions(todayBefore).every(x => x.done);
-  const bits = (R.rescue ? 1 : 0) | (R.perfect ? 2 : 0);
-  const entry = [ts, z.id, type, R.b, R.a, R.pts, R.sus ? 1 : 0, bits];
+  const bits = (R.rescue ? 1 : 0) | (R.perfect ? 2 : 0) | (R.extra ? 4 : 0);
+  const entry = [ts, z.id, type, R.b, R.a, R.pts, R.sus ? 1 : 0, bits, F.el || ''];
   const misAfter = !misBefore && missions(todayBefore.concat([entry])).every(x => x.done);
   const bonus = misAfter ? 15 : 0;
   // 1) سجل الشهر
@@ -1127,23 +1347,30 @@ async function record(type, R, extra = {}){
   await Store.update('staff', m.id, { st });
   F.newAch = ACH.filter(a => a[2](st) && !achBefore.includes(a[0]));
   if(bonus) toast('أكملت المهام اليومية: +15 نقطة');
-  // 4) العارضة
-  if(type === 'c') await Store.update('zones', z.id, { lastClean: ts, lastBy: m.id, lastIdx: R.a, flaggedAt: 0 });
-  if(type === 'k' && extra.resetZone) await Store.update('zones', z.id, { lastClean: ts, lastBy: m.id, lastIdx: R.a, flaggedAt: 0 });
-  if(type === 'f') await Store.update('zones', z.id, { flaggedAt: ts, flaggedBy: m.id, lastIdx: R.b });
+  // 4) الموقع
+  // سجل اليوم للعنصر (يحدد الجولات المنجزة) + آخر عملية لكل عنصر
+  const zp = {}, ek = F.el;
+  if(type === 'c' || type === 'k' || extra.resetZone){
+    if(type === 'c' || extra.resetZone) Object.assign(zp, { lastClean: ts, lastBy: m.id, lastIdx: R.a, flaggedAt: 0 });
+    if(ek){ zp.ops = { [ek]: elOps(z, ek).concat([type === 'k' && !extra.resetZone ? -ts : ts]) }; zp.lc = { [ek]: { t: ts, by: m.id, idx: R.a, ty: type } }; }
+  }
+  if(type === 'f') Object.assign(zp, { flaggedAt: ts, flaggedBy: m.id, lastIdx: R.b });
+  if(Object.keys(zp).length) await Store.update('zones', z.id, zp);
   // 5) إثبات للمراجعة: المشكوك فيها + البلاغات + عيّنة عشوائية
+  // 5) صورة للمدقق: كل العمليات حين تكون نسبة التدقيق 100% (الافتراضي)، وإلا المشكوك فيها والبلاغات وعيّنة عشوائية
   const sample = Math.random() * 100 < (+cfg('auditRate') || 0);
   if(R.sus || type === 'f' || sample){
-    await Store.set('proof', rid(), { ts, ym, staff: m.id, zone: z.id, zoneName: z.name, section: z.section || '', branch: z.branch || '', type, before: R.b, after: R.a,
-      red: Math.round((R.red || 0) * 100), pts: R.pts, sim: Math.round((R.sim ?? 1) * 100) / 100, sus: !!R.sus, why: R.susWhy || (type === 'f' ? 'بلاغ' : 'عيّنة تدقيق'), status: 'pending',
-      thumbB: F.before ? F.before.thumb : '', thumbA: F.after ? F.after.thumb : '' }, true);
+    const one = F.after || F.before;
+    await Store.set('proof', rid(), { ts, ym, staff: m.id, zone: z.id, zoneName: zTitle(z), section: z.section || '', branch: z.branch || '', type, el: F.el || '', round: F.rlabel || '', before: R.b ?? null, after: R.a,
+      red: Math.round((R.red || 0) * 100), pts: R.pts, held: R.held || 0, sim: Math.round((R.sim ?? 1) * 100) / 100, sus: !!R.sus, why: R.susWhy || (type === 'f' ? 'بلاغ' : R.extra ? 'تنظيف إضافي' : 'تدقيق'), status: 'pending',
+      thumbB: F.before && F.after ? F.before.thumb : '', thumbA: one ? one.thumb : '', live: !!(one && one.live) }, true);
   }
   return true;
 }
 async function saveClean(attempt){
   if(F.saved || F.saving) return; F.saving = true;
-  const R = F.res, type = R.pass ? 'c' : 'x';
-  const ok = await record(type, { a: R.a, b: R.b, red: R.red, pts: R.total, sus: R.sus, susWhy: R.susWhy, sim: R.sim, rescue: R.pass && F.wasDue, perfect: R.perfect });
+  const R = F.res, type = R.pass || R.single ? 'c' : 'x';
+  const ok = await record(type, { a: R.a, b: R.b, red: R.red, pts: R.held ? 0 : R.total, held: R.held || 0, sus: R.sus, susWhy: R.susWhy, sim: R.sim, rescue: R.pass && (F.wasDue || F.wasFlag), perfect: R.perfect, extra: R.extra });
   F.saving = false; if(!ok) return;
   F.saved = true; if(S.tab === 'clean') rf();
   if(attempt){ F = null; S.tab = 'home'; render(true); toast('سُجّلت المحاولة.'); }
@@ -1154,7 +1381,7 @@ async function quick(type){
   const pts = type === 'f' ? (todayN >= 5 ? 0 : 2) : (todayN >= 10 ? 0 : (F.mode === 'clean' ? 2 : 1));
   const ok = await record(type, { a: an.idx, b: an.idx, red: 0, pts, sus: false, sim: 1 }, { resetZone: F.mode === 'clean' });
   F.saving = false; if(!ok) return;
-  tone(); toast(type === 'f' ? 'تم إرسال البلاغ وإدراج العارضة كمهمة عاجلة.' : 'تم تسجيل الفحص.');
+  tone(); toast(type === 'f' ? 'تم إرسال البلاغ وإدراج الموقع كمهمة عاجلة.' : 'تم تسجيل الفحص.');
   F = null; S.tab = 'home'; render(true);
 }
 function tick(){
@@ -1173,36 +1400,39 @@ function tick(){
 function vAdmin(){
   if(S.mode === 'local' && S.admin.all && !S.admin.ok) return `<div class="login"><div class="card" style="padding:20px"><h2 style="margin-top:0">دخول الإدارة</h2><p class="sm mut">الرمز الافتراضي 1234، ويُنصح بتغييره من الإعدادات.</p><input id="pinA" type="password" inputmode="numeric"><div style="height:10px"></div><button class="btn pri big" data-act="adminPin">دخول</button>${S.me ? '' : '<button class="btn w" style="margin-top:8px" data-act="adminExit">رجوع</button>'}</div></div>`;
   const full = S.admin.all;
-  const T = full ? [['dash', 'المؤشرات'], ['zones', 'العارضات'], ['staff', 'الموظفون'], ['review', 'المراجعة'], ['labels', 'الملصقات'], ['set', 'الإعدادات']] : [['dash', 'المؤشرات'], ['zones', 'العارضات'], ['review', 'المراجعة']];
+  const T = full ? [['dash', 'المؤشرات'], ['plan', 'الجدول الشهري'], ['zones', 'المواقع'], ['staff', 'الموظفون'], ['review', 'التدقيق'], ['insp', 'الفحص الميداني'], ['labels', 'الملصقات'], ['set', 'الإعدادات']] : [['review', 'التدقيق'], ['dash', 'المؤشرات'], ['zones', 'المواقع']];
   if(!T.some(t => t[0] === S.atab)) S.atab = 'dash';
-  let h = `<div class="ttl"><h2>${full ? 'لوحة الإدارة' : 'لوحة المشرف'}</h2><span class="sp"></span>${S.me ? '' : `<button class="btn sm" data-act="adminExit">${ic('out', 16)} خروج</button>`}</div>
-    ${full ? '' : `<div class="sm mut">نطاق الإشراف: ${S.admin.sections.map(esc).join('، ')}</div>`}
+  let h = `<div class="ttl"><h2>${full ? 'لوحة الإدارة' : 'لوحة التدقيق'}</h2><span class="sp"></span>${S.me ? '' : `<button class="btn sm" data-act="adminExit">${ic('out', 16)} خروج</button>`}</div>
+    ${full ? '' : `<div class="sm mut">أقسام التدقيق: ${S.admin.sections.map(esc).join('، ')}</div>`}
     <div class="seg" style="margin:10px 0">${T.map(([k, n]) => `<button class="${S.atab === k ? 'on' : ''}" data-act="atab" data-v="${k}">${n}</button>`).join('')}</div>`;
-  return h + ({ dash: aDash, zones: aZones, staff: aStaff, review: aReview, labels: aLabels, set: aSet })[S.atab]();
+  return h + ({ dash: aDash, plan: aPlan, zones: aZones, staff: aStaff, review: aReview, insp: () => inspView(true), labels: aLabels, set: aSet })[S.atab]();
 }
 function aDash(){
   subscribeProofs();
   const Z = S.zones.filter(inScope), due = Z.filter(z => zoneState(z).due), fl = Z.filter(z => zoneState(z).flagged);
-  const comp = Z.length ? Math.round(100 * (Z.length - due.length) / Z.length) : 0;
+  const zst = Z.map(zoneState), rDone = zst.reduce((a, x) => a + x.done, 0), rLate = zst.reduce((a, x) => a + x.late, 0);
+  const comp = rDone + rLate ? Math.round(100 * rDone / (rDone + rLate)) : 100;
+  if(S.admin.all) subscribeInsp(); const IT = Object.values((S.insp && S.insp.it) || {}), iBad = IT.filter(x => x.r === 'bad').length;
   const d = dOf(), staffIn = S.staff.filter(s => S.admin.all || S.admin.sections.includes(s.section));
   const sumIn = S.sums.filter(s => staffIn.some(p => p.id === s.staff));
   const todayN = sumIn.reduce((a, s) => a + ((s.dn || {})[d] || 0), 0), monthN = sumIn.reduce((a, s) => a + (s.n || 0), 0);
   const cleaned = Z.filter(z => z.lastClean && z.lastIdx != null), avgIdx = cleaned.length ? Math.round(cleaned.reduce((a, z) => a + z.lastIdx, 0) / cleaned.length) : 0;
   const activeIds = new Set(sumIn.filter(s => (s.n || 0) > 0).map(s => s.staff)), inactive = staffIn.filter(s => s.active !== false && !activeIds.has(s.id));
   let h = `<div class="g4">
-    <div class="kpi"><div class="l">نسبة الالتزام</div><div class="v" style="color:${comp >= 80 ? 'var(--ok)' : comp >= 50 ? 'var(--wa)' : 'var(--da)'}">${comp}%</div></div>
-    <div class="kpi"><div class="l">عارضات متأخرة</div><div class="v">${due.length}<span class="sm mut"> / ${Z.length}</span></div></div>
+    <div class="kpi"><div class="l">التزام جولات اليوم</div><div class="v" style="color:${comp >= 80 ? 'var(--ok)' : comp >= 50 ? 'var(--wa)' : 'var(--da)'}">${comp}%</div><div class="xs mut">${rDone} منجزة · ${rLate} فائتة</div></div>
+    <div class="kpi"><div class="l">مواقع متأخرة</div><div class="v">${due.length}<span class="sm mut"> / ${Z.length}</span></div></div>
+    ${S.admin.all ? `<div class="kpi"><div class="l">الفحص الميداني اليوم</div><div class="v">${IT.length}<span class="sm mut"> / ${inspSample().length}</span></div><div class="xs" style="color:${iBad ? 'var(--da)' : 'var(--mut)'}">${iBad} غير مطابق</div></div>` : ''}
     <div class="kpi"><div class="l">بلاغات مفتوحة</div><div class="v">${fl.length}</div></div>
     <div class="kpi"><div class="l">عمليات اليوم / الشهر</div><div class="v">${todayN}<span class="sm mut"> / ${monthN}</span></div></div>
     <div class="kpi"><div class="l">متوسط مؤشر الغبار</div><div class="v">${avgIdx}</div></div>
     <div class="kpi"><div class="l">موظفون نشطون هذا الشهر</div><div class="v">${activeIds.size}<span class="sm mut"> / ${staffIn.length}</span></div></div>
-    <div class="kpi"><div class="l">عمليات قيد المراجعة</div><div class="v">${S.proofs ? S.proofs.filter(p => p.status === 'pending' && p.sus && inScope({ section: p.section })).length : '—'}</div></div>
+    <div class="kpi"><div class="l">بانتظار التدقيق</div><div class="v">${S.proofs ? S.proofs.filter(p => p.status === 'pending' && inScope({ section: p.section })).length : '—'}</div></div>
     <div class="kpi"><div class="l">موظفون بلا نشاط</div><div class="v">${inactive.length}</div></div></div>`;
   // حسب القسم
   const by = {}; Z.forEach(z => { const k = (z.branch ? z.branch + ' / ' : '') + (z.section || 'عام'); const o = by[k] = by[k] || { t: 0, due: 0, fl: 0, idx: 0, ni: 0 }; o.t++; if(zoneState(z).due) o.due++; if(zoneState(z).flagged) o.fl++; if(z.lastClean && z.lastIdx != null){ o.idx += z.lastIdx; o.ni++; } });
   const rows = Object.entries(by).map(([k, o]) => ({ k, ...o, c: Math.round(100 * (o.t - o.due) / o.t) })).sort((a, b) => a.c - b.c);
   h += `<div class="card"><h3>${ic('chart')} الالتزام حسب القسم <span class="sp"></span><button class="btn sm" data-act="csvSec">${ic('copy', 16)} نسخ CSV</button></h3>
-    <div class="tw"><table><tr><th>الفرع / القسم</th><th>العارضات</th><th>الالتزام</th><th>متأخرة</th><th>بلاغات</th><th>متوسط المؤشر</th></tr>
+    <div class="tw"><table><tr><th>الفرع / القسم</th><th>المواقع</th><th>الالتزام</th><th>متأخرة</th><th>بلاغات</th><th>متوسط المؤشر</th></tr>
     ${rows.map(r => `<tr><td>${esc(r.k)}</td><td>${r.t}</td><td><b style="color:${r.c >= 80 ? 'var(--ok)' : r.c >= 50 ? 'var(--wa)' : 'var(--da)'}">${r.c}%</b></td><td>${r.due}</td><td>${r.fl}</td><td>${r.ni ? Math.round(r.idx / r.ni) : '—'}</td></tr>`).join('')}</table></div></div>`;
   // الموظفون
   const f = S.sf, q = f.q.trim();
@@ -1212,41 +1442,86 @@ function aDash(){
     <div class="tw"><table><tr><th>#</th><th>الموظف</th><th>القسم</th><th>النقاط</th><th>العمليات</th><th>الإزالة</th><th>متأخرة</th><th>غير مكتملة</th><th>بلاغات</th><th>مراجعة</th></tr>
     ${srows.slice(0, f.lim).map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.p.name)} <span class="xs mut">${esc(r.p.num)}</span></td><td>${esc(r.p.section || '')}</td><td><b>${r.s.pts || 0}</b></td><td>${r.s.n || 0}</td><td>${r.s.n ? Math.round(r.s.redSum / r.s.n * 100) + '%' : '—'}</td><td>${r.s.res || 0}</td><td>${r.s.fail || 0}</td><td>${r.s.flag || 0}</td><td style="color:${r.s.sus ? 'var(--wa)' : ''}">${r.s.sus || 0}</td></tr>`).join('')}</table></div>
     ${srows.length > f.lim ? `<button class="btn w" style="margin-top:8px" data-act="more" data-k="sf">عرض المزيد (${srows.length - f.lim})</button>` : ''}</div>`;
-  h += `<div class="card"><h3>${ic('alert')} أكثر العارضات تأخراً</h3>${due.length ? `<div class="list" style="margin:0">${due.sort((a, b) => zoneState(b).el - zoneState(a).el).slice(0, 15).map(z => zoneRow(z, 'aZone')).join('')}</div>` : '<p class="sm mut">لا توجد عارضات متأخرة.</p>'}</div>`;
+  h += `<div class="card"><h3>${ic('alert')} أكثر المواقع تأخراً</h3>${due.length ? `<div class="list" style="margin:0">${due.sort((a, b) => zoneState(b).el - zoneState(a).el).slice(0, 15).map(z => zoneRow(z, 'aZone')).join('')}</div>` : '<p class="sm mut">لا توجد مواقع متأخرة.</p>'}</div>`;
   return h;
 }
+/* ----- الجدول الشهري: المدير يرفعه، والنظام يوزّعه على الموظفين ----- */
+const ymAdd = (ym, k) => { const d = new Date(+ym.slice(0, 4), +ym.slice(4) - 1 + k, 1); return d.getFullYear() + pad(d.getMonth() + 1); };
+const ymName = ym => MONTHS[+ym.slice(4) - 1] + ' ' + ym.slice(0, 4);
+async function planDoc(ym){
+  if(ym === S.ym) return S.plan;
+  S.planCache = S.planCache || {}; if(!(ym in S.planCache)){ S.planCache[ym] = null; try{ S.planCache[ym] = await Store.getDoc('plan', ym); }catch(e){} render(true); }
+  return S.planCache[ym];
+}
+function aPlan(){
+  const ym = S.planYm || S.ym; if(ym !== S.ym && !(S.planCache && ym in S.planCache)) planDoc(ym);
+  const doc = ym === S.ym ? S.plan : (S.planCache || {})[ym], R = planRows(doc || null);
+  const byN = {}; R.forEach(r => { (byN[r.n] = byN[r.n] || []).push(r); });
+  const assigned = new Set(R.map(r => String(r.l))), unZ = S.zones.filter(z => !assigned.has(zNum(z)));
+  const badN = Object.keys(byN).filter(n => !S.staff.some(p => String(p.num) === n)), badL = [...assigned].filter(l => !zoneByNum(l));
+  let h = `<div class="seg" style="margin-bottom:10px">${[S.ym, ymAdd(S.ym, 1)].map(m => `<button class="${ym === m ? 'on' : ''}" data-act="planYm" data-v="${m}">${ymName(m)}</button>`).join('')}</div>
+    <div class="g2"><button class="btn pri" data-act="planImport">${ic('up')} رفع جدول ${ymName(ym)}</button><button class="btn" data-act="planCopy">نسخ جدول الشهر السابق</button></div>
+    <div class="g4" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">موظفون في الجدول</div><div class="v">${Object.keys(byN).length}</div></div>
+    <div class="kpi"><div class="l">مواقع مسندة</div><div class="v">${assigned.size - badL.length}<span class="sm mut"> / ${S.zones.length}</span></div></div>
+    <div class="kpi"><div class="l">مواقع بلا مسؤول</div><div class="v" style="color:${unZ.length ? 'var(--wa)' : ''}">${unZ.length}</div></div></div>`;
+  if(badN.length || badL.length) h += `<div class="note wa">${badN.length ? 'أرقام موظفين غير مسجّلة: ' + badN.slice(0, 15).map(esc).join('، ') + '. ' : ''}${badL.length ? 'أرقام مواقع غير مسجّلة: ' + badL.slice(0, 15).map(esc).join('، ') + '.' : ''}</div>`;
+  if(!R.length) return h + `<div class="card empty">لا يوجد جدول لشهر ${ymName(ym)} بعد.</div>`;
+  h += `<div class="card"><h3>${ic('list')} التوزيع <span class="sp"></span><button class="btn sm" data-act="planCsv">${ic('copy', 16)} نسخ CSV</button></h3><div class="tw"><table><tr><th>الموظف</th><th>المواقع</th><th>الأيام</th></tr>
+    ${Object.entries(byN).sort((a, b) => a[0].localeCompare(b[0], 'en', { numeric: true })).map(([n, rs]) => { const p = S.staff.find(x => String(x.num) === n);
+      return `<tr><td>${p ? esc(p.name) : '<span style="color:var(--da)">غير مسجّل</span>'} <span class="xs mut">${esc(n)}</span></td><td class="sm">${rs.map(r => esc(r.l) + (r.e !== '*' ? ' (' + esc(r.e) + ')' : '')).join('، ')}</td><td class="xs">${[...new Set(rs.map(r => daysText(r.d)))].map(esc).join(' / ')}</td></tr>`; }).join('')}</table></div></div>`;
+  if(unZ.length) h += `<div class="card"><h3>${ic('alert')} مواقع بلا مسؤول في هذا الجدول</h3><p class="sm">${unZ.slice(0, 60).map(z => esc(zNum(z))).join('، ')}${unZ.length > 60 ? '…' : ''}</p></div>`;
+  return h;
+}
+// سطر الجدول: رقم الموظف، أرقام المواقع (مفصولة بمسافة أو مدى 10-20)، العنصر (اختياري)، الأيام (اختياري)
+function parsePlan(text){
+  const out = [], err = [];
+  parseLines(text).forEach((c, i) => {
+    const n = codeFrom(c[0]); if(!/^\d+$/.test(n)){ if(i > 0 || !/موظف|رقم/.test(c[0])) err.push(i + 1); return; }
+    let locs = []; String(c[1] || '').split(/\s+/).forEach(t => { const m = t.match(/^(\d+)\s*-\s*(\d+)$/); if(m){ for(let k = +m[1]; k <= +m[2] && k - m[1] < 500; k++) locs.push(String(k)); } else if(/^\d+$/.test(t)) locs.push(t); });
+    let el = (c[2] || '').trim(), days = (c[3] || '').trim();
+    if(el && (parseDays(el) || /يومي|الكل/.test(el)) && !days){ days = el; el = ''; }
+    if(!locs.length){ err.push(i + 1); return; }
+    const d = parseDays(days); locs.forEach(l => out.push([n, l, el || '*', d].join('|')));
+  });
+  return { rows: [...new Set(out)], err };
+}
+
 function aZones(){
   const f = S.af, list = filterZones(S.zones.filter(inScope), f, false);
-  let h = S.admin.all ? `<div class="g2"><button class="btn pri" data-act="zoneForm">${ic('plus')} عارضة جديدة</button><button class="btn" data-act="importZones">${ic('up')} استيراد جماعي</button></div>` : '';
-  h += filterBar(f, 'af') + `<div class="sm mut">${list.length} عارضة</div>`;
-  h += `<div class="list">${list.slice(0, f.lim).map(z => zoneRow(z, 'aZone')).join('') || '<div class="empty">لا توجد عارضات.</div>'}</div>${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="af">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
+  let h = S.admin.all ? `<div class="g2"><button class="btn pri" data-act="zoneForm">${ic('plus')} موقع جديد</button><button class="btn" data-act="importZones">${ic('up')} استيراد جماعي</button></div>` : '';
+  h += filterBar(f, 'af') + `<div class="sm mut">${list.length} موقع</div>`;
+  h += `<div class="list">${list.slice(0, f.lim).map(z => zoneRow(z, 'aZone')).join('') || '<div class="empty">لا توجد مواقع.</div>'}</div>${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="af">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
   return h;
 }
 function aStaff(){
   const f = S.sf, q = f.q.trim(), list = S.staff.filter(p => !q || p.name.includes(q) || String(p.num).includes(q) || (p.section || '').includes(q)).sort((a, b) => String(a.num).localeCompare(String(b.num), 'en', { numeric: true }));
   return `<div class="g2"><button class="btn pri" data-act="staffForm">${ic('plus')} موظف جديد</button><button class="btn" data-act="importStaff">${ic('up')} استيراد جماعي</button></div>
     <div class="filters"><input placeholder="بحث بالاسم أو الرقم أو القسم" value="${esc(f.q)}" data-f="sf.q"></div><div class="sm mut">${list.length} موظف</div>
-    <div class="list">${list.slice(0, f.lim).map(p => `<button class="zr" data-act="staffForm" data-id="${esc(p.id)}"><div class="av">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><span class="nm">${esc(p.name)}</span>${p.role === 'sup' ? '<span class="tag t-inf">مشرف</span>' : ''}${p.active === false ? '<span class="tag t-da">موقوف</span>' : ''}${!(p.pinH || p.activated) ? '<span class="tag t-wa">لم يفعّل</span>' : ''}${p.role === 'admin' ? '<span class="tag t-ok">مدير</span>' : ''}</div><div class="xs mut">${esc(p.num)} · ${esc(p.section || '')}${p.branch ? ' · ' + esc(p.branch) : ''}</div></div></button>`).join('') || '<div class="empty">لا يوجد موظفون.</div>'}</div>
+    <div class="list">${list.slice(0, f.lim).map(p => `<button class="zr" data-act="staffForm" data-id="${esc(p.id)}"><div class="av">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><span class="nm">${esc(p.name)}</span>${p.role === 'sup' ? '<span class="tag t-inf">مدقق</span>' : p.role === 'insp' ? '<span class="tag t-pri">مفتش عام</span>' : ''}${p.active === false ? '<span class="tag t-da">موقوف</span>' : ''}${!(p.pinH || p.activated) ? '<span class="tag t-wa">لم يفعّل</span>' : ''}${p.role === 'admin' ? '<span class="tag t-ok">مدير</span>' : ''}</div><div class="xs mut">${esc(p.num)} · ${esc(p.section || '')}${p.branch ? ' · ' + esc(p.branch) : ''}</div></div></button>`).join('') || '<div class="empty">لا يوجد موظفون.</div>'}</div>
     ${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="sf">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
 }
 function aReview(){
   subscribeProofs();
   if(!S.proofs) return `<div class="loading" style="height:30vh"><div><div class="spin"></div>جارٍ التحميل…</div></div>`;
-  const P = S.proofs.filter(p => inScope({ section: p.section })).filter(p => S.rv === 'pending' ? p.status === 'pending' && p.sus : S.rv === 'flags' ? p.type === 'f' : S.rv === 'sample' ? !p.sus && p.type !== 'f' : true);
-  const tn = { c: 'تنظيف', x: 'محاولة', f: 'بلاغ', k: 'فحص' }, sn = { pending: ['بانتظار المراجعة', 't-wa'], ok: ['معتمدة', 't-ok'], rej: ['مرفوضة', 't-da'] };
-  return `<div class="note">تُحفظ صور الإثبات للعمليات المشكوك فيها والبلاغات، إضافةً إلى عيّنة تدقيق عشوائية بنسبة ${cfg('auditRate')}% من العمليات. رفض العملية يخصم نقاطها من الموظف.</div>
-    <div class="seg" style="margin:10px 0">${[['pending', 'تحتاج مراجعة'], ['flags', 'البلاغات'], ['sample', 'عيّنات التدقيق'], ['all', 'الكل']].map(([k, n]) => `<button class="${S.rv === k ? 'on' : ''}" data-act="rv" data-v="${k}">${n}</button>`).join('')}</div>
-    ${P.slice(0, 60).map(p => { const s = staffById(p.staff) || { name: '—' }; return `<div class="card"><div class="row" style="align-items:flex-start"><div class="thumbs">${p.thumbB ? `<img src="${esc(p.thumbB)}" alt="قبل">` : ''}${p.thumbA ? `<img src="${esc(p.thumbA)}" alt="بعد">` : ''}</div>
-      <div style="flex:1;min-width:0"><b>${esc(p.zoneName)}</b> <span class="tag ${sn[p.status][1]}">${sn[p.status][0]}</span><div class="xs mut">${esc(s.name)} · ${esc(p.section)} · ${ago(p.ts)}</div>
-      <div class="xs">${tn[p.type] || ''} · المؤشر ${p.before}${p.type === 'c' || p.type === 'x' ? ' ← ' + p.after + ' · تطابق ' + Math.round(p.sim * 100) + '%' : ''} · ${p.pts} نقطة</div><div class="xs" style="color:var(--wa)">${esc(p.why)}</div></div></div>
-      ${p.status === 'pending' ? `<div class="g2" style="margin-top:10px"><button class="btn sm" data-act="rvOk" data-id="${esc(p.id)}">${ic('check', 16)} اعتماد</button><button class="btn sm dan" data-act="rvRej" data-id="${esc(p.id)}">${ic('x', 16)} رفض وخصم النقاط</button></div>` : ''}</div>`; }).join('') || '<div class="card empty">لا توجد عناصر.</div>'}`;
+  const inS = S.proofs.filter(p => inScope({ section: p.section }));
+  const P = inS.filter(p => S.rv === 'pending' ? p.status === 'pending' : S.rv === 'sus' ? p.status === 'pending' && p.sus : S.rv === 'flags' ? p.type === 'f' : true)
+    .sort((a, b) => S.rv === 'pending' ? ((b.sus ? 1 : 0) - (a.sus ? 1 : 0) || (b.after || 0) - (a.after || 0) || b.ts - a.ts) : b.ts - a.ts);
+  const tn = { c: 'تنظيف', x: 'محاولة', f: 'بلاغ', k: 'فحص' }, sn = { pending: ['بانتظار التدقيق', 't-wa'], ok: ['معتمدة', 't-ok'], rej: ['مرفوضة', 't-da'] };
+  const pend = inS.filter(p => p.status === 'pending'), easy = P.filter(p => p.status === 'pending' && !p.sus);
+  return `<div class="note">كل عملية تنظيف تصل هنا بصورتها وتقييمها المبدئي. اعتمد أو ارفض بعد النظر في الصورة. الرفض يخصم نقاط العملية، واعتماد العمليات المعلّقة يمنح نقاطها.</div>
+    <div class="seg" style="margin:10px 0">${[['pending', 'بانتظار التدقيق (' + pend.length + ')'], ['sus', 'تحتاج انتباهاً'], ['flags', 'البلاغات'], ['all', 'الكل']].map(([k, n]) => `<button class="${S.rv === k ? 'on' : ''}" data-act="rv" data-v="${k}">${n}</button>`).join('')}</div>
+    ${easy.length > 1 ? `<button class="btn w" style="margin-bottom:10px" data-act="rvBulk">${ic('check', 16)} اعتماد ${Math.min(easy.length, 60)} عملية مقبولة مبدئياً دفعة واحدة</button>` : ''}
+    ${P.slice(0, 60).map(p => { const s = staffById(p.staff) || { name: '—' }; return `<div class="card"><div class="row" style="align-items:flex-start"><div class="thumbs">${p.thumbB ? `<img src="${esc(p.thumbB)}" alt="قبل">` : ''}${p.thumbA ? `<img src="${esc(p.thumbA)}" alt="الصورة" data-act="rvImg" data-src="${esc(p.thumbA)}">` : ''}</div>
+      <div style="flex:1;min-width:0"><b>${esc(p.zoneName)}</b> <span class="tag ${sn[p.status][1]}">${sn[p.status][0]}</span><div class="xs mut">${esc(s.name)} · ${esc(p.section)} · ${ago(p.ts)}${p.live ? ' · تصوير مباشر' : ''}</div>
+      <div class="xs">${tn[p.type] || ''}${p.el ? ' · ' + esc(p.el) : ''}${p.round ? ' · ' + esc(p.round) : ''} · المؤشر ${p.before != null && p.type !== 'k' && p.type !== 'f' ? p.before + ' ← ' : ''}${p.after ?? p.before} · ${p.held ? p.held + ' نقطة معلّقة' : p.pts + ' نقطة'}</div>${p.sus || p.type === 'f' ? `<div class="xs" style="color:var(--wa)">${esc(p.why)}</div>` : ''}</div></div>
+      ${p.status === 'pending' ? `<div class="g2" style="margin-top:10px"><button class="btn sm" data-act="rvOk" data-id="${esc(p.id)}">${ic('check', 16)} اعتماد${p.held ? ' ومنح النقاط' : ''}</button><button class="btn sm dan" data-act="rvRej" data-id="${esc(p.id)}">${ic('x', 16)} رفض${p.pts ? ' وخصم النقاط' : ''}</button></div>` : ''}</div>`; }).join('') || '<div class="card empty">لا توجد عناصر.</div>'}`;
 }
 function aLabels(){
-  const secs = sectionsAll(), sec = S.lblSec || secs[0] || '', list = S.zones.filter(z => z.section === sec).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const secs = sectionsAll(), sec = S.lblSec || secs[0] || '', list = S.zones.filter(z => z.section === sec).sort((a, b) => zNum(a).localeCompare(zNum(b), 'en', { numeric: true }));
   const per = 30, pages = Math.max(1, Math.ceil(list.length / per)), pg = Math.min(S.lblPage, pages - 1);
-  return `<div class="note">اطبع ملصق كل عارضة وألصقه عليها. يُدخل الموظف الرمز أو يمسح رمز QR لإثبات وجوده عند العارضة (فعّل خيار «إلزام رمز العارضة» من الإعدادات). يمكن حفظ الصفحة كصورة أو PDF من المتصفح للطباعة.</div>
+  return `<div class="note">ملصق لكل موقع برقمه وباركود يحمل الرقم نفسه. إن كانت لديكم باركودات حالية تحمل رقم الموقع فهي تعمل مباشرة دون طباعة جديدة. فعّل «إلزام مسح الباركود» من الإعدادات ليُثبت الموظف وجوده في الموقع. يمكن حفظ الصفحة PDF من المتصفح للطباعة.</div>
     <div class="filters"><select data-act="noop" onchange="S.lblSec=this.value;S.lblPage=0;render(true)">${secs.map(s => `<option ${s === sec ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-    <div class="label-grid">${list.slice(pg * per, pg * per + per).map(z => `<div class="lblc"><div style="font-weight:700;font-size:13px">${esc(z.name)}</div><div class="xs">${esc(z.section)}${z.branch ? ' · ' + esc(z.branch) : ''}</div><div class="qr" data-code="${esc(z.code)}"></div><div class="cd">${esc(z.code)}</div><div style="font-size:10px;color:#555">${esc(cfg('orgName'))} — متابعة النظافة</div></div>`).join('')}</div>
+    <div class="label-grid">${list.slice(pg * per, pg * per + per).map(z => `<div class="lblc"><div class="cd" style="font-size:22px">${esc(zNum(z))}</div><div style="font-weight:700;font-size:13px">${esc(z.name)}</div><div class="xs">${esc(z.section)}${z.branch ? ' · ' + esc(z.branch) : ''}</div><div class="qr" data-code="${esc(zNum(z))}"></div><div class="xs">${zEls(z).map(e => esc(e.k)).join(' · ')}</div><div style="font-size:10px;color:#555">${esc(cfg('orgName'))} — متابعة النظافة</div></div>`).join('')}</div>
     ${pages > 1 ? `<div class="row" style="margin-top:10px;justify-content:center"><button class="btn sm" data-act="lblPg" data-v="${pg - 1}" ${pg <= 0 ? 'disabled' : ''}>السابق</button><span class="sm">صفحة ${pg + 1} من ${pages}</span><button class="btn sm" data-act="lblPg" data-v="${pg + 1}" ${pg >= pages - 1 ? 'disabled' : ''}>التالي</button></div>` : ''}`;
 }
 function aSet(){
@@ -1255,27 +1530,35 @@ function aSet(){
   return `<div class="card"><h3>إعدادات عامة</h3>
     <div class="tg"><div><b>اسم الشركة / الفرع</b><div class="sm mut">${esc(cfg('orgName'))}</div></div><button class="btn sm" data-act="editOrg">تعديل</button></div>
     <div class="tg"><div><b>السماح بالتسجيل الذاتي</b><div class="sm mut">يمكن للموظف غير المسجّل إنشاء حسابه برقمه الوظيفي.</div></div>${sw('selfReg')}</div>
-    <div class="tg"><div><b>إلزام رمز العارضة</b><div class="sm mut">إدخال رمز الملصق أو مسح QR قبل التنظيف.</div></div>${sw('requireCode')}</div>
-    <div class="tg"><div><b>الحد الأدنى لمدة التنظيف</b><div class="sm mut">الزمن بين صورتي قبل وبعد.</div></div>${opt('minSec', [0, 15, 30, 45, 60, 90, 120], ' ث')}</div>
-    <div class="tg"><div><b>نسبة عيّنة التدقيق</b><div class="sm mut">نسبة العمليات التي تُحفظ صورها للمراجعة العشوائية.</div></div>${opt('auditRate', [0, 5, 10, 20, 50, 100], '%')}</div>
+    <div class="tg"><div><b>إلزام مسح الباركود</b><div class="sm mut">لا يبدأ التنظيف أو الفحص إلا بمسح باركود الموقع. الإدخال اليدوي يُحال للمدقق.</div></div>${sw('requireCode')}</div>
+    <div class="tg"><div><b>طريقة التصوير</b><div class="sm mut">صورة واحدة بعد التنظيف ثم «تم التنظيف»، أو صورتان قبل وبعد.</div></div><select onchange="setCfg('flow',this.value)" style="width:150px"><option value="single" ${cfg('flow') !== 'pair' ? 'selected' : ''}>صورة واحدة</option><option value="pair" ${cfg('flow') === 'pair' ? 'selected' : ''}>قبل وبعد</option></select></div>
+    ${cfg('flow') === 'pair' ? `<div class="tg"><div><b>الحد الأدنى لمدة التنظيف</b><div class="sm mut">الزمن بين صورتي قبل وبعد.</div></div>${opt('minSec', [0, 15, 30, 45, 60, 90, 120], ' ث')}</div>` : ''}
+    <div class="tg"><div><b>صور التدقيق</b><div class="sm mut">نسبة العمليات التي تصل صورها إلى المدقق.</div></div>${opt('auditRate', [10, 20, 50, 100], '%')}</div>
+    <div class="tg"><div><b>عيّنة الفحص الميداني اليومية</b><div class="sm mut">نسبة مواقع الشركة التي تُختار عشوائياً للمفتش العام كل يوم.</div></div>${opt('inspRate', [5, 10, 15, 20, 25, 30], '%')}</div>
+    <div class="tg"><div><b>خصم «غير مطابق» في الفحص الميداني</b><div class="sm mut">يُخصم ممن نظّف الموقع ذلك اليوم.</div></div>${opt('inspPen', [0, 5, 10, 15, 20, 30], ' نقطة')}</div>
     <div class="tg"><div><b>إلزام الفحص المباشر</b><div class="sm mut">يمنع رفع صور من المعرض حيث تتوفر الكاميرا المباشرة (يتطلب فتح التطبيق عبر https).</div></div>${sw('requireLive')}</div>
     <div class="tg"><div><b>الأصوات والاهتزاز</b></div>${sw('sound')}</div></div>
-    <div class="card"><h3>معايرة كشف الغبار</h3><p class="sm mut" style="margin-top:0">تختلف الإضاءة وأنواع الأسطح بين الصالات. نظّف سطح عارضة جيداً ثم صوّره بالفلاش، وسيضبط النظام الحساسية بحيث يُعدّ هذا المستوى «نظيفاً».</p>
-    <div class="tg"><div><b>الحساسية الحالية</b></div>${opt('sens', [0.5, 0.75, 1, 1.25, 1.5, 2], '×')}</div><div class="sm mut" style="margin:6px 0">${cfg('d0') ? 'معايَر: خط أساس السطح ' + (+cfg('d0')).toFixed(2) : 'غير معايَر بعد. المعايرة من عارضاتكم تجعل الأرقام واقعية.'}</div><button class="btn pri w" data-act="calibrate">${ic('cam')} معايرة من عارضة مغبّرة ثم نظيفة</button></div>
+    <div class="card"><h3>فئات العناصر وجولاتها اليومية</h3><p class="sm mut" style="margin-top:0">كل سطر جولة: «تنظيف» أو «فحص»، ثم الوقت من–إلى، ثم وصف اختياري. مثال: <code>فحص 12:00-15:00 فحص منتصف اليوم</code></p>
+      ${Object.entries(cats()).map(([k, c]) => `<div style="border-top:1px solid var(--line2);padding:10px 0"><div class="row"><b style="font-size:18px;width:28px">${esc(k)}</b><input id="cn_${k}" value="${esc(c.name)}" style="flex:1"></div>
+        <textarea id="cr_${k}" style="height:${Math.max(60, parseRounds(c.rules).length * 22 + 20)}px;margin-top:6px;direction:rtl">${esc(c.rules)}</textarea>
+        <label class="row sm"><input type="checkbox" id="cx_${k}" style="width:auto" ${c.extra ? 'checked' : ''}> يُسمح بتنظيف إضافي بعد إنجاز جولات اليوم</label><div class="xs mut">${parseRounds(c.rules).length} جولة يومياً</div></div>`).join('')}
+      <div class="g2"><button class="btn pri" data-act="catsSave">حفظ الفئات</button><button class="btn" data-act="catAdd">إضافة فئة</button></div></div>
+    <div class="card"><h3>معايرة كشف الغبار</h3><p class="sm mut" style="margin-top:0">تختلف الإضاءة وأنواع الأسطح بين الصالات. صوّر سطحاً مغبّراً ثم المكان نفسه بعد تنظيفه، فيضبط النظام الحساسية على مواقعكم.</p>
+    <div class="tg"><div><b>الحساسية الحالية</b></div>${opt('sens', [0.5, 0.75, 1, 1.25, 1.5, 2], '×')}</div><div class="sm mut" style="margin:6px 0">${cfg('d0') ? 'معايَر: خط أساس السطح ' + (+cfg('d0')).toFixed(2) : 'غير معايَر بعد. المعايرة من مواقعكم تجعل الأرقام واقعية.'}</div><button class="btn pri w" data-act="calibrate">${ic('cam')} معايرة من سطح مغبّر ثم نظيف</button></div>
     <div class="card"><h3>صيانة البيانات</h3><p class="sm mut" style="margin-top:0">حذف صور الإثبات الأقدم من 30 يوماً لتوفير السعة. لا يؤثر على النقاط أو التقارير.</p><button class="btn w" data-act="prune">حذف صور الإثبات القديمة</button></div>
     ${S.mode === 'local' ? `<div class="card"><h3>الوضع المحلي</h3><p class="sm mut" style="margin-top:0">البيانات محفوظة على هذا الجهاز فقط. للعمل المشترك بين جميع الموظفين، افتح النظام من رابطه في Claude وشاركه مع الفريق.</p><div class="g2"><button class="btn" data-act="chgAdminPin">تغيير رمز الإدارة</button><button class="btn dan" data-act="wipe">مسح جميع البيانات</button></div></div>` : ''}`;
 }
 window.setCfg = (k, v) => { const n = parseFloat(v); saveCfg({ [k]: isNaN(n) ? v : n }); };
 function saveCfg(p){ return Store.set('config', 'main', Object.assign({}, S.config, p)); }
 function zoneForm(z){
-  z = z || { name: '', section: '', branch: '', interval: 24 };
-  const secs = sectionsAll(), brs = branchesAll();
-  return `<h2>${z.id ? 'تعديل عارضة' : 'عارضة جديدة'}</h2>
-    <div class="fld"><label>اسم العارضة</label><input id="zN" value="${esc(z.name)}"></div>
+  z = z || { num: '', name: '', section: '', branch: '' };
+  const secs = sectionsAll(), brs = branchesAll(), C = cats();
+  return `<h2>${z.id ? 'تعديل موقع' : 'موقع جديد'}</h2>
+    <div class="g2"><div class="fld"><label>رقم الموقع (رقم الباركود)</label><input id="zU" inputmode="numeric" value="${esc(z.num || z.code || '')}"></div><div class="fld"><label>اسم الموقع</label><input id="zN" value="${esc(z.name)}"></div></div>
     <div class="g2"><div class="fld"><label>القسم</label><input id="zS" list="dlS" value="${esc(z.section)}"><datalist id="dlS">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
     <div class="fld"><label>الفرع (اختياري)</label><input id="zB" list="dlB" value="${esc(z.branch || '')}"><datalist id="dlB">${brs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div></div>
-    <div class="fld"><label>دورة التنظيف</label><select id="zI">${[[4, 'كل 4 ساعات'], [8, 'كل 8 ساعات'], [12, 'كل 12 ساعة'], [24, 'يومياً'], [48, 'كل يومين'], [72, 'كل 3 أيام'], [168, 'أسبوعياً']].map(([v, n]) => `<option value="${v}" ${+z.interval === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-    ${z.id ? `<div class="sm mut">رمز الملصق: <b>${esc(z.code)}</b></div>` : ''}
+    <div class="fld"><label>العناصر وفئاتها</label><input id="zE" value="${esc(elsText(z.id ? zEls(z) : []))}" placeholder="زجاج:G، رفوف:B، أجهزة:B"></div>
+    <div class="xs mut">الفئات: ${Object.entries(C).map(([k, c]) => '<b>' + esc(k) + '</b> ' + esc(c.name.replace(/^[A-Z]\s*—\s*/, ''))).join(' · ')}</div>
     <div class="g2" style="margin-top:14px"><button class="btn pri" data-act="zoneSave" data-id="${esc(z.id || '')}">حفظ</button>${z.id ? `<button class="btn dan" data-act="zoneDel" data-id="${esc(z.id)}">حذف</button>` : '<button class="btn" data-act="close">إلغاء</button>'}</div>`;
 }
 function staffForm(p){
@@ -1285,8 +1568,8 @@ function staffForm(p){
     <div class="g2"><div class="fld"><label>الرقم الوظيفي</label><input id="pN" inputmode="numeric" value="${esc(p.num)}"></div><div class="fld"><label>الاسم</label><input id="pM" value="${esc(p.name)}"></div></div>
     <div class="g2"><div class="fld"><label>القسم</label><input id="pS" list="dlS2" value="${esc(p.section)}"><datalist id="dlS2">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
     <div class="fld"><label>الفرع</label><input id="pB" list="dlB2" value="${esc(p.branch || '')}"><datalist id="dlB2">${brs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div></div>
-    <div class="fld"><label>أقسام إضافية (للمشرف أو الموظف المتنقّل، مفصولة بفاصلة)</label><input id="pX" value="${esc((p.extra || []).join('، '))}"></div>
-    <div class="g2"><div class="fld"><label>الدور</label><select id="pR"><option value="staff" ${p.role !== 'sup' && p.role !== 'admin' ? 'selected' : ''}>موظف</option><option value="sup" ${p.role === 'sup' ? 'selected' : ''}>مشرف قسم</option>${S.mode === 'firebase' ? `<option value="admin" ${p.role === 'admin' ? 'selected' : ''}>مدير</option>` : ''}</select></div>
+    <div class="fld"><label>أقسام إضافية (للمدقق: القسم الثاني الذي يدققه، مفصولة بفاصلة)</label><input id="pX" value="${esc((p.extra || []).join('، '))}"></div>
+    <div class="g2"><div class="fld"><label>الدور</label><select id="pR"><option value="staff" ${!['sup', 'admin', 'insp'].includes(p.role) ? 'selected' : ''}>موظف مبيعات</option><option value="sup" ${p.role === 'sup' ? 'selected' : ''}>مدقق (أقسامه)</option><option value="insp" ${p.role === 'insp' ? 'selected' : ''}>مفتش عام (عيّنة يومية)</option>${S.mode === 'firebase' ? `<option value="admin" ${p.role === 'admin' ? 'selected' : ''}>مدير</option>` : ''}</select></div>
     <div class="fld"><label>الحالة</label><select id="pA"><option value="1" ${p.active !== false ? 'selected' : ''}>فعّال</option><option value="0" ${p.active === false ? 'selected' : ''}>موقوف</option></select></div></div>
     ${p.id ? `<button class="btn w" data-act="resetPin" data-id="${esc(p.id)}">${ic('shield')} إعادة تعيين الرمز السري</button>` : '<div class="sm mut">يعيّن الموظف رمزه السري بنفسه عند أول دخول.</div>'}
     <div class="g2" style="margin-top:12px"><button class="btn pri" data-act="staffSave" data-id="${esc(p.id || '')}">حفظ</button>${p.id ? `<button class="btn dan" data-act="staffDel" data-id="${esc(p.id)}">حذف</button>` : '<button class="btn" data-act="close">إلغاء</button>'}</div>`;
@@ -1327,7 +1610,7 @@ const A = {
   async lgSetup(){
     const v = id => ($('#' + id).value || '').trim(), pin = v('suPin');
     if(!v('suKey') || !v('suNum') || v('suName').length < 3) return toast('أكمل جميع الحقول.'); if(!/^\d{4,8}$/.test(pin)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
-    if(await fbSignIn(await fbCall('bootstrap', { key: v('suKey'), num: v('suNum'), name: v('suName'), org: v('suOrg'), pin }))) toast('تم إنشاء حساب المدير. ابدأ باستيراد العارضات والموظفين من الإدارة.', 4500);
+    if(await fbSignIn(await fbCall('bootstrap', { key: v('suKey'), num: v('suNum'), name: v('suName'), org: v('suOrg'), pin }))) toast('تم إنشاء حساب المدير. ابدأ باستيراد المواقع والموظفين من الإدارة.', 4500);
   },
   async lgPin(){ const p = $('#lgPin').value || '';
     if(S.mode === 'firebase'){ if(!/^\d{4,8}$/.test(p)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.'); return fbSignIn(await fbCall('login', { num: LG.num, pin: p })); } if((await hashPin(LG.st.id, p)) === LG.st.pinH) doLogin(LG.st.id, LG.shared); else toast('الرمز غير صحيح.'); },
@@ -1348,36 +1631,95 @@ const A = {
       if(await fbCall('changePin', { oldPin: $('#cp0').value, pin: n })){ closeModal(); toast('تم تغيير الرمز.'); } return; }
     const m = me(); if((await hashPin(m.id, $('#cp0').value)) !== m.pinH) return toast('الرمز الحالي غير صحيح.'); const n = $('#cp1').value; if(!/^\d{4,8}$/.test(n)) return toast('الرمز يجب أن يكون من 4 إلى 8 أرقام.');
     if(await Store.update('staff', m.id, { pinH: await hashPin(m.id, n) })){ closeModal(); toast('تم تغيير الرمز.'); } },
-  openAdmin(){ const m = me(); S.admin = S.canManage ? { all: true, ok: S.mode !== 'local' } : (m && m.role === 'sup' ? { all: false, sections: mySections() } : null); if(!S.admin) return; S.tab = 'admin'; render(true); window.scrollTo(0, 0); },
+  openAdmin(){ const m = me(); S.admin = m && m.role === 'sup' ? { all: false, sections: mySections() } : S.canManage ? { all: true, ok: S.mode !== 'local' } : null; if(!S.admin) return; if(!S.admin.all) S.atab = 'review'; S.tab = 'admin'; render(true); window.scrollTo(0, 0); },
   adminPin(){ if(($('#pinA').value || '') === String(LS.get('dh2_apin', '1234'))){ S.admin.ok = true; render(true); } else toast('الرمز غير صحيح.'); },
   adminExit(){ S.admin = null; S.tab = 'home'; render(true); },
   atab(d){ S.atab = d.v; render(true); },
   rv(d){ S.rv = d.v; render(true); },
   lblPg(d){ S.lblPage = +d.v; render(true); },
   aZone(d){ if(S.admin && S.admin.all) A.zoneForm(d); else A.zoneSheet(d); },
+  zoneSheet(d){
+    const z = zoneById(d.id); if(!z) return; const zs = zoneState(z);
+    const rows = zEls(z).map(el => { const lc = (z.lc || {})[el.k] || {}, by = staffById(lc.by), rs = roundsOf(el);
+      return `<div style="border-top:1px solid var(--line2);padding:8px 0"><div class="row"><b style="flex:1">${esc(el.k)} <span class="tag t-inf">${esc(el.c)}</span></b>
+        ${S.me ? `<button class="btn sm" data-act="doTask" data-id="${esc(z.id)}" data-k="${esc(el.k)}" data-t="c" data-l="">${ic('cam', 15)} تنظيف</button>` : ''}</div>
+        <div class="xs mut">آخر تنظيف: ${ago(lc.t)}${by ? ' — ' + esc(by.name) : ''}${lc.idx != null && lc.t ? ' · مؤشر ' + lc.idx : ''}</div>
+        <div class="row" style="flex-wrap:wrap;gap:4px;margin-top:4px">${rs.map(r => { const st = roundSt(z, el, r); return `<span class="tag ${{ done: 't-ok', now: 't-wa', late: 't-da', soon: '' }[st]}" title="${esc(r.label)}">${r.t === 'k' ? 'فحص' : 'تنظيف'} ${hm(r.f)}</span>`; }).join('')}</div></div>`; }).join('');
+    openModal(`<h2>${esc(zTitle(z))}</h2><div class="row" style="margin-bottom:6px">${stTag(z)}<span class="sm mut">${esc(z.section)}${z.branch ? ' · ' + esc(z.branch) : ''}</span></div>
+      ${zs.flagged ? `<div class="note wa" style="margin-bottom:8px">بلاغ ${ago(z.flaggedAt)}${staffById(z.flaggedBy) ? ' — ' + esc(staffById(z.flaggedBy).name) : ''}</div>` : ''}${rows}
+      ${S.me ? `<button class="btn w" style="margin-top:10px" data-act="scanZone" data-id="${esc(z.id)}">${ic('flag')} فحص وبلاغ</button>` : ''}`);
+  },
+  inspOpen(d){
+    const z = zoneById(d.id); if(!z) return; const t0 = dayStart(), r = ((S.insp && S.insp.it) || {})[z.id];
+    const pr = (S.proofs || []).filter(p => p.zone === z.id && p.ts >= t0).slice(0, 6);
+    const rows = zEls(z).map(el => { const lc = (z.lc || {})[el.k] || {}, by = staffById(lc.by); return `<tr><td>${esc(el.k)}</td><td>${lc.t >= t0 ? ago(lc.t) + (by ? ' — ' + esc(by.name) : '') : '<span style="color:var(--da)">لم يُنظَّف اليوم</span>'}</td><td>${lc.t >= t0 && lc.idx != null ? lc.idx : '—'}</td></tr>`; }).join('');
+    S.inspTh = '';
+    openModal(`<h2>${esc(zTitle(z))}</h2><div class="sm mut" style="margin-bottom:8px">${esc(z.section || '')}${z.branch ? ' · ' + esc(z.branch) : ''}</div>
+      <div class="tw"><table><tr><th>العنصر</th><th>آخر تنظيف اليوم</th><th>المؤشر</th></tr>${rows}</table></div>
+      ${pr.length ? `<div class="thumbs" style="margin:8px 0">${pr.map(p => `<img src="${esc(p.thumbA)}" alt="">`).join('')}</div>` : ''}
+      ${r ? `<div class="note ${r.r === 'ok' ? '' : 'wa'}">فُحص ${ago(r.ts)}: ${r.r === 'ok' ? 'مطابق' : 'غير مطابق'}${r.note ? ' — ' + esc(r.note) : ''}</div>` : ''}
+      <div class="fld" style="margin-top:8px"><label>ملاحظة (اختياري)</label><input id="inN" placeholder="مثل: غبار على الرف السفلي"></div>
+      <button class="btn w" data-act="inspPhoto">${ic('cam')} إرفاق صورة (اختياري)</button><div id="inPh" class="sm mut"></div>
+      <div class="g2" style="margin-top:10px"><button class="btn pri" data-act="inspOk" data-id="${esc(z.id)}">${ic('check')} مطابق</button><button class="btn dan" data-act="inspBad" data-id="${esc(z.id)}">${ic('x')} غير مطابق</button></div>`);
+  },
+  async inspPhoto(){ const f = await pickPhoto(); if(!f) return; try{ const p = prep(await loadImg(f)); S.inspTh = thumb(p.canvas, 360); const e = $('#inPh'); if(e) e.innerHTML = `<img src="${S.inspTh}" style="width:120px;border-radius:8px;margin-top:6px">`; }catch(e){ toast('تعذّرت قراءة الصورة.'); } },
+  inspOk(d){ inspSave(d.id, 'ok'); },
+  inspBad(d){ inspSave(d.id, 'bad'); },
+  planYm(d){ S.planYm = d.v; render(true); },
+  planImport(){ const ym = S.planYm || S.ym; openModal(`<h2>رفع جدول ${ymName(ym)}</h2><p class="sm mut" style="margin-top:0">سطر لكل إسناد: <b>رقم الموظف، أرقام المواقع، العنصر، الأيام</b>. العنصر والأيام اختياريان (بدونهما: كل عناصر الموقع يومياً). يمكن كتابة عدة مواقع بمسافة أو مدى مثل 10-25. يمكن اللصق مباشرة من إكسل.</p>
+    <textarea id="plT" style="height:200px" placeholder="1001، 10-25&#10;1002، 30 31 32، رفوف، السبت الاثنين الأربعاء&#10;1003، 1-60، زجاج"></textarea>
+    <label class="row sm" style="margin:8px 0"><input type="checkbox" id="plR" style="width:auto" checked> استبدال جدول الشهر بالكامل (بدونه تُضاف الأسطر إلى الجدول الحالي)</label>
+    <button class="btn pri w" data-act="planSave">حفظ الجدول</button>`); },
+  async planSave(){
+    const ym = S.planYm || S.ym, { rows, err } = parsePlan($('#plT').value); if(!rows.length) return toast('لم يُقرأ أي سطر صالح.');
+    const cur = $('#plR').checked ? [] : planRows(ym === S.ym ? S.plan : (S.planCache || {})[ym]).map(r => [r.n, r.l, r.e, r.d].join('|'));
+    const all = [...new Set(cur.concat(rows))];
+    if(await Store.set('plan', ym, { ym, rows: all, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; closeModal(); toast(`حُفظ الجدول: ${rows.length} إسناد${err.length ? '، وتُجوهلت الأسطر ' + err.slice(0, 8).join('، ') : ''}.`, 4500); }
+  },
+  async planCopy(){
+    const ym = S.planYm || S.ym, prev = ymAdd(ym, -1), d = await Store.getDoc('plan', prev).catch(() => null);
+    if(!d || !(d.rows || []).length) return toast('لا يوجد جدول في ' + ymName(prev) + '.');
+    if(await Store.set('plan', ym, { ym, rows: d.rows, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; toast('نُسخ جدول ' + ymName(prev) + '.'); }
+  },
+  planCsv(){ const ym = S.planYm || S.ym, R = planRows(ym === S.ym ? S.plan : (S.planCache || {})[ym]); copyText(csv([['رقم الموظف', 'الاسم', 'رقم الموقع', 'العنصر', 'الأيام']].concat(R.map(r => { const p = S.staff.find(x => String(x.num) === r.n); return [r.n, p ? p.name : '', r.l, r.e === '*' ? 'الكل' : r.e, daysText(r.d)]; }))), 'نُسخ الجدول.'); },
+  async catsSave(){
+    const out = {};
+    for(const k of Object.keys(cats())){ const rules = $('#cr_' + k).value.trim(), n = parseRounds(rules).length;
+      if(!n) return toast('الفئة ' + k + ' بلا جولات صالحة. راجع صيغة الأسطر.');
+      out[k] = { name: $('#cn_' + k).value.trim() || k, rules, extra: $('#cx_' + k).checked }; }
+    if(await saveCfg({ cats: out })) toast('حُفظت الفئات.');
+  },
+  async catAdd(){ const used = Object.keys(cats()), k = 'DEFHIJKLMNOPQRSTUVWXYZ'.split('').find(x => !used.includes(x)); if(!k) return;
+    if(await saveCfg({ cats: Object.assign({}, cats(), { [k]: { name: k + ' — فئة جديدة', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: true } }) })) toast('أُضيفت الفئة ' + k + '.'); },
+  doTask(d){ closeModal(); F = null; newFlow(d.t === 'k' ? 'scan' : 'clean', d.id, d.k, d.l); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
+  addXtra(){ openModal(`<h2>إضافة موقع إضافي</h2><p class="sm mut" style="margin-top:0">يظهر ضمن مهامك اليومية حتى نهاية الشهر.</p><div class="fld"><label>رقم الموقع</label><input id="xN" inputmode="numeric"></div><div class="fld"><label>العنصر (اختياري)</label><input id="xE" placeholder="مثل: رفوف — اتركه فارغاً لكل العناصر"></div><button class="btn pri w" data-act="saveXtra">إضافة</button>`); },
+  async saveXtra(){
+    const z = zoneByNum(codeFrom($('#xN').value)); if(!z) return toast('لا يوجد موقع بهذا الرقم.');
+    const e = ($('#xE').value || '').trim(); if(e && !zEls(z).some(x => x.k === e)) return toast('عناصر هذا الموقع: ' + zEls(z).map(x => x.k).join('، '));
+    const id = S.me + '_' + S.ym, cur = (S.xtra && S.xtra.z) || [], v = z.id + '|' + (e || '*');
+    if(cur.includes(v)) return toast('الموقع مضاف مسبقاً.');
+    if(await Store.set('xtra', id, { staff: S.me, ym: S.ym, z: cur.concat([v]) })){ closeModal(); toast('أُضيف الموقع إلى مهامك.'); }
+  },
+  async rmXtra(d){ const cur = ((S.xtra && S.xtra.z) || []).filter(x => x !== d.v); await Store.set('xtra', S.me + '_' + S.ym, { staff: S.me, ym: S.ym, z: cur }); },
   startClean(){ F = null; newFlow('clean'); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
   startScan(){ F = null; newFlow('scan'); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
   cleanZone(d){ closeModal(); F = null; newFlow('clean', d.id); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
   scanZone(d){ closeModal(); F = null; newFlow('scan', d.id); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
-  zoneSheet(d){
-    const z = zoneById(d.id); if(!z) return; const s = zoneState(z), by = staffById(z.lastBy);
-    openModal(`<h2>${esc(z.name)}</h2><div class="row" style="margin-bottom:8px">${stTag(z)}<span class="sm mut">${esc(z.section)}${z.branch ? ' · ' + esc(z.branch) : ''}</span></div>
-      <div class="tw"><table><tr><td class="mut">آخر تنظيف</td><td>${ago(z.lastClean)}${by ? ' — ' + esc(by.name) : ''}</td></tr><tr><td class="mut">آخر مؤشر غبار</td><td>${z.lastIdx ?? '—'}</td></tr>
-      <tr><td class="mut">دورة التنظيف</td><td>كل ${z.interval} ساعة</td></tr><tr><td class="mut">المتبقي من الدورة</td><td>${s.fresh}%</td></tr>${s.flagged ? `<tr><td class="mut">بلاغ</td><td>${ago(z.flaggedAt)}${staffById(z.flaggedBy) ? ' — ' + esc(staffById(z.flaggedBy).name) : ''}</td></tr>` : ''}</table></div>
-      ${S.me ? `<div class="g2" style="margin-top:12px"><button class="btn pri" data-act="cleanZone" data-id="${esc(z.id)}">${ic('cam')} تنظيف</button><button class="btn" data-act="scanZone" data-id="${esc(z.id)}">${ic('flag')} فحص وبلاغ</button></div>` : ''}`);
-  },
+
   fMine(d){ F.f.mine = !!d.v; rf(); },
   flowMore(){ F.f.lim += 30; window.flowSearch(F.f.q); },
   flowZone(d){ pickZone(d.id, false); rf(); window.scrollTo(0, 0); },
-  codeGo(){ const v = ($('#codeIn').value || '').trim(), z = S.zones.find(z => String(z.code) === v); if(!z) return toast('الرمز غير صحيح.'); pickZone(z.id, true); rf(); },
-  codeCheck(){ const v = ($('#codeIn2').value || '').trim(), z = zoneById(F.zoneId); if(z && String(z.code) === v){ F.step = 'before'; rf(); } else toast('الرمز لا يطابق هذه العارضة.'); },
+  codeGo(){ const v = codeFrom($('#codeIn').value), z = zoneByNum(v); if(!z) return toast('لا يوجد موقع بهذا الرقم.'); pickZone(z.id, true); rf(); },
+  codeCheck(){ const v = codeFrom($('#codeIn2').value), z = zoneById(F.zoneId); if(z && v === zNum(z)){ F.manual = true; flowAfterZone(); rf(); } else toast('الرقم لا يطابق هذا الموقع.'); },
   async scanQR(){
-    const f = await pickPhoto(); if(!f) return;
-    try{ const r = await new BarcodeDetector({ formats: ['qr_code'] }).detect(await createImageBitmap(f));
-      const m = r.length && String(r[0].rawValue).match(/DUST-(\d+)/), z = m && S.zones.find(z => String(z.code) === m[1]);
-      if(!z) return toast('تعذّر التعرف على الملصق.'); if(F.step === 'code' && F.zoneId !== z.id) return toast('هذا الملصق يعود لعارضة أخرى.');
-      pickZone(z.id, true); rf(); }catch(e){ toast('تعذّرت قراءة الرمز. أدخله يدوياً.'); }
+    const raw = await scanBarcode(); if(raw == null) return;
+    const v = codeFrom(raw), z = zoneByNum(v);
+    if(!z) return toast('قُرئ الرمز «' + v + '» لكنه لا يطابق أي موقع مسجّل.', 4000);
+    if(F.step === 'code' && F.zoneId !== z.id) return toast('هذا الباركود يعود للموقع ' + v + '، وليس لهذا الموقع.', 4000);
+    F.manual = false; pickZone(z.id, true); tone(); rf();
   },
+  pickEl(d){ F.el = d.k; flowAfterZone(); rf(); },
+  submitClean(){ saveClean(false); },
   flowCancel(){ F = null; clearInterval(tmrI); render(true); },
   shoot(d){ if(liveAvail() && !d.photo) startLive(d.w); else shoot(d.w); },
   liveCap(){ liveCapture(); },
@@ -1388,36 +1730,38 @@ const A = {
   goClean(){ F.step = 'cleaning'; F.cleanStart = Date.now(); rf(); tick(); },
   backClean(){ F.pick = null; F.step = 'cleaning'; rf(); tick(); },
   toAfter(){ F.step = 'after'; rf(); },
-  retry(){ F.step = 'cleaning'; F.after = null; F.res = null; F.pick = null; rf(); tick(); },
+  retry(){ F.after = null; F.res = null; F.pick = null; F.saved = false; if(F.single){ F.step = 'after'; rf(); return; } F.step = 'cleaning'; rf(); tick(); },
   saveAttempt(){ saveClean(true); },
   confirmClean(){ quick('k'); },
   sendFlag(){ quick('f'); },
   sendCheck(){ quick('k'); },
-  scanToClean(){ F.mode = 'clean'; F.step = 'cleaning'; F.cleanStart = Date.now(); F.wasDue = true; F.wasFlag = false; rf(); tick(); },
-  flowNext(){ F = null; newFlow('clean'); rf(); window.scrollTo(0, 0); },
+  scanToClean(){ F.mode = 'clean'; F.before = F.single || cfg('flow') !== 'pair' ? null : F.before; flowAfterZone(); if(F.step === 'before' && F.before){ F.step = 'cleaning'; F.cleanStart = Date.now(); rf(); tick(); return; } rf(); },
+  flowNext(){ F = null; S.tab = 'home'; render(true); window.scrollTo(0, 0); },
   flowHome(){ F = null; S.tab = 'home'; render(true); },
   zoneForm(d){ openModal(zoneForm(d.id ? zoneById(d.id) : null)); },
   async zoneSave(d){
-    const name = $('#zN').value.trim(), section = $('#zS').value.trim(), branch = $('#zB').value.trim(), interval = +$('#zI').value;
-    if(!name || !section) return toast('الاسم والقسم مطلوبان.');
-    const old = d.id ? zoneById(d.id) : null, data = Object.assign({}, old || { lastClean: 0, created: Date.now(), code: newCode(new Set(S.zones.map(z => String(z.code)))) }, { name, section, branch, interval }); delete data.id;
+    const num = codeFrom($('#zU').value), name = $('#zN').value.trim(), section = $('#zS').value.trim(), branch = $('#zB').value.trim(), els = parseEls($('#zE').value);
+    if(!/^\d+$/.test(num) || !name || !section) return toast('رقم الموقع والاسم والقسم مطلوبة.');
+    if(S.zones.some(z => zNum(z) === num && z.id !== d.id)) return toast('رقم الموقع مستخدم لموقع آخر.');
+    const bad = els.filter(e => !cats()[e.c]); if(bad.length) return toast('فئة غير معرّفة: ' + bad.map(e => e.c).join('، '));
+    const old = d.id ? zoneById(d.id) : null, data = Object.assign({}, old || { lastClean: 0, created: Date.now() }, { num, code: num, name, section, branch, els: els.length ? els : [{ k: 'عام', c: 'B' }] }); delete data.id;
     if(await Store.set('zones', d.id || rid(), data)){ closeModal(); toast('تم الحفظ.'); }
   },
-  zoneDel(d){ if(!d.ok) return confirmBox('حذف هذه العارضة نهائياً؟', 'zoneDel', d.id); Store.del('zones', d.id).then(closeModal); },
-  importZones(){ openModal(`<h2>استيراد العارضات</h2><p class="sm mut" style="margin-top:0">سطر لكل عارضة بالترتيب: <b>الاسم، القسم، الفرع، دورة التنظيف بالساعات</b>. الفرع والدورة اختياريان (الافتراضي 24 ساعة). يمكن اللصق مباشرة من إكسل.</p>
-    <textarea id="imp" style="height:220px" placeholder="عارضة آيفون 1، الهواتف، فرع المنصور، 24&#10;ثلاجات LG، الأجهزة المنزلية، فرع المنصور، 48"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportZones">استيراد</button>`); },
+  zoneDel(d){ if(!d.ok) return confirmBox('حذف هذا الموقع نهائياً؟', 'zoneDel', d.id); Store.del('zones', d.id).then(closeModal); },
+  importZones(){ openModal(`<h2>استيراد المواقع</h2><p class="sm mut" style="margin-top:0">سطر لكل موقع بالترتيب: <b>رقم الموقع، الاسم، القسم، الفرع، العناصر</b>. العناصر بصيغة «زجاج:G + رفوف:B + أجهزة:B»، وإن تُركت فارغة يُعدّ الموقع عنصراً واحداً من الفئة B. الموقع الموجود برقمه يُحدَّث. يمكن اللصق مباشرة من إكسل.</p>
+    <textarea id="imp" style="height:220px" placeholder="101، واجهة آبل، الهواتف، فرع المنصور، زجاج:G + رفوف:B + أجهزة:B&#10;102، ثلاجات LG، الأجهزة المنزلية، فرع المنصور، رفوف:C"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportZones">استيراد</button>`); },
   async doImportZones(){
     if(S.importing) return; const L = parseLines($('#imp').value); if(!L.length) return toast('لا توجد بيانات.');
-    S.importing = true; const used = new Set(S.zones.map(z => String(z.code))), exist = new Set(S.zones.map(z => z.name + '|' + z.section + '|' + (z.branch || '')));
-    let n = 0, skip = 0; const P = $('#impP');
+    S.importing = true; let n = 0, upd = 0, skip = 0; const P = $('#impP');
     for(let i = 0; i < L.length; i++){
-      const [name, section = 'عام', branch = '', iv] = L[i], key = name + '|' + section + '|' + branch;
-      if(exist.has(key)){ skip++; continue; } exist.add(key);
-      const ok = await Store.set('zones', rid(), { name, section, branch, interval: +iv > 0 ? +iv : 24, code: newCode(used), lastClean: 0, created: Date.now() });
-      if(!ok) break; n++;
+      const [num0, name, section = 'عام', branch = ''] = L[i], num = codeFrom(num0), els = parseEls(L[i].slice(4).join('+')).filter(e => cats()[e.c]);
+      if(!/^\d+$/.test(num) || !name){ skip++; continue; }
+      const old = zoneByNum(num), data = Object.assign({}, old || { lastClean: 0, created: Date.now() }, { num, code: num, name, section, branch, els: els.length ? els : (old && old.els) || [{ k: 'عام', c: 'B' }] }); delete data.id;
+      const ok = await Store.set('zones', old ? old.id : rid(), data);
+      if(!ok) break; old ? upd++ : n++;
       if(P) P.innerHTML = `<div class="prog"><i style="width:${Math.round(100 * (i + 1) / L.length)}%"></i></div><div class="sm mut">${i + 1} / ${L.length}</div>`;
     }
-    S.importing = false; closeModal(); toast(`تم استيراد ${n} عارضة${skip ? ' وتجاوز ' + skip + ' مكررة' : ''}.`);
+    S.importing = false; closeModal(); toast(`أُضيف ${n} موقع${upd ? ' وحُدّث ' + upd : ''}${skip ? ' وتُجوهل ' + skip + ' (رقم أو اسم ناقص)' : ''}.`, 4000);
   },
   staffForm(d){ openModal(staffForm(d.id ? staffById(d.id) : null)); },
   async staffSave(d){
@@ -1430,21 +1774,35 @@ const A = {
   staffDel(d){ if(!d.ok) return confirmBox('حذف هذا الموظف؟ يُفضّل إيقافه بدلاً من الحذف للحفاظ على سجلاته.', 'staffDel', d.id); Store.del('staff', d.id).then(closeModal); },
   async resetPin(d){ if(S.mode === 'firebase'){ if(await fbCall('resetPin', { staffId: d.id })){ closeModal(); toast('سيعيّن الموظف رمزاً جديداً عند الدخول القادم.'); } return; }
     if(await Store.update('staff', d.id, { pinH: '' })){ closeModal(); toast('سيعيّن الموظف رمزاً جديداً عند الدخول القادم.'); } },
-  importStaff(){ openModal(`<h2>استيراد الموظفين</h2><p class="sm mut" style="margin-top:0">سطر لكل موظف: <b>الرقم الوظيفي، الاسم، القسم، الفرع، الدور</b> (الدور: موظف أو مشرف، اختياري). يعيّن كل موظف رمزه السري عند أول دخول.</p>
-    <textarea id="imp" style="height:220px" placeholder="1001، أحمد علي، الهواتف، فرع المنصور&#10;1002، سارة محمد، الحاسبات، فرع المنصور، مشرف"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportStaff">استيراد</button>`); },
+  importStaff(){ openModal(`<h2>استيراد الموظفين</h2><p class="sm mut" style="margin-top:0">سطر لكل موظف: <b>الرقم الوظيفي، الاسم، القسم، الفرع، الدور</b> (الدور: موظف أو مدقق أو مفتش، اختياري). يعيّن كل موظف رمزه السري عند أول دخول.</p>
+    <textarea id="imp" style="height:220px" placeholder="1001، أحمد علي، الهواتف، فرع المنصور&#10;1002، سارة محمد، الحاسبات، فرع المنصور، مدقق"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportStaff">استيراد</button>`); },
   async doImportStaff(){
     if(S.importing) return; const L = parseLines($('#imp').value); if(!L.length) return toast('لا توجد بيانات.');
     S.importing = true; const nums = new Set(S.staff.map(s => String(s.num))); let n = 0, skip = 0; const P = $('#impP');
     for(let i = 0; i < L.length; i++){
       const [num, name, section = '', branch = '', role = ''] = L[i];
       if(!name || nums.has(num)){ skip++; continue; } nums.add(num);
-      const ok = await Store.set('staff', rid(), { num, name, section, branch, role: /مشرف|sup/i.test(role) ? 'sup' : 'staff', active: true, created: Date.now(), st: {} });
+      const ok = await Store.set('staff', rid(), { num, name, section, branch, role: /مفتش|insp/i.test(role) ? 'insp' : /مدقق|مشرف|sup/i.test(role) ? 'sup' : 'staff', active: true, created: Date.now(), st: {} });
       if(!ok) break; n++;
       if(P) P.innerHTML = `<div class="prog"><i style="width:${Math.round(100 * (i + 1) / L.length)}%"></i></div><div class="sm mut">${i + 1} / ${L.length}</div>`;
     }
     S.importing = false; closeModal(); toast(`تم استيراد ${n} موظف${skip ? ' وتجاوز ' + skip + ' (مكرر أو ناقص)' : ''}.`);
   },
-  async rvOk(d){ await Store.update('proof', d.id, { status: 'ok', by: S.me || 'admin', at: Date.now() }); },
+  async rvOk(d){
+    const p = (S.proofs || []).find(x => x.id === d.id); if(!p) return;
+    if(!(await Store.update('proof', p.id, { status: 'ok', by: S.me || 'admin', at: Date.now(), pts: (p.pts || 0) + (p.held || 0), held: 0 }))) return;
+    if(p.held > 0){ // منح النقاط المعلّقة بعد اعتماد المدقق
+      const sm = S.sums.find(s => s.staff === p.staff && s.ym === p.ym), st = staffById(p.staff);
+      if(sm) await Store.update('sum', sm.id, { pts: (sm.pts || 0) + p.held });
+      if(st) await Store.update('staff', st.id, { st: { life: ((st.st || {}).life || 0) + p.held } });
+    }
+  },
+  async rvBulk(){
+    const L = (S.proofs || []).filter(p => inScope({ section: p.section }) && p.status === 'pending' && !p.sus).slice(0, 60);
+    for(const p of L) await A.rvOk({ id: p.id });
+    toast('اعتُمدت ' + L.length + ' عملية.');
+  },
+  rvImg(d){ openModal(`<img src="${esc(d.src)}" style="width:100%;border-radius:10px">`); },
   async rvRej(d){
     if(!d.ok) return confirmBox('رفض العملية وخصم نقاطها من الموظف؟', 'rvRej', d.id);
     closeModal(); const p = (S.proofs || []).find(x => x.id === d.id); if(!p) return;
@@ -1458,22 +1816,22 @@ const A = {
   togCfg(d){ saveCfg({ [d.k]: !cfg(d.k) }); },
   editOrg(){ openModal(`<h2>اسم الشركة / الفرع</h2><input id="on" value="${esc(cfg('orgName'))}"><div style="height:10px"></div><button class="btn pri w" data-act="orgSave">حفظ</button>`); },
   async orgSave(){ const v = $('#on').value.trim(); if(v && await saveCfg({ orgName: v })) closeModal(); },
-  // معايرة بنقطتين: صورة لعارضة مغبّرة (يُفترض مؤشرها ≈ 70) ثم صورة للمكان نفسه بعد تنظيفه جيداً (≈ 0).
-  // تُحسب الحساسية وخط الأساس (حبيبات النسيج الطبيعية في السطح النظيف) فتصبح الأرقام مطابقة لعارضاتكم.
-  calibrate(){ S.cal = {}; openModal(`<h2>معايرة من عارضاتكم</h2><ol class="sm" style="padding-inline-start:18px;line-height:1.9"><li>اختر عارضة عليها غبار واضح، وصوّر سطحها من قرب (20 إلى 40 سم) بإضاءة جيدة.</li><li>نظّفها جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة والزاوية نفسيهما.</li></ol><p class="xs mut">يُحلَّل وسط الصورة (80%). كرّر المعايرة عند تغيير نوع العارضات أو الإضاءة.</p><button class="btn pri w" data-act="calShot" data-k="dirty">${ic('cam')} 1) تصوير العارضة المغبّرة</button>`); },
+  // معايرة بنقطتين: صورة لسطح مغبّر (يُفترض مؤشرها ≈ 70) ثم صورة للمكان نفسه بعد تنظيفه جيداً (≈ 0).
+  // تُحسب الحساسية وخط الأساس (حبيبات النسيج الطبيعية في السطح النظيف) فتصبح الأرقام مطابقة لمواقعكم.
+  calibrate(){ S.cal = {}; openModal(`<h2>معايرة من مواقعكم</h2><ol class="sm" style="padding-inline-start:18px;line-height:1.9"><li>اختر سطحاً عليه غبار واضح (رف أو زجاج أو جهاز)، وصوّره من قرب (20 إلى 40 سم) بإضاءة جيدة.</li><li>نظّفها جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة والزاوية نفسيهما.</li></ol><p class="xs mut">يُحلَّل وسط الصورة (80%). كرّر المعايرة عند تغيير نوع الأسطح أو الإضاءة.</p><button class="btn pri w" data-act="calShot" data-k="dirty">${ic('cam')} 1) تصوير السطح المغبّر</button>`); },
   async calShot(d){
     const f = await pickPhoto(); if(!f) return;
     toast('جارٍ التحليل…');
     let an; try{ an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1, DUST_MAX, { d0: 0 }); }catch(e){ return toast('تعذّرت قراءة الصورة.'); }
     if(qualityBad(an)) toast(qualityBad(an) + ' يُفضّل إعادة التصوير.', 4000);
     S.cal = S.cal || {}; S.cal[d.k] = an.density;
-    if(d.k === 'dirty') return openModal(`<h2>معايرة من عارضاتكم</h2><p class="sm">سُجّلت صورة العارضة المغبّرة (${an.n} حبيبة).</p><p class="sm">الآن نظّف العارضة جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة نفسها.</p><button class="btn pri w" data-act="calShot" data-k="clean">${ic('cam')} 2) تصوير العارضة بعد التنظيف</button>`);
+    if(d.k === 'dirty') return openModal(`<h2>معايرة من مواقعكم</h2><p class="sm">سُجّلت صورة السطح المغبّر (${an.n} حبيبة).</p><p class="sm">الآن نظّف السطح جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة نفسها.</p><button class="btn pri w" data-act="calShot" data-k="clean">${ic('cam')} 2) تصوير السطح بعد التنظيف</button>`);
     const dd = S.cal.dirty, dc = S.cal.clean, K = 10;
-    if(!(dd > dc * 1.4 && dd - dc > 0.4)) return openModal(`<h2>تعذّرت المعايرة</h2><p class="sm">الفرق بين الصورتين صغير جداً (${dd.toFixed(2)} مقابل ${dc.toFixed(2)})، فلا يستطيع المحرك التمييز بينهما بهذه الطريقة في التصوير.</p><ul class="sm"><li>اقترب أكثر من السطح.</li><li>استخدم ضوءاً جانبياً مائلاً (مصباح الهاتف من الجانب) لإبراز الغبار.</li><li>اختر عارضة غبارها أوضح.</li></ul><button class="btn pri w" data-act="calibrate">إعادة المعايرة</button>`);
+    if(!(dd > dc * 1.4 && dd - dc > 0.4)) return openModal(`<h2>تعذّرت المعايرة</h2><p class="sm">الفرق بين الصورتين صغير جداً (${dd.toFixed(2)} مقابل ${dc.toFixed(2)})، فلا يستطيع المحرك التمييز بينهما بهذه الطريقة في التصوير.</p><ul class="sm"><li>اقترب أكثر من السطح.</li><li>استخدم ضوءاً جانبياً مائلاً (مصباح الهاتف من الجانب) لإبراز الغبار.</li><li>اختر سطحاً غباره أوضح.</li></ul><button class="btn pri w" data-act="calibrate">إعادة المعايرة</button>`);
     const d0 = Math.round(dc * 1.1 * 100) / 100, sens = Math.round(Math.max(0.2, Math.min(5, 1.204 * K / (dd - d0))) * 100) / 100;
     if(await saveCfg({ sens, d0 })){
       const idx = dens => Math.round(100 * (1 - Math.exp(-Math.max(0, dens - d0) * sens / K)));
-      openModal(`<h2>تمت المعايرة</h2><p class="sm">بالإعدادات الجديدة: العارضة المغبّرة ≈ <b>${idx(dd)}</b>، وبعد التنظيف ≈ <b>${idx(dc)}</b>.</p><p class="xs mut">الحساسية ×${sens} · خط الأساس ${d0}</p><button class="btn pri w" data-act="closeModal">تم</button>`);
+      openModal(`<h2>تمت المعايرة</h2><p class="sm">بالإعدادات الجديدة: السطح المغبّر ≈ <b>${idx(dd)}</b>، وبعد التنظيف ≈ <b>${idx(dc)}</b>.</p><p class="xs mut">الحساسية ×${sens} · خط الأساس ${d0}</p><button class="btn pri w" data-act="closeModal">تم</button>`);
     }
   },
   async prune(){
@@ -1486,7 +1844,7 @@ const A = {
   wipe(d){ if(!d.ok) return confirmBox('مسح جميع البيانات من هذا الجهاز؟ لا يمكن التراجع.', 'wipe'); LS.del(LKEY); LS.del('dh2_me'); location.reload(); },
   csvSec(){
     const by = {}; S.zones.filter(inScope).forEach(z => { const k = (z.branch || '') + '|' + (z.section || ''); const o = by[k] = by[k] || { b: z.branch || '', s: z.section || '', t: 0, d: 0, f: 0 }; o.t++; if(zoneState(z).due) o.d++; if(zoneState(z).flagged) o.f++; });
-    copyText(csv([['الفرع', 'القسم', 'العارضات', 'متأخرة', 'بلاغات', 'الالتزام %']].concat(Object.values(by).map(o => [o.b, o.s, o.t, o.d, o.f, Math.round(100 * (o.t - o.d) / o.t)]))), 'تم النسخ. الصقه في إكسل.');
+    copyText(csv([['الفرع', 'القسم', 'المواقع', 'متأخرة', 'بلاغات', 'الالتزام %']].concat(Object.values(by).map(o => [o.b, o.s, o.t, o.d, o.f, Math.round(100 * (o.t - o.d) / o.t)]))), 'تم النسخ. الصقه في إكسل.');
   },
   csvStaff(){
     const rows = S.staff.filter(p => S.admin.all || S.admin.sections.includes(p.section)).map(p => { const s = S.sums.find(x => x.staff === p.id) || {}; return [p.num, p.name, p.branch || '', p.section || '', s.pts || 0, s.n || 0, s.n ? Math.round(s.redSum / s.n * 100) : 0, s.res || 0, s.fail || 0, s.flag || 0, s.sus || 0, s.rej || 0]; });
