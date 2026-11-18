@@ -267,15 +267,15 @@ function analyzeDust(px, w, h, sens, opt){
   // 3) عتبة إحصائية محلية: لكل كتلة 24×24 نحسب المئين 95 لاستجابة الحبيبات.
   //    نسيج السطح نفسه (حبكة القماش، المسام) يرفع هذا المئين فترتفع العتبة؛ أما الغبار فنادراً ما
   //    يتجاوز 2% من البكسلات حتى عندما يكون كثيفاً، فلا يؤثر في المئين ويظهر كقيمة شاذة.
-  const S = 24, BX = Math.ceil(w / S), BY = Math.ceil(h / S), q95 = new Float32Array(BX * BY), buf = new Float32Array(S * S);
-  for(let by = 0; by < BY; by++) for(let bx = 0; bx < BX; bx++){
-    let n = 0; for(let y = by * S; y < Math.min(h, by * S + S); y++) for(let x = bx * S; x < Math.min(w, bx * S + S); x++){ const t = Tb[y * w + x]; buf[n++] = t > 0 ? t : 0; }
-    const a = buf.subarray(0, n).sort(); q95[by * BX + bx] = a[Math.min(n - 1, (n * (opt.qq || 0.9)) | 0)];
-  }
-  const qAt = (x, y) => { // استيفاء ثنائي الخطية بين مراكز الكتل
+  const S = 24, BX = Math.ceil(w / S), BY = Math.ceil(h / S), NB = BX * BY, buf = new Float32Array(S * S), QQ = opt.qq || 0.9;
+  const qB = new Float32Array(NB), qD = new Float32Array(NB);
+  const quant = (arr, k, by, bx) => { let n = 0; for(let y = by * S; y < Math.min(h, by * S + S); y++) for(let x = bx * S; x < Math.min(w, bx * S + S); x++){ const t = arr[y * w + x]; buf[n++] = t > 0 ? t : 0; }
+    const a = buf.subarray(0, n).sort(); return a[Math.min(n - 1, (n * k) | 0)]; };
+  for(let by = 0; by < BY; by++) for(let bx = 0; bx < BX; bx++){ const b = by * BX + bx; qB[b] = quant(Tb, QQ, by, bx); qD[b] = quant(Td, QQ, by, bx); }
+  const interp = (q, x, y) => { // استيفاء ثنائي الخطية بين مراكز الكتل
     let fx = x / S - 0.5, fy = y / S - 0.5; fx = Math.max(0, Math.min(BX - 1, fx)); fy = Math.max(0, Math.min(BY - 1, fy));
     const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(BX - 1, x0 + 1), y1 = Math.min(BY - 1, y0 + 1), ax = fx - x0, ay = fy - y0;
-    return (q95[y0 * BX + x0] * (1 - ax) + q95[y0 * BX + x1] * ax) * (1 - ay) + (q95[y1 * BX + x0] * (1 - ax) + q95[y1 * BX + x1] * ax) * ay;
+    return (q[y0 * BX + x0] * (1 - ax) + q[y0 * BX + x1] * ax) * (1 - ay) + (q[y1 * BX + x0] * (1 - ax) + q[y1 * BX + x1] * ax) * ay;
   };
   const base = opt.base || 4, kE = opt.kE ?? 0.5, kQ = opt.kQ ?? 1.5;
   const B0 = R + 1, cand = new Uint8Array(N), thrMap = new Float32Array(N);
@@ -284,9 +284,9 @@ function analyzeDust(px, w, h, sens, opt){
     const i = y * w + x, bg = boxAt(IL, x, y, rw);
     if(bg < 14 || bg > 247) continue;                 // مناطق مظلمة جداً أو محترقة: لا يُحكم عليها
     validN++;
-    const thr = base + kE * boxAt(IE, x, y, rw) + kQ * qAt(x, y); thrMap[i] = thr;
-    if(Tb[i] > thr && Ls[i] < 246) cand[i] = 1;      // حبيبة فاتحة (الغبار على الأسطح الداكنة والملونة)
-    else if(bg > 165 && Td[i] > thr * 1.15) cand[i] = 2; // حبيبة داكنة على سطح فاتح
+    const e = kE * boxAt(IE, x, y, rw), thr = base + e + kQ * interp(qB, x, y), thrD = (base + e + kQ * interp(qD, x, y)) * 1.15; thrMap[i] = thr;
+    if(Tb[i] > thr && Ls[i] < 246) cand[i] = 1;       // حبيبة فاتحة (غبار على الأسطح الداكنة والملونة)
+    else if(Td[i] > thrD){ cand[i] = 2; thrMap[i] = thrD; } // حبيبة داكنة (أوساخ، أو غبار على سطح فاتح) — العتبة من نسيج السطح الداكن نفسه
   }
   // 4) المكونات المتصلة + مرشحات الشكل واللون
   const seen = new Uint8Array(N), stack = new Int32Array(N), parts = [];
@@ -311,22 +311,26 @@ function analyzeDust(px, w, h, sens, opt){
     const ok = size <= maxA && bw <= maxD && bh <= maxD && elong <= 2.6 && peak >= 1.25 && cs / size <= bgC * 1.25 + 18;
     if(ok) parts.push([cx, cy, size, m]); else rej++;
   }
-  // 5) المؤشر: كثافة الحبيبات لكل 10,000 بكسل صالح
-  const area = Math.max(validN, N * 0.05);
-  const density = parts.length / (area / 10000);
-  const K = opt.K || 10;
-  const d0 = opt.d0 || 0, idx = Math.round(100 * (1 - Math.exp(-Math.max(0, density - d0) * sens / K))); // d0 = خط أساس السطح النظيف من المعايرة
+  // 5) المؤشر: كثافة الحبيبات لكل 10,000 بكسل صالح، محسوبة على شبكة 8×N.
+  //    الكثافة الممثِّلة = المئين 70 لكثافات الخلايا (أو المتوسط إن كان أعلى)، فلا تُخفّض الخلفية
+  //    الملساء أو الضبابية داخل المنطقة المحددة النتيجةَ كما يفعل المتوسط العام.
+  const area = Math.max(validN, N * 0.05), K = opt.K || 10, d0 = opt.d0 || 0;
   const GX = 8, GY = Math.max(4, Math.min(14, Math.round(GX * h / w)));
   const heat = new Array(GX * GY).fill(0), cellV = new Array(GX * GY).fill(0);
   for(let y = B0; y < h - B0; y += 2) for(let x = B0; x < w - B0; x += 2) if(thrMap[y * w + x]) cellV[Math.min(GY - 1, (y / h * GY) | 0) * GX + Math.min(GX - 1, (x / w * GX) | 0)] += 4;
   for(const p of parts) heat[Math.min(GY - 1, (p[1] / h * GY) | 0) * GX + Math.min(GX - 1, (p[0] / w * GX) | 0)]++;
+  const okCell = k => cellV[k] > area / (GX * GY) * 0.3;
+  const rawD = heat.map((v, k) => okCell(k) ? v / (cellV[k] / 10000) : -1), cells = rawD.filter(v => v >= 0).sort((a, b) => a - b);
+  const meanD = parts.length / (area / 10000), p70 = cells.length ? cells[Math.min(cells.length - 1, (cells.length * 0.7) | 0)] : 0;
+  const density = Math.max(meanD, p70);
+  const idx = Math.round(100 * (1 - Math.exp(-Math.max(0, density - d0) * sens / K))); // d0 = خط أساس السطح النظيف من المعايرة
   // خلية "مغبّرة" إذا تجاوزت كثافتها ما يعادل مؤشر ~35
-  const cellD = heat.map((v, k) => cellV[k] > area / (GX * GY) * 0.3 ? Math.max(0, v / (cellV[k] / 10000) - d0) : 0);
+  const cellD = rawD.map(v => v > 0 ? Math.max(0, v - d0) : 0);
   const dThr = K * 0.43 / sens;
-  const zonesDusty = cellD.filter(v => v >= dThr).length, cellsValid = cellV.filter(v => v > area / (GX * GY) * 0.3).length;
+  const zonesDusty = cellD.filter(v => v >= dThr).length, cellsValid = cells.length;
   return { v: 2, idx, n: parts.length, density, parts: parts.slice(0, 2000), mean, sharp, heat: cellD, GX, GY, cellThr: dThr, zonesDusty, cellsValid, w, h, R, valid: validN / N, rej };
 }
-const DUST_MAX = 1200;
+const DUST_MAX = 1600;
 let _wk = null, _wkBad = false;
 let _aq = Promise.resolve();
 // تسلسل الطلبات: عامل واحد يعالج طلباً واحداً في كل مرة
@@ -864,10 +868,10 @@ function vClean(){
     const b = s === 'before';
     if(!F.busy && F.live && LIVE.stream) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
         <div class="lv-st"><span id="lvS" class="wa">جارٍ تشغيل الكاميرا…</span></div></div>
-      <div class="note" style="margin:8px 0">ضع سطح العارضة داخل الإطار من مسافة 20 إلى 40 سم. انتظر حتى يصبح الإطار أخضر ثم التقط؛ يُحلَّل الغبار على الصورة الملتقطة بدقتها الكاملة.</div>
+      <div class="note" style="margin:8px 0">اقترب حتى يملأ سطح العارضة الإطار كاملاً دون خلفية (20 إلى 40 سم). انتظر حتى يصبح الإطار أخضر ثم التقط؛ يُحلَّل الغبار على الصورة الملتقطة بدقتها الكاملة.</div>
       <button class="btn big" id="lvCapBtn" data-act="liveCap">${ic('cam')} التقاط وتحليل</button><div style="height:8px"></div>
       <div class="g2">${LIVE.canTorch ? `<button class="btn ${LIVE.torch ? 'pri' : ''}" id="lvTorch" data-act="liveTorch">${ic('fire')} الضوء</button>` : ''}<button class="btn" data-act="liveStop">إيقاف الكاميرا</button></div>`;
-    else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على الصورة لتحديد سطح العارضة فقط، دون الجدار أو الأرضية أو الزجاج. التحليل يقتصر على المنطقة المحددة.</p></div>
+    else if(!F.busy && F.pick) h += `<div class="card"><h3>${ic('edit')} حدّد سطح العارضة</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك لتحديد سطح العارضة فقط. أي جزء من الجدار أو الأرضية أو الخلفية داخل الإطار يُحسب كسطح نظيف ويخفض النتيجة.</p></div>
       <div class="shot"><canvas id="roiCv" style="touch-action:none;cursor:crosshair"></canvas></div><div style="height:10px"></div>
       <button class="btn pri big" data-act="roiGo">${ic('search')} تحليل المنطقة المحددة</button><div style="height:8px"></div><button class="btn w" data-act="shoot" data-w="${s}">إعادة التصوير</button>`;
     else if(F.busy) h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ تحليل الصورة…<div class="xs" style="opacity:.7">كشف الحبيبات الدقيقة على السطح</div></div></div>`;
