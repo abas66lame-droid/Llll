@@ -323,6 +323,28 @@ function analyzeDust(px, w, h, sens, opt){
     const ok = size <= maxA && bw <= maxD && bh <= maxD && elong <= 2.6 && peak >= 1.25 && cs / size <= bgC * 1.25 + 18;
     if(ok) parts.push([cx, cy, size, m]); else rej++;
   }
+  // 4ب) استبعاد الأنماط المصطفة: ثقوب السماعات على حواف الأجهزة وأسطر النصوص على الملصقات تظهر حبيبات
+  //     متتالية على خط، أما الغبار فمتفرق عشوائياً. نجمع الحبيبات المتقاربة (مسافة ≤ 3R) ونحذف المجموعة إن
+  //     كانت 4 حبيبات أو أكثر وطولها أكبر من عرضها 4 مرات على الأقل (تحليل المحورين الرئيسيين).
+  if(parts.length > 3 && !opt.keepLines){
+    const L = 3 * R, L2 = L * L, n = parts.length, lab = new Int32Array(n).fill(-1), gw = Math.ceil(w / L) + 2, G = new Map();
+    parts.forEach((p, i) => { const k = ((p[1] / L) | 0) * gw + ((p[0] / L) | 0); if(!G.has(k)) G.set(k, []); G.get(k).push(i); });
+    let nc = 0; const st = [];
+    for(let i = 0; i < n; i++){
+      if(lab[i] >= 0) continue; lab[i] = nc; st.push(i);
+      while(st.length){ const j = st.pop(), p = parts[j], gx = (p[0] / L) | 0, gy = (p[1] / L) | 0;
+        for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++){ const a = G.get((gy + dy) * gw + gx + dx); if(!a) continue;
+          for(const k of a) if(lab[k] < 0){ const ex = parts[k][0] - p[0], ey = parts[k][1] - p[1]; if(ex * ex + ey * ey <= L2){ lab[k] = nc; st.push(k); } } } }
+      nc++;
+    }
+    const grp = Array.from({ length: nc }, () => []); parts.forEach((p, i) => grp[lab[i]].push(p));
+    const drop = new Uint8Array(nc);
+    grp.forEach((g, gi) => { if(g.length < 4) return; let mx = 0, my = 0; g.forEach(p => { mx += p[0]; my += p[1]; }); mx /= g.length; my /= g.length;
+      let sxx = 0, syy = 0, sxy = 0; g.forEach(p => { const a = p[0] - mx, b = p[1] - my; sxx += a * a; syy += b * b; sxy += a * b; });
+      const tr = sxx + syy, dd = Math.sqrt(Math.max(0, tr * tr / 4 - (sxx * syy - sxy * sxy))), l1 = tr / 2 + dd, l2 = Math.max(1e-6, tr / 2 - dd);
+      if(l1 / l2 >= 16) drop[gi] = 1; });
+    const keep = parts.filter((p, i) => !drop[lab[i]]); rej += parts.length - keep.length; parts.length = 0; keep.forEach(p => parts.push(p));
+  }
   // 5) المؤشر: كثافة الحبيبات لكل 10,000 بكسل صالح، محسوبة على شبكة 8×N.
   //    الكثافة الممثِّلة = المئين 70 لكثافات الخلايا (أو المتوسط إن كان أعلى)، فلا تُخفّض الخلفية
   //    الملساء أو الضبابية داخل المنطقة المحددة النتيجةَ كما يفعل المتوسط العام.
@@ -439,7 +461,7 @@ function drawOverlay(cv, src, an, detail, rect){
 
 /* ================= الحالة ================= */
 const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
-  flow: 'single', autoTorch: true, alignMin: 0.55, open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
+  flow: 'single', autoTorch: true, alignMin: 0.55, guideK: 4, open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
 /* فئات العناصر: كل فئة = جولات يومية بنوافذ زمنية. السطر: «تنظيف|فحص HH:MM-HH:MM الوصف».
    extra = يُسمح بتنظيف إضافي (بنقاط مخفّضة) بعد إنجاز جولات اليوم. تُعدَّل من الإعدادات. */
 const CATS_DEF = {
@@ -1335,7 +1357,10 @@ function refKeepInputs(){ (F.ref.steps || []).forEach((st, i) => { const l = $('
 async function loadGuide(){
   const f0 = F, z = zoneById(F.zoneId), r = await RefStore.get(z.id);
   if(F !== f0) return;
-  const steps = r && r.steps ? r.steps.filter(x => !x.el || x.el === '*' || x.el === F.el) : [];
+  let steps = r && r.steps ? r.steps.filter(x => !x.el || x.el === '*' || x.el === F.el) : [];
+  // عيّنة عشوائية من الرفوف في كل عملية (مثلاً 4 من 18): الموظف لا يعرف أيها سيُطلب فينظّفها كلها
+  const k = +cfg('guideK') || 0;
+  if(k > 0 && steps.length > k){ const idx = steps.map((x, i) => [Math.random(), i]).sort((a, b) => a[0] - b[0]).slice(0, k).map(x => x[1]).sort((a, b) => a - b); steps = idx.map(i => steps[i]); }
   if(!steps.length){ F.step = 'after'; rf(); return; }
   try{ F.guide = { r, steps, i: 0, res: [], ok: 0, wimg: await loadDataImg(r.whole), imgs: await Promise.all(steps.map(x => loadDataImg(x.img))) }; }
   catch(e){ F.step = 'after'; rf(); return; }
@@ -1808,6 +1833,7 @@ function aSet(){
     <div class="tg"><div><b>عيّنة الفحص الميداني اليومية</b><div class="sm mut">نسبة مواقع الشركة التي تُختار عشوائياً للمفتش العام كل يوم.</div></div>${opt('inspRate', [5, 10, 15, 20, 25, 30], '%')}</div>
     <div class="tg"><div><b>خصم «غير مطابق» في الفحص الميداني</b><div class="sm mut">يُخصم ممن نظّف الموقع ذلك اليوم.</div></div>${opt('inspPen', [0, 5, 10, 15, 20, 30], ' نقطة')}</div>
     <div class="tg"><div><b>إلزام الفحص المباشر</b><div class="sm mut">يمنع رفع صور من المعرض حيث تتوفر الكاميرا المباشرة (يتطلب فتح التطبيق عبر https).</div></div>${sw('requireLive')}</div>
+    <div class="tg"><div><b>الرفوف المطلوبة في كل عملية</b><div class="sm mut">في المواقع ذات الصورة المرجعية: يُطلب تصوير هذا العدد من الرفوف مختارةً عشوائياً في كل مرة، فلا يعرف الموظف أيها سيُطلب.</div></div><select onchange="setCfg('guideK',this.value)" style="width:120px">${[[0, 'كل الرفوف'], [2, '2'], [3, '3'], [4, '4'], [6, '6']].map(([v, n]) => `<option value="${v}" ${+cfg('guideK') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="tg"><div><b>تشغيل الضوء تلقائياً</b><div class="sm mut">عند فتح الكاميرا المباشرة يُشغَّل فلاش الهاتف وحده حيث يسمح الجهاز (أندرويد). متصفحات iPhone لا تسمح بذلك.</div></div>${sw('autoTorch')}</div>
     <div class="tg"><div><b>الأصوات والاهتزاز</b></div>${sw('sound')}</div></div>
     <div class="card"><h3>فئات العناصر وجولاتها اليومية</h3><p class="sm mut" style="margin-top:0">كل سطر جولة: «تنظيف» أو «فحص»، ثم الوقت من–إلى، ثم وصف اختياري. مثال: <code>فحص 12:00-15:00 فحص منتصف اليوم</code></p>
