@@ -4493,6 +4493,10 @@ html body #hallContentWrap > .dept-card h3:not(#_a):not(#_b):not(#_c):not(#_d):n
 html body #hallContentWrap > .dept-card h3:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::before{content:""!important;display:block!important;flex:none;width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 4px var(--amTint2);position:static!important;opacity:1!important}
 html body #hallContentWrap > .dept-card > div:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::after{content:"‹";color:var(--ui-muted);font-size:16px;line-height:1}
 
+/* ═══════ تعديلات بطلب المستخدم ═══════ */
+/* أسماء الأقسام في واجهة مدير المبيعات: اللون الطاغي للهوية بدل الأزرق/البنفسجي */
+html body #appScreen .neoCompactDept h3:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){color:var(--accent)!important;-webkit-text-fill-color:currentColor!important;background:none!important}
+
 </style>
 </head>
 <body>
@@ -6325,11 +6329,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 function neoJobTitle(profile){
   /* الجدول داخل الدالة عمداً: خارجها كان أي تعثّر سابق يُبقيه غير مهيّأ
      فتسقط الدالة كلها — والمسمّى يجب أن يظهر مهما حدث. */
-  const AR = { owner:"مبرمج", shift:"مسؤول شفت", hall:"مسؤول صالة", sales:"مسؤول مبيعات",
+  const AR = { owner:"مبرمج", shift:"مسؤول شفت", hall:"مشرف صالة", sales:"مسؤول مبيعات",
     driver:"موظف توصيل", fleet:"مسؤول التوصيل", clean:"مسؤول التنظيف العام",
     stock:"مسؤول الجرد العام" };
   const t = profile && profile.job_title;
-  if (t && String(t).trim()) return String(t).trim();
+  if (t && String(t).trim()) return String(t).trim().replace(/^مسؤول (ال)?صالة$/, 'مشرف صالة');
   if (profile && profile.role === 'owner') return 'مبرمج';
   return (profile && (AR[profile.role] || profile.role)) || '';
 }
@@ -10424,7 +10428,7 @@ async function renderHallView(profile){
   const el = document.getElementById('hallView');
   el.innerHTML = `
     <div class="card">
-      <h2>🏬 مسؤول الصالة — كل الأقسام</h2>
+      <h2>مشرف الصالة — كل الأقسام</h2>
       <div class="tabs">
         <div class="tab" id="hallTabGaps" onclick="switchHallTab('gaps')">📋 نواقص تدقيقي</div>
         <div class="tab" id="hallTabMissing" onclick="switchHallTab('missing')">🔍 مراقبة النواقص</div>
@@ -12231,7 +12235,7 @@ window.neoHallMarkDirty = function(){
     b.onclick = () => neoSaveHallPct();
     document.body.appendChild(b);
   }
-  b.innerHTML = '<span style="font-size:14px;">💾</span><span>احفظ تدقيقك</span>'
+  b.innerHTML = '<span>احفظ تدقيقك</span>'
     + '<span style="width:7px;height:7px;border-radius:50%;background:#fff;opacity:.85;animation:neoDotPulse 1.6s ease-in-out infinite;"></span>';
   clearTimeout(neoHallAutoT);
   neoHallAutoT = setTimeout(() => { if (neoHallDirty) neoSaveHallPct(true); }, 45000);
@@ -15184,7 +15188,7 @@ async function renderSalesManagerHallDetail(profileId,dateArg){
   const selectedDate=(typeof dateArg==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(dateArg))
     ?dateArg:(salesSelectedDate||todayStr());
   const page=neoSalesPageBegin('overview',`<div class="card neoHallPersonalCard">
-    <h2 id="hmProgressName">🏬 مسؤول الصالة</h2>
+    <h2 id="hmProgressName">🏬 مشرف الصالة</h2>
     <div class="neoHallPersonalDate">تدقيق يوم <b>${neoHtml(selectedDate)}</b></div>
     <div id="hmProgressAudit">${neoLoadPlaceholder('نسبة التدقيق العشوائي')}</div>
     <div id="hmProfileActions" style="margin-top:12px;"></div>
@@ -15206,8 +15210,8 @@ async function renderSalesManagerHallDetail(profileId,dateArg){
     if(dr.error)throw dr.error;
     const profile=pr.data||{},depts=dr.data||[];
     const deptIds=profile.department_ids?.length?profile.department_ids:depts.map(d=>d.id);
-    page.set('hmProgressName','🏬 '+neoHtml(profile.name||'مسؤول الصالة'));
-    const name=profile.name||'مسؤول الصالة';
+    page.set('hmProgressName','🏬 '+neoHtml(profile.name||'مشرف الصالة'));
+    const name=profile.name||'مشرف الصالة';
     page.set('hmProfileActions',`<details class="neoHallPersonalOptions">
       <summary>خيارات الحساب</summary>
       <div class="neoDetailActions">
@@ -15345,7 +15349,7 @@ async function neoRenderSalesDetailProgressively(deptId, profileId, auditMode, d
   const back = auditMode || profileId
     ? `renderSalesManagerHallDetail(${neoJsArg(profileId)})`
     : `renderSalesDeptChooser(${neoJsArg(deptId)})`;
-  const heading = auditMode ? 'نواقص تدقيق مسؤول الصالة' : 'النواقص';
+  const heading = auditMode ? 'نواقص تدقيق مشرف الصالة' : 'النواقص';
   const configs = [
     {key:'loc', label:'📍 المواقع', ref:'locations_ref', table:'locations', log:'daily_logs', fk:'location_id', seed:'_loc'},
     {key:'staff', label:'👤 الموظفين', ref:'staff_ref', table:'staff', log:'staff_evaluations', fk:'staff_id', seed:'_staff'},
@@ -15466,7 +15470,7 @@ async function neoRenderSalesDetailProgressively(deptId, profileId, auditMode, d
           }
           return `<tr><td class="code-cell">${esc(t.name)}</td><td>${neoCellMark(state)}${notes.length ? '<div style="color:#ffb84d;font-size:11px;">' + notes.join('<br>') + '</div>' : ''}</td></tr>`;
         }).join('');
-        result = {missing:count,html:items.length ? `<div class="table-wrap roomy-table"><table><tr><th>المهمة</th><th>${auditMode ? 'راجعها مسؤول الصالة؟' : 'الحالة'}</th></tr>${rows}</table></div>` : ''};
+        result = {missing:count,html:items.length ? `<div class="table-wrap roomy-table"><table><tr><th>المهمة</th><th>${auditMode ? 'راجعها مشرف الصالة؟' : 'الحالة'}</th></tr>${rows}</table></div>` : ''};
       } else {
         const map = merge(logsResult.data,cfg.fk,defs,cfg.key === 'staff');
         if (cfg.key === 'staff' && !auditMode) flattenStaffExtraEvaluations(map);
@@ -15501,7 +15505,7 @@ async function renderSalesHallAuditDetail(deptId, profileId, dateArg){
 
 async function renderEditManagerForm(profileId, role){
   if (window.__neoViewer){ neoViewerDenied(); return; }
-  const roleLabel = role === 'shift' ? 'مسؤول شفت' : 'مسؤول صالة';
+  const roleLabel = role === 'shift' ? 'مسؤول شفت' : 'مشرف صالة';
   const page = neoSalesPageBegin('overview', `
     <div class="card">
         <h2 style="margin-top:10px;">✏️ إعادة تعيين حساب ${roleLabel}</h2>
@@ -18946,7 +18950,7 @@ const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).c
       ]);
       if(pr.error)throw pr.error;if(dp.error)throw dp.error;
       const depts = dp.data || [];
-      const R = { shift:'مسؤول شفت', hall:'مسؤول صالة', sales:'مدير مبيعات' };
+      const R = { shift:'مسؤول شفت', hall:'مشرف صالة', sales:'مدير مبيعات' };
       BOX().innerHTML = (pr.data||[]).map(p => {
         const cur = (p.department_ids||[])[0] || '';
         const roleOptions=Object.assign({},R);if(p.role&&!roleOptions[p.role])roleOptions[p.role]=p.job_title||p.role;
@@ -31517,6 +31521,25 @@ window.neoStreakZero = async function(id,kind){
   }
   new MutationObserver(function(){ if (!q) q = requestAnimationFrame(sync); }).observe(document.body, { childList: true, subtree: true });
   sync();
+})();
+
+/* عرض فقط: إزالة الإيموجي الزخرفية من واجهة مشرف الصالة (#hallView ونافذة الترتيب).
+   تُستثنى العلامات الوظيفية: ✓ ✗ ✕ ☰ والأسهم. لا يمس قيم الحقول ولا أي بيانات. */
+(function(){
+  var RE = /(?:[\u{2190}-\u{21FF}\u{2B05}-\u{2B07}]\uFE0F|[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2B55}\u{231A}-\u{23FF}](?<![✓✔✗✕☰]))️?⃣?\s?/gu;
+  var KEEP = /^[✓✔✗✕☰]$/;
+  function clean(root){
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), n, list = [];
+    while ((n = w.nextNode())) list.push(n);
+    list.forEach(function(t){
+      var v = t.nodeValue, nv = v.replace(RE, function(m){ return KEEP.test(m.trim().charAt(0)) ? m : ''; });
+      if (nv !== v) t.nodeValue = nv.replace(/^\s+$/, v.trim() === '' ? v : '');
+    });
+  }
+  var q = 0;
+  function run(){ q = 0; ['hallView', 'poOv'].forEach(function(id){ var el = document.getElementById(id); if (el) clean(el); }); }
+  new MutationObserver(function(){ if (!q) q = requestAnimationFrame(run); }).observe(document.body, { childList: true, subtree: true });
+  run();
 })();
 
 </script>
