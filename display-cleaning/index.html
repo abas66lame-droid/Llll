@@ -845,7 +845,7 @@ function missions(entries){
   ];
 }
 function mySections(){ const m = me(); return m ? [m.section].concat(m.extra || []).filter(Boolean) : []; }
-function sectionsAll(){ return [...new Set(S.zones.map(z => z.section).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')); }
+function sectionsAll(){ return [...new Set(S.zones.map(z => z.section).concat(typeof COMPANY_SEED !== 'undefined' ? COMPANY_SEED.zones.map(z => z[2]) : []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')); }
 function branchesAll(){ return [...new Set(S.zones.map(z => z.branch).filter(Boolean).concat(S.staff.map(s => s.branch).filter(Boolean)))].sort((a, b) => a.localeCompare(b, 'ar')); }
 function inScope(z){ if(!S.admin || S.admin.all) return true; return S.admin.sections.includes(z.section); }
 async function hashPin(id, pin){
@@ -1874,17 +1874,20 @@ async function seedCompany(){
   S.importing = false; closeModal();
   toast(`أُضيف ${zn} موقع و${sn} موظف${zu ? ' وحُدّث ' + zu + ' موقع' : ''}${ss ? ' وتُجوهل ' + ss + ' موظف موجود' : ''}.`, 5000);
 }
-// أول تشغيل محلي بلا بيانات: تُحمَّل الأقسام الجاهزة مباشرة
+// الأقسام الجاهزة مثبّتة دائماً: عند كل تشغيل محلي يُضاف الناقص منها (برقمه) دون سؤال، ولا يُمسّ الموجود وتعديلاته
 function seedLocalIfEmpty(){
-  const L = Store.local; if(!L || Object.keys(L.zones || {}).length || Object.keys(L.staff || {}).length) return;
-  const R = seedRecords(); L.zones = {}; L.staff = {};
-  R.zones.forEach(z => { L.zones[rid()] = z; }); R.staff.forEach(p => { L.staff[rid()] = p; });
-  Store.persist();
+  const L = Store.local; if(!L || window.__noSeed) return; L.zones = L.zones || {}; L.staff = L.staff || {};
+  const R = seedRecords(), codes = new Set(R.zones.map(z => z.num)); let ch = false;
+  for(const [id, z] of Object.entries(L.zones)) if(/^[1-6]0\d\d$/.test(String(z.num)) && codes.has(z.name) && !z.lastClean){ delete L.zones[id]; ch = true; }
+  const zn = new Set(Object.values(L.zones).map(z => String(z.num || z.code || '').toLowerCase())), sn = new Set(Object.values(L.staff).map(p => String(p.num)));
+  R.zones.forEach(z => { if(!zn.has(z.num.toLowerCase())){ L.zones[rid()] = z; ch = true; } });
+  R.staff.forEach(p => { if(!sn.has(p.num)){ L.staff[rid()] = p; ch = true; } });
+  if(ch) Store.persist();
 }
 
 function aZones(){
   const f = S.af, list = filterZones(S.zones.filter(inScope), f, false);
-  let h = S.admin.all ? `<div class="g2"><button class="btn pri" data-act="zoneForm">${ic('plus')} موقع جديد</button><button class="btn" data-act="importZones">${ic('up')} استيراد جماعي</button></div><button class="btn w" style="margin-top:8px" data-act="seedCompany">${ic('up')} أقسام الشركة الجاهزة (${new Set(COMPANY_SEED.zones.map(z => z[2])).size} أقسام، ${COMPANY_SEED.zones.length} موقع، ${COMPANY_SEED.staff.length} موظف)</button>` : '';
+  let h = S.admin.all ? `<div class="g2"><button class="btn pri" data-act="zoneForm">${ic('plus')} موقع جديد</button><button class="btn" data-act="importZones">${ic('up')} استيراد جماعي</button></div>` : '';
   h += filterBar(f, 'af') + `<div class="sm mut">${list.length} موقع</div>`;
   h += `<div class="list">${list.slice(0, f.lim).map(z => zoneRow(z, 'aZone')).join('') || '<div class="empty">لا توجد مواقع.</div>'}</div>${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="af">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
   return h;
@@ -1973,9 +1976,9 @@ function staffForm(p){
   const secs = sectionsAll(), brs = branchesAll();
   return `<h2>${p.id ? 'بيانات موظف' : 'موظف جديد'}</h2>
     <div class="g2"><div class="fld"><label>الرقم الوظيفي</label><input id="pN" inputmode="numeric" value="${esc(p.num)}"></div><div class="fld"><label>الاسم</label><input id="pM" value="${esc(p.name)}"></div></div>
-    <div class="g2"><div class="fld"><label>القسم</label><input id="pS" list="dlS2" value="${esc(p.section)}"><datalist id="dlS2">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+    <div class="g2"><div class="fld"><label>القسم</label><select id="pS"><option value="">— اختر القسم —</option>${[...new Set(secs.concat(p.section ? [p.section] : []))].map(s => `<option${s === p.section ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
     <div class="fld"><label>الفرع</label><input id="pB" list="dlB2" value="${esc(p.branch || '')}"><datalist id="dlB2">${brs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div></div>
-    <div class="fld"><label>أقسام إضافية (للمدقق: القسم الثاني الذي يدققه، مفصولة بفاصلة)</label><input id="pX" value="${esc((p.extra || []).join('، '))}"></div>
+    <div class="fld"><label>أقسام إضافية (للمدقق: القسم الثاني الذي يدققه)</label><div id="pX" class="row" style="flex-wrap:wrap;gap:6px 14px">${[...new Set(secs.concat(p.extra || []))].map(s => `<label class="sm" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" style="width:auto" data-act="noop" value="${esc(s)}"${(p.extra || []).includes(s) ? ' checked' : ''}> ${esc(s)}</label>`).join('')}</div></div>
     <div class="g2"><div class="fld"><label>الدور</label><select id="pR"><option value="staff" ${!['sup', 'admin', 'insp'].includes(p.role) ? 'selected' : ''}>موظف مبيعات</option><option value="sup" ${p.role === 'sup' ? 'selected' : ''}>مدقق (أقسامه)</option><option value="insp" ${p.role === 'insp' ? 'selected' : ''}>مفتش عام (عيّنة يومية)</option>${S.mode === 'firebase' ? `<option value="admin" ${p.role === 'admin' ? 'selected' : ''}>مدير</option>` : ''}</select></div>
     <div class="fld"><label>الحالة</label><select id="pA"><option value="1" ${p.active !== false ? 'selected' : ''}>فعّال</option><option value="0" ${p.active === false ? 'selected' : ''}>موقوف</option></select></div></div>
     ${p.id ? `<button class="btn w" data-act="resetPin" data-id="${esc(p.id)}">${ic('shield')} إعادة تعيين الرمز السري</button>` : '<div class="sm mut">يعيّن الموظف رمزه السري بنفسه عند أول دخول.</div>'}
@@ -2212,7 +2215,8 @@ const A = {
     if(await Store.set('zones', d.id || rid(), data)){ closeModal(); toast('تم الحفظ.'); }
   },
   zoneDel(d){ if(!d.ok) return confirmBox('حذف هذا الموقع نهائياً؟', 'zoneDel', d.id); Store.del('zones', d.id).then(closeModal); },
-  seedCompany(d){ if(!d.ok) return confirmBox('إضافة أقسام الشركة الجاهزة: ' + [...new Set(COMPANY_SEED.zones.map(z => z[2]))].join('، ') + '؟<br><span class="sm mut">' + COMPANY_SEED.zones.length + ' موقع و' + COMPANY_SEED.staff.length + ' موظف. الموجود برقمه لا يُكرَّر.</span>', 'seedCompany'); seedCompany(); },
+  noop(){},
+  seedCompany(d){ if(false) return confirmBox('إضافة أقسام الشركة الجاهزة: ' + [...new Set(COMPANY_SEED.zones.map(z => z[2]))].join('، ') + '؟<br><span class="sm mut">' + COMPANY_SEED.zones.length + ' موقع و' + COMPANY_SEED.staff.length + ' موظف. الموجود برقمه لا يُكرَّر.</span>', 'seedCompany'); seedCompany(); },
   importZones(){ openModal(`<h2>استيراد المواقع</h2><p class="sm mut" style="margin-top:0">سطر لكل موقع بالترتيب: <b>رقم الموقع، الاسم، القسم، الفرع، العناصر</b>. العناصر بصيغة «زجاج:G + رفوف:B + أجهزة:B»، وإن تُركت فارغة يُعدّ الموقع عنصراً واحداً من الفئة B. الموقع الموجود برقمه يُحدَّث. يمكن اللصق مباشرة من إكسل.</p>
     <textarea id="imp" style="height:220px" placeholder="101، واجهة آبل، الهواتف، فرع المنصور، زجاج:G + رفوف:B + أجهزة:B&#10;102، ثلاجات LG، الأجهزة المنزلية، فرع المنصور، رفوف:C"></textarea><div id="impP"></div><button class="btn pri w" style="margin-top:10px" data-act="doImportZones">استيراد</button>`); },
   async doImportZones(){
@@ -2233,7 +2237,7 @@ const A = {
     const num = $('#pN').value.trim(), name = $('#pM').value.trim(), section = $('#pS').value.trim(), branch = $('#pB').value.trim();
     if(!num || !name || !section) return toast('الرقم والاسم والقسم مطلوبة.');
     if(S.staff.some(s => String(s.num) === num && s.id !== d.id)) return toast('الرقم الوظيفي مستخدم لموظف آخر.');
-    const old = d.id ? staffById(d.id) : null, data = Object.assign({}, old || { created: Date.now(), st: {} }, { num, name, section, branch, extra: $('#pX').value.split(/,|،/).map(x => x.trim()).filter(Boolean), role: $('#pR').value, active: $('#pA').value === '1' }); delete data.id;
+    const old = d.id ? staffById(d.id) : null, data = Object.assign({}, old || { created: Date.now(), st: {} }, { num, name, section, branch, extra: [...document.querySelectorAll('#pX input:checked')].map(x => x.value).filter(x => x !== section), role: $('#pR').value, active: $('#pA').value === '1' }); delete data.id;
     if(await Store.set('staff', d.id || rid(), data)){ closeModal(); toast('تم الحفظ.'); }
   },
   staffDel(d){ if(!d.ok) return confirmBox('حذف هذا الموظف؟ يُفضّل إيقافه بدلاً من الحذف للحفاظ على سجلاته.', 'staffDel', d.id); Store.del('staff', d.id).then(closeModal); },
