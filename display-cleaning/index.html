@@ -168,9 +168,14 @@ const HOUR = 3600e3, DAY = 864e5;
 const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
 function toast(m, ms = 2800){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
 const pad = n => String(n).padStart(2, '0');
-const ymOf = (ts = Date.now()) => { const d = new Date(ts); return d.getFullYear() + pad(d.getMonth() + 1); };
-const dOf = (ts = Date.now()) => String(new Date(ts).getDate());
-const dayKey = (ts = Date.now()) => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+// يوم العمل لا ينتهي عند منتصف الليل: الشركة تعمل مثلاً 07:45 حتى 03:00 فجراً، فيُعدّ ما بعد منتصف الليل
+// من اليوم نفسه. «فاصل اليوم» = منتصف المسافة بين الإغلاق والافتتاح (05:22 في هذا المثال).
+const tmin = t => { const m = String(t || '').match(/(\d{1,2})[:.](\d{2})/); return m ? +m[1] * 60 + +m[2] : 0; };
+function cutMin(){ try{ const o = tmin(cfg('open')), c = tmin(cfg('close')); return c < o ? Math.floor((c + o) / 2) : 0; }catch(e){ return 0; } }
+const bizDate = (ts = Date.now()) => new Date(ts - cutMin() * 60000);
+const ymOf = (ts = Date.now()) => { const d = bizDate(ts); return d.getFullYear() + pad(d.getMonth() + 1); };
+const dOf = (ts = Date.now()) => String(bizDate(ts).getDate());
+const dayKey = (ts = Date.now()) => { const d = bizDate(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const MONTHS = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
 function ago(ts){
   if(!ts) return 'لم تُنظَّف بعد';
@@ -427,14 +432,14 @@ function drawOverlay(cv, src, an, detail, rect){
 
 /* ================= الحالة ================= */
 const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
-  flow: 'single', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
+  flow: 'single', open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
 /* فئات العناصر: كل فئة = جولات يومية بنوافذ زمنية. السطر: «تنظيف|فحص HH:MM-HH:MM الوصف».
    extra = يُسمح بتنظيف إضافي (بنقاط مخفّضة) بعد إنجاز جولات اليوم. تُعدَّل من الإعدادات. */
 const CATS_DEF = {
-  A: { name: 'A — كثيرة الاستخدام', rules: 'تنظيف 08:00-11:00 تنظيف صباحي\nفحص 12:00-15:00 فحص منتصف اليوم\nفحص 18:00-21:00 فحص قبل نهاية الدوام', extra: true },
-  B: { name: 'B — مرة يومياً ويُسمح بالإضافي', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: true },
-  C: { name: 'C — مرة يومياً فقط', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: false },
-  G: { name: 'G — كل ساعتين (مثل الزجاج)', rules: 'تنظيف 09:00-11:00\nتنظيف 11:00-13:00\nتنظيف 13:00-15:00\nتنظيف 15:00-17:00\nتنظيف 17:00-19:00\nتنظيف 19:00-21:00', extra: false }
+  A: { name: 'A — كثيرة الاستخدام', rules: 'تنظيف 07:45-11:00 تنظيف صباحي\nفحص 14:00-17:00 فحص منتصف اليوم\nفحص 00:00-03:00 فحص قبل الإغلاق', extra: true },
+  B: { name: 'B — مرة يومياً ويُسمح بالإضافي', rules: 'تنظيف 07:45-03:00 تنظيف يومي', extra: true },
+  C: { name: 'C — مرة يومياً فقط', rules: 'تنظيف 07:45-03:00 تنظيف يومي', extra: false },
+  G: { name: 'G — كل ساعتين (مثل الزجاج)', rules: 'تنظيف 08:00-10:00\nتنظيف 10:00-12:00\nتنظيف 12:00-14:00\nتنظيف 14:00-16:00\nتنظيف 16:00-18:00\nتنظيف 18:00-20:00\nتنظيف 20:00-22:00\nتنظيف 22:00-00:00\nتنظيف 00:00-02:00\nتنظيف 02:00-03:00', extra: false }
 };
 const cats = () => Object.assign({}, CATS_DEF, S.config.cats || {});
 const S = {
@@ -646,14 +651,16 @@ const staffById = id => S.staff.find(s => s.id === id);
 const me = () => staffById(S.me);
 const mySum = () => S.sums.find(s => s.staff === S.me) || null;
 /* ----- المواقع والعناصر والجولات ----- */
-const hm = m => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+const hm = m => pad(Math.floor((m % 1440) / 60)) + ':' + pad(m % 60);
+// الدقائق تُحسب من منتصف ليل «تاريخ يوم العمل»؛ ما قبل فاصل اليوم (مثل 01:00) يُعدّ بعد منتصف الليل (+1440)
+function spanMin(a, b){ const c = cutMin(); let f = tmin(a), to = tmin(b); if(f < c) f += 1440; if(to < c || to <= f) to += 1440; return to > f ? [f, to] : null; }
 const _rc = {};
 function parseRounds(txt){
-  txt = String(txt || ''); if(_rc[txt]) return _rc[txt];
+  txt = String(txt || ''); const key = cutMin() + '|' + txt; if(_rc[key]) return _rc[key];
   const out = [];
-  txt.split(/\n/).forEach(l => { const m = l.trim().match(/^(تنظيف|فحص)\s+(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})\s*(.*)$/);
-    if(m){ const f = +m[2] * 60 + +m[3], to = +m[4] * 60 + +m[5]; if(to > f) out.push({ t: m[1] === 'فحص' ? 'k' : 'c', f, to, label: m[6].trim() }); } });
-  return _rc[txt] = out;
+  txt.split(/\n/).forEach(l => { const m = l.trim().match(/^(تنظيف|فحص)\s+(\d{1,2}[:.]\d{2})\s*[-–]\s*(\d{1,2}[:.]\d{2})\s*(.*)$/);
+    const w = m && spanMin(m[2], m[3]); if(w) out.push({ t: m[1] === 'فحص' ? 'k' : 'c', f: w[0], to: w[1], label: m[4].trim() }); });
+  return _rc[key] = out;
 }
 const catOf = c => cats()[c] || cats().B;
 const roundsOf = el => parseRounds(catOf(el.c).rules);
@@ -669,11 +676,13 @@ function parseEls(txt){
   return out;
 }
 const elsText = els => els.map(e => e.k + ':' + e.c).join('، ');
-const dayStart = (ts = Date.now()) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// bizMid = منتصف ليل تاريخ يوم العمل (أساس دقائق الجولات)، dayStart = بداية يوم العمل الفعلية (فاصل اليوم)
+const bizMid = (ts = Date.now()) => { const d = bizDate(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const dayStart = (ts = Date.now()) => bizMid(ts) + cutMin() * 60000;
 // سجل عمليات اليوم لكل عنصر: z.ops[عنصر] = [ts للتنظيف، -ts للفحص]
 function elOps(z, k){ const t0 = dayStart(); return (((z.ops || {})[k]) || []).filter(x => Math.abs(x) >= t0); }
 function roundSt(z, el, r){
-  const t0 = dayStart(), from = t0 + r.f * 60000, to = t0 + r.to * 60000, now = Date.now();
+  const t0 = bizMid(), from = t0 + r.f * 60000, to = t0 + r.to * 60000, now = Date.now();
   const hit = elOps(z, el.k).some(x => { const ts = Math.abs(x); return ts >= from && ts < to && (r.t === 'k' || x > 0); });
   return hit ? 'done' : now < from ? 'soon' : now < to ? 'now' : 'late';
 }
@@ -693,21 +702,42 @@ function planRows(p){ return (((p === undefined ? S.plan : p) || {}).rows || [])
 // مهام الموظف اليوم: من الجدول (حسب يوم الأسبوع) + مواقعه الإضافية لهذا الشهر
 function tasksFor(staff){
   if(!staff) return [];
-  const dow = String(new Date().getDay()), map = new Map();
+  const dow = String(bizDate().getDay()), map = new Map();
   const add = (z, ek, src) => zEls(z).forEach(el => { if(ek !== '*' && el.k !== ek) return; const key = z.id + '|' + el.k; if(!map.has(key) || src === 'plan') map.set(key, { z, el, src }); });
   planRows().forEach(r => { if(String(r.n) === String(staff.num) && (!r.d || r.d.includes(dow))){ const z = zoneByNum(r.l); if(z) add(z, r.e, 'plan'); } });
   ((S.xtra && S.xtra.z) || []).forEach(x => { const [zid, ek] = String(x).split('|'); const z = zoneById(zid); if(z) add(z, ek || '*', 'extra'); });
   return [...map.values()];
 }
-function taskRounds(list){
-  const out = [], ord = { late: 0, now: 1, soon: 2, done: 3 };
-  list.forEach(t => roundsOf(t.el).forEach((r, i) => out.push(Object.assign({ r, i, st: roundSt(t.z, t.el, r) }, t))));
-  return out.sort((a, b) => ord[a.st] - ord[b.st] || a.r.f - b.r.f);
+/* ----- دوام الموظفين: يختلف من موظف لآخر ومن يوم لآخر -----
+   plan.shifts = ['رقم الموظف|w (أيام أسبوع) أو d (أيام الشهر)|المواصفة|من|إلى'] ؛ «من» = off تعني إجازة.
+   الأولوية: تاريخ محدد ثم يوم أسبوع مسمّى ثم «يومي». الموظف بلا أي قاعدة = كل ساعات العمل. */
+function shiftRows(p){ return (((p === undefined ? S.plan : p) || {}).shifts || []).map(r => { const [n, k, sp, f, to] = String(r).split('|'); return { n, k, sp: sp || '', f, to }; }); }
+function shiftsFor(num, ts = Date.now(), p){
+  const R = shiftRows(p).filter(r => String(r.n) === String(num)); if(!R.length) return null;
+  const d = bizDate(ts), dom = String(d.getDate()), dow = String(d.getDay());
+  // الأولوية: تاريخ محدد ← يوم أسبوع مسمّى ← «يومي»
+  let M = R.filter(r => r.k === 'd' && r.sp.split(',').includes(dom));
+  if(!M.length) M = R.filter(r => r.k === 'w' && r.sp && r.sp.includes(dow));
+  if(!M.length) M = R.filter(r => r.k === 'w' && !r.sp);
+  return M.filter(r => r.f !== 'off').map(r => spanMin(r.f, r.to)).filter(Boolean).sort((a, b) => a[0] - b[0]);
+}
+const shiftText = sh => sh == null ? 'كل ساعات العمل' : !sh.length ? 'إجازة' : sh.map(w => hm(w[0]) + '–' + hm(w[1])).join(' + ');
+// جولات الموظف: يُقصّ وقت كل جولة على دوامه؛ الجولة خارج دوامه ليست مهمته. الإنجاز يُحسب للموقع
+// (من نظّفه أولاً داخل وقت الجولة أنجزها للجميع)، أما «متأخرة» فتُحسب بنهاية دوام الموظف لا بنهاية الجولة.
+function taskRounds(list, sh){
+  const out = [], ord = { late: 0, now: 1, soon: 2, done: 3 }, t0 = bizMid(), now = Date.now();
+  list.forEach(t => roundsOf(t.el).forEach((r, i) => {
+    let f = r.f, to = r.to;
+    if(sh){ const ov = sh.map(w => [Math.max(f, w[0]), Math.min(to, w[1])]).filter(w => w[1] > w[0]); if(!ov.length) return; f = Math.min(...ov.map(w => w[0])); to = Math.max(...ov.map(w => w[1])); }
+    let st = roundSt(t.z, t.el, r); if(st !== 'done') st = now < t0 + f * 60000 ? 'soon' : now < t0 + to * 60000 ? 'now' : 'late';
+    out.push(Object.assign({ r, i, st, ef: f, et: to }, t));
+  }));
+  return out.sort((a, b) => ord[a.st] - ord[b.st] || a.ef - b.ef);
 }
 const hasPlan = () => planRows().length > 0;
 function levelOf(p){ let i = 0; LEVELS.forEach((l, k) => { if(p >= l[0]) i = k; }); const n = LEVELS[i + 1]; return { i, name: LEVELS[i][1], next: n ? n[0] : null, nextName: n ? n[1] : '', prog: n ? (p - LEVELS[i][0]) / (n[0] - LEVELS[i][0]) : 1 }; }
 function streakNow(st){ if(!st || !st.lastDay) return 0; const y = dayKey(Date.now() - DAY); return st.lastDay === dayKey() || st.lastDay === y ? (st.streak || 0) : 0; }
-function myTodayEntries(){ const t0 = new Date(); t0.setHours(0, 0, 0, 0); return ((S.myAct && S.myAct.e) || []).filter(e => e[0] >= t0.getTime()); }
+function myTodayEntries(){ const t0 = dayStart(); return ((S.myAct && S.myAct.e) || []).filter(e => e[0] >= t0); }
 function missions(entries){
   const c = entries.filter(e => e[2] === 'c');
   return [
@@ -846,8 +876,9 @@ function vHome(){
   const sm = mySum() || {}, st = m.st || {}, lv = levelOf(st.life || 0), stk = streakNow(st), today = myTodayEntries(), ms = missions(today);
   const ranked = S.sums.filter(s => staffById(s.staff) && (staffById(s.staff).section === m.section)).sort((a, b) => (b.pts || 0) - (a.pts || 0));
   const rk = ranked.findIndex(s => s.staff === m.id);
-  const T = taskRounds(tasksFor(m)), nDone = T.filter(t => t.st === 'done').length, nLate = T.filter(t => t.st === 'late').length;
+  const sh = shiftsFor(m.num), T = taskRounds(tasksFor(m), sh), nDone = T.filter(t => t.st === 'done').length, nLate = T.filter(t => t.st === 'late').length;
   let h = `<div class="ttl"><div><h2>مرحباً، ${esc(m.name.split(' ')[0])}</h2><div class="sm mut">${esc(m.section || '')}${m.branch ? ' · ' + esc(m.branch) : ''} · المستوى: ${lv.name}</div></div></div>
+    ${sh ? `<div class="note" style="margin-bottom:10px">${ic('clock', 16)} ${sh.length ? 'دوامك اليوم: <b>' + shiftText(sh) + '</b>. تظهر لك مهام هذه الساعات فقط.' : '<b>إجازة اليوم</b> حسب جدول الدوام.'}</div>` : ''}
     <div class="g4">
       <div class="kpi"><div class="l">مهام اليوم</div><div class="v" style="color:${!T.length ? '' : nLate ? 'var(--da)' : nDone === T.length ? 'var(--ok)' : ''}">${nDone}<span class="sm mut"> / ${T.length}</span></div></div>
       <div class="kpi"><div class="l">نقاط ${MONTHS[new Date().getMonth()]}</div><div class="v">${sm.pts || 0}</div></div>
@@ -860,11 +891,11 @@ function vHome(){
   h += `<div class="ttl"><h3 style="margin:0;font-size:15px">${ic('list')} مهامي اليوم</h3><span class="sp"></span>${T.length ? `<span class="tag ${nLate ? 't-da' : 't-ok'}">${nDone}/${T.length}</span>` : ''}</div>`;
   if(T.length){
     const open = T.filter(t => t.st === 'late' || t.st === 'now'), later = T.filter(t => t.st === 'soon'), done = T.filter(t => t.st === 'done');
-    h += open.length ? `<div class="list">${open.map(taskRow).join('')}</div>` : `<div class="card empty">${later.length ? 'لا مهام مستحقة الآن. المهمة التالية الساعة ' + hm(later[0].r.f) + '.' : 'أنجزت كل مهام اليوم. أحسنت!'}</div>`;
+    h += open.length ? `<div class="list">${open.map(taskRow).join('')}</div>` : `<div class="card empty">${later.length ? 'لا مهام مستحقة الآن. المهمة التالية الساعة ' + hm(later[0].ef) + '.' : 'أنجزت كل مهام اليوم. أحسنت!'}</div>`;
     if(later.length) h += `<details class="card"><summary class="sm"><b>لاحقاً اليوم (${later.length})</b></summary><div class="list" style="margin:8px 0 0">${later.map(taskRow).join('')}</div></details>`;
     if(done.length) h += `<details class="card"><summary class="sm"><b>المنجزة (${done.length})</b></summary><div class="list" style="margin:8px 0 0">${done.map(taskRow).join('')}</div></details>`;
   } else {
-    h += `<div class="card empty">${hasPlan() ? 'لا توجد مواقع مسندة لك اليوم في الجدول.' : 'لم يُرفع جدول التنظيف لهذا الشهر بعد.'} يمكنك إضافة مواقع إضافية أو مسح أي موقع وتنظيفه.</div>`;
+    h += `<div class="card empty">${sh && !sh.length ? 'لا مهام لك اليوم (إجازة).' : hasPlan() ? 'لا توجد مواقع مسندة لك اليوم في الجدول.' : 'لم يُرفع جدول التنظيف لهذا الشهر بعد.'} يمكنك إضافة مواقع إضافية أو مسح أي موقع وتنظيفه.</div>`;
   }
   // مواقعي الإضافية
   const X = (S.xtra && S.xtra.z) || [];
@@ -880,7 +911,7 @@ function taskRow(t){
   const stc = { late: ['متأخرة', 't-da', 'da'], now: ['الآن', 't-wa', 'wa'], soon: ['لاحقاً', 't-inf', 'ok'], done: ['أُنجزت', 't-ok', 'ok'] }[t.st], fl = zoneState(t.z).flagged;
   return `<button class="zr" data-act="doTask" data-id="${esc(t.z.id)}" data-k="${esc(t.el.k)}" data-t="${t.r.t}" data-l="${esc(t.r.label || ((t.r.t === 'k' ? 'فحص ' : 'تنظيف ') + hm(t.r.f) + '–' + hm(t.r.to)))}"><span class="dot d-${fl ? 'da' : stc[2]}"></span>
     <div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between;gap:6px"><span class="nm">${esc(zTitle(t.z))}</span>${fl ? '<span class="tag t-da">بلاغ</span>' : `<span class="tag ${stc[1]}">${stc[0]}</span>`}</div>
-    <div class="xs mut">${esc(t.el.k)} (${esc(t.el.c)}) · ${t.r.t === 'k' ? 'فحص' : 'تنظيف'}${t.r.label ? ': ' + esc(t.r.label) : ''} · ${hm(t.r.f)}–${hm(t.r.to)}${t.src === 'extra' ? ' · إضافي' : ''}</div></div></button>`;
+    <div class="xs mut">${esc(t.el.k)} (${esc(t.el.c)}) · ${t.r.t === 'k' ? 'فحص' : 'تنظيف'}${t.r.label ? ': ' + esc(t.r.label) : ''} · ${hm(t.ef ?? t.r.f)}–${hm(t.et ?? t.r.to)}${t.src === 'extra' ? ' · إضافي' : ''}</div></div></button>`;
 }
 
 /* ----- المفتش العام: عيّنة يومية عشوائية (20% افتراضياً) من كل مواقع الشركة للفحص الميداني ----- */
@@ -1425,6 +1456,7 @@ function aDash(){
     <div class="kpi"><div class="l">بلاغات مفتوحة</div><div class="v">${fl.length}</div></div>
     <div class="kpi"><div class="l">عمليات اليوم / الشهر</div><div class="v">${todayN}<span class="sm mut"> / ${monthN}</span></div></div>
     <div class="kpi"><div class="l">متوسط مؤشر الغبار</div><div class="v">${avgIdx}</div></div>
+    ${shiftRows().length ? `<div class="kpi"><div class="l">على الدوام الآن</div><div class="v">${staffIn.filter(p => { const sh = shiftsFor(p.num), t0 = bizMid(), n = Date.now(); return sh && sh.some(w => n >= t0 + w[0] * 60000 && n < t0 + w[1] * 60000); }).length}</div></div>` : ''}
     <div class="kpi"><div class="l">موظفون نشطون هذا الشهر</div><div class="v">${activeIds.size}<span class="sm mut"> / ${staffIn.length}</span></div></div>
     <div class="kpi"><div class="l">بانتظار التدقيق</div><div class="v">${S.proofs ? S.proofs.filter(p => p.status === 'pending' && inScope({ section: p.section })).length : '—'}</div></div>
     <div class="kpi"><div class="l">موظفون بلا نشاط</div><div class="v">${inactive.length}</div></div></div>`;
@@ -1465,12 +1497,53 @@ function aPlan(){
     <div class="kpi"><div class="l">مواقع مسندة</div><div class="v">${assigned.size - badL.length}<span class="sm mut"> / ${S.zones.length}</span></div></div>
     <div class="kpi"><div class="l">مواقع بلا مسؤول</div><div class="v" style="color:${unZ.length ? 'var(--wa)' : ''}">${unZ.length}</div></div></div>`;
   if(badN.length || badL.length) h += `<div class="note wa">${badN.length ? 'أرقام موظفين غير مسجّلة: ' + badN.slice(0, 15).map(esc).join('، ') + '. ' : ''}${badL.length ? 'أرقام مواقع غير مسجّلة: ' + badL.slice(0, 15).map(esc).join('، ') + '.' : ''}</div>`;
-  if(!R.length) return h + `<div class="card empty">لا يوجد جدول لشهر ${ymName(ym)} بعد.</div>`;
+  if(!R.length) return h + `<div class="card empty">لا يوجد جدول لشهر ${ymName(ym)} بعد.</div>` + shiftsCard(doc, ym);
   h += `<div class="card"><h3>${ic('list')} التوزيع <span class="sp"></span><button class="btn sm" data-act="planCsv">${ic('copy', 16)} نسخ CSV</button></h3><div class="tw"><table><tr><th>الموظف</th><th>المواقع</th><th>الأيام</th></tr>
     ${Object.entries(byN).sort((a, b) => a[0].localeCompare(b[0], 'en', { numeric: true })).map(([n, rs]) => { const p = S.staff.find(x => String(x.num) === n);
       return `<tr><td>${p ? esc(p.name) : '<span style="color:var(--da)">غير مسجّل</span>'} <span class="xs mut">${esc(n)}</span></td><td class="sm">${rs.map(r => esc(r.l) + (r.e !== '*' ? ' (' + esc(r.e) + ')' : '')).join('، ')}</td><td class="xs">${[...new Set(rs.map(r => daysText(r.d)))].map(esc).join(' / ')}</td></tr>`; }).join('')}</table></div></div>`;
+  h += shiftsCard(doc, ym);
   if(unZ.length) h += `<div class="card"><h3>${ic('alert')} مواقع بلا مسؤول في هذا الجدول</h3><p class="sm">${unZ.slice(0, 60).map(z => esc(zNum(z))).join('، ')}${unZ.length > 60 ? '…' : ''}</p></div>`;
   return h;
+}
+// بطاقة الدوام في شاشة الجدول: من على الدوام اليوم، ومن في إجازة، ومن بلا دوام محدد
+function shiftsCard(doc, ym){
+  const SR = shiftRows(doc || null), nums = [...new Set(SR.map(r => r.n).concat(planRows(doc || null).map(r => r.n)))];
+  const ts = ym === S.ym ? Date.now() : new Date(+ym.slice(0, 4), +ym.slice(4) - 1, 1, 12).getTime(), now = Date.now(), t0 = bizMid();
+  const rows = nums.map(n => { const p = S.staff.find(x => String(x.num) === n), sh = shiftsFor(n, ts, doc || null);
+    const on = ym === S.ym && sh && sh.some(w => now >= t0 + w[0] * 60000 && now < t0 + w[1] * 60000); return { n, p, sh, on }; })
+    .sort((a, b) => (b.on - a.on) || a.n.localeCompare(b.n, 'en', { numeric: true }));
+  const onN = rows.filter(r => r.on).length, offN = rows.filter(r => r.sh && !r.sh.length).length, noRule = rows.filter(r => r.sh == null).length;
+  return `<div class="card"><h3>${ic('clock')} دوام الموظفين <span class="sp"></span><button class="btn sm pri" data-act="shiftImport">${ic('up', 16)} رفع جدول الدوام</button></h3>
+    <p class="sm mut" style="margin-top:0">ساعات عمل الشركة ${esc(cfg('open'))}–${esc(cfg('close'))}. يرى كل موظف مهام ساعات دوامه فقط، ويُحسب التأخير بنهاية دوامه.</p>
+    ${SR.length ? `<div class="g4" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="l">${ym === S.ym ? 'على الدوام الآن' : 'لهم دوام'}</div><div class="v" style="color:var(--ok)">${ym === S.ym ? onN : rows.length - noRule}</div></div><div class="kpi"><div class="l">إجازة ${ym === S.ym ? 'اليوم' : ''}</div><div class="v">${offN}</div></div><div class="kpi"><div class="l">بلا دوام محدد</div><div class="v" style="color:${noRule ? 'var(--wa)' : ''}">${noRule}</div></div></div>
+    <div class="tw"><table><tr><th>الموظف</th><th>${ym === S.ym ? 'دوام اليوم' : 'دوام أول يوم'}</th></tr>${rows.map(r => `<tr><td>${r.p ? esc(r.p.name) : '<span style="color:var(--da)">غير مسجّل</span>'} <span class="xs mut">${esc(r.n)}</span></td><td>${r.on ? '<span class="tag t-ok">الآن</span> ' : ''}${esc(shiftText(r.sh))}</td></tr>`).join('')}</table></div>` : '<p class="sm">لم يُرفع جدول دوام بعد. حتى رفعه يرى كل موظف مهام ساعات العمل كاملة.</p>'}</div>`;
+}
+// سطر الدوام: رقم الموظف، الأيام أو التواريخ (اختياري)، الوقت من-إلى (أو «إجازة»)
+//   أيام الأسبوع بالاسم أو «يومي» ← قاعدة ثابتة. أرقام مثل «21» أو «1-10» أو «21/11» ← أيام محددة من الشهر.
+const TIME_1 = /(\d{1,2}[:.]\d{2})\s*[-–]\s*(\d{1,2}[:.]\d{2})/, timeAll = t => [...String(t).matchAll(new RegExp(TIME_1.source, 'g'))];
+function parseDom(t){
+  const out = new Set();
+  String(t || '').split(/[\s,]+/).forEach(x => {
+    let m = x.match(/^\d{4}-\d{1,2}-(\d{1,2})$/) || x.match(/^(\d{1,2})\/\d{1,2}(\/\d{2,4})?$/); if(m){ out.add(String(+m[1])); return; }
+    m = x.match(/^(\d{1,2})-(\d{1,2})$/); if(m){ for(let k = +m[1]; k <= +m[2] && k <= 31; k++) out.add(String(k)); return; }
+    if(/^\d{1,2}$/.test(x) && +x >= 1 && +x <= 31) out.add(String(+x));
+  });
+  return [...out].sort((a, b) => a - b).join(',');
+}
+function parseShifts(text){
+  const out = [], err = [];
+  parseLines(text).forEach((c, i) => {
+    const n = codeFrom(c[0]); if(!/^\d+$/.test(n)){ if(i > 0 || !/موظف|رقم/.test(c[0])) err.push(i + 1); return; }
+    const rest = c.slice(1), off = rest.some(x => /إجازة|عطلة|off/i.test(x));
+    const tcol = rest.find(x => TIME_1.test(x)) || '';
+    const dcol = rest.find(x => x !== tcol && !/إجازة|عطلة|off/i.test(x)) || '';
+    let k = 'w', sp = '';
+    if(dcol){ if(/[\u0600-\u06FF]/.test(dcol)) sp = parseDays(dcol); else { k = 'd'; sp = parseDom(dcol); if(!sp){ err.push(i + 1); return; } } }
+    if(off){ out.push([n, k, sp, 'off', ''].join('|')); return; }
+    const ws = timeAll(tcol); if(!ws.length){ err.push(i + 1); return; }
+    ws.forEach(m => out.push([n, k, sp, m[1].replace('.', ':'), m[2].replace('.', ':')].join('|')));
+  });
+  return { rows: [...new Set(out)], err };
 }
 // سطر الجدول: رقم الموظف، أرقام المواقع (مفصولة بمسافة أو مدى 10-20)، العنصر (اختياري)، الأيام (اختياري)
 function parsePlan(text){
@@ -1529,6 +1602,8 @@ function aSet(){
   const sw = k => `<button class="sw ${cfg(k) ? 'on' : ''}" data-act="togCfg" data-k="${k}"></button>`;
   return `<div class="card"><h3>إعدادات عامة</h3>
     <div class="tg"><div><b>اسم الشركة / الفرع</b><div class="sm mut">${esc(cfg('orgName'))}</div></div><button class="btn sm" data-act="editOrg">تعديل</button></div>
+    <div class="tg"><div><b>ساعات عمل الشركة</b><div class="sm mut">الإغلاق بعد منتصف الليل يُحسب من اليوم نفسه. يبدأ يوم جديد في النظام الساعة ${hm(cutMin())}.</div></div>
+      <div class="row" style="gap:4px"><input id="hO" value="${esc(cfg('open'))}" style="width:70px;text-align:center" inputmode="numeric"><span>–</span><input id="hC" value="${esc(cfg('close'))}" style="width:70px;text-align:center" inputmode="numeric"><button class="btn sm" data-act="hoursSave">حفظ</button></div></div>
     <div class="tg"><div><b>السماح بالتسجيل الذاتي</b><div class="sm mut">يمكن للموظف غير المسجّل إنشاء حسابه برقمه الوظيفي.</div></div>${sw('selfReg')}</div>
     <div class="tg"><div><b>إلزام مسح الباركود</b><div class="sm mut">لا يبدأ التنظيف أو الفحص إلا بمسح باركود الموقع. الإدخال اليدوي يُحال للمدقق.</div></div>${sw('requireCode')}</div>
     <div class="tg"><div><b>طريقة التصوير</b><div class="sm mut">صورة واحدة بعد التنظيف ثم «تم التنظيف»، أو صورتان قبل وبعد.</div></div><select onchange="setCfg('flow',this.value)" style="width:150px"><option value="single" ${cfg('flow') !== 'pair' ? 'selected' : ''}>صورة واحدة</option><option value="pair" ${cfg('flow') === 'pair' ? 'selected' : ''}>قبل وبعد</option></select></div>
@@ -1665,6 +1740,21 @@ const A = {
   async inspPhoto(){ const f = await pickPhoto(); if(!f) return; try{ const p = prep(await loadImg(f)); S.inspTh = thumb(p.canvas, 360); const e = $('#inPh'); if(e) e.innerHTML = `<img src="${S.inspTh}" style="width:120px;border-radius:8px;margin-top:6px">`; }catch(e){ toast('تعذّرت قراءة الصورة.'); } },
   inspOk(d){ inspSave(d.id, 'ok'); },
   inspBad(d){ inspSave(d.id, 'bad'); },
+  shiftImport(){ const ym = S.planYm || S.ym; openModal(`<h2>جدول الدوام — ${ymName(ym)}</h2><p class="sm mut" style="margin-top:0">سطر لكل قاعدة: <b>رقم الموظف، الأيام أو التواريخ، الوقت</b>.</p>
+    <ul class="sm" style="padding-inline-start:18px;margin:0 0 8px;line-height:1.8"><li>دوام ثابت: <code>1001، يومي، 08:00-16:00</code></li><li>حسب أيام الأسبوع: <code>1002، السبت الاثنين، 15:00-23:00</code></li>
+    <li>أيام محددة من الشهر (تتقدّم على الثابت): <code>1002، 21 22، 19:00-03:00</code> أو <code>1-10</code></li><li>دوام مقسّم: <code>1003، يومي، 09:00-13:00 + 18:00-22:00</code></li><li>إجازة: <code>1001، الجمعة، إجازة</code></li></ul>
+    <textarea id="shT" style="height:180px" placeholder="1001، يومي، 07:45-15:45&#10;1002، السبت الأحد الاثنين، 15:00-23:00&#10;1002، 21، 19:00-03:00&#10;1001، الجمعة، إجازة"></textarea>
+    <label class="row sm" style="margin:8px 0"><input type="checkbox" id="shR" style="width:auto" checked> استبدال جدول الدوام بالكامل</label>
+    <button class="btn pri w" data-act="shiftSave">حفظ الدوام</button>`); },
+  async shiftSave(){
+    const ym = S.planYm || S.ym, { rows, err } = parseShifts($('#shT').value); if(!rows.length) return toast('لم يُقرأ أي سطر صالح.');
+    const doc = (ym === S.ym ? S.plan : (S.planCache || {})[ym]) || {}, all = [...new Set(($('#shR').checked ? [] : doc.shifts || []).concat(rows))];
+    if(await Store.set('plan', ym, { ym, rows: doc.rows || [], shifts: all, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; closeModal(); toast(`حُفظ الدوام: ${rows.length} قاعدة${err.length ? '، وتُجوهلت الأسطر ' + err.slice(0, 8).join('، ') : ''}.`, 4500); }
+  },
+  async hoursSave(){
+    const o = $('#hO').value, c = $('#hC').value; if(!/^\d{1,2}:\d{2}$/.test(o) || !/^\d{1,2}:\d{2}$/.test(c)) return toast('أدخل الوقت بصيغة 07:45.');
+    if(await saveCfg({ open: o, close: c })) toast('حُفظت ساعات العمل.');
+  },
   planYm(d){ S.planYm = d.v; render(true); },
   planImport(){ const ym = S.planYm || S.ym; openModal(`<h2>رفع جدول ${ymName(ym)}</h2><p class="sm mut" style="margin-top:0">سطر لكل إسناد: <b>رقم الموظف، أرقام المواقع، العنصر، الأيام</b>. العنصر والأيام اختياريان (بدونهما: كل عناصر الموقع يومياً). يمكن كتابة عدة مواقع بمسافة أو مدى مثل 10-25. يمكن اللصق مباشرة من إكسل.</p>
     <textarea id="plT" style="height:200px" placeholder="1001، 10-25&#10;1002، 30 31 32، رفوف، السبت الاثنين الأربعاء&#10;1003، 1-60، زجاج"></textarea>
@@ -1672,14 +1762,17 @@ const A = {
     <button class="btn pri w" data-act="planSave">حفظ الجدول</button>`); },
   async planSave(){
     const ym = S.planYm || S.ym, { rows, err } = parsePlan($('#plT').value); if(!rows.length) return toast('لم يُقرأ أي سطر صالح.');
-    const cur = $('#plR').checked ? [] : planRows(ym === S.ym ? S.plan : (S.planCache || {})[ym]).map(r => [r.n, r.l, r.e, r.d].join('|'));
+    const doc = (ym === S.ym ? S.plan : (S.planCache || {})[ym]) || {};
+    const cur = $('#plR').checked ? [] : planRows(doc).map(r => [r.n, r.l, r.e, r.d].join('|'));
     const all = [...new Set(cur.concat(rows))];
-    if(await Store.set('plan', ym, { ym, rows: all, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; closeModal(); toast(`حُفظ الجدول: ${rows.length} إسناد${err.length ? '، وتُجوهلت الأسطر ' + err.slice(0, 8).join('، ') : ''}.`, 4500); }
+    if(await Store.set('plan', ym, { ym, rows: all, shifts: doc.shifts || [], at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; closeModal(); toast(`حُفظ الجدول: ${rows.length} إسناد${err.length ? '، وتُجوهلت الأسطر ' + err.slice(0, 8).join('، ') : ''}.`, 4500); }
   },
   async planCopy(){
     const ym = S.planYm || S.ym, prev = ymAdd(ym, -1), d = await Store.getDoc('plan', prev).catch(() => null);
     if(!d || !(d.rows || []).length) return toast('لا يوجد جدول في ' + ymName(prev) + '.');
-    if(await Store.set('plan', ym, { ym, rows: d.rows, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; toast('نُسخ جدول ' + ymName(prev) + '.'); }
+    // تُنسخ الإسنادات وقواعد الدوام الثابتة (أيام الأسبوع)؛ أما الأيام المحددة بالتاريخ فتخص ذلك الشهر وحده
+    const shifts = (d.shifts || []).filter(r => String(r).split('|')[1] === 'w');
+    if(await Store.set('plan', ym, { ym, rows: d.rows, shifts, at: Date.now() })){ if(S.planCache) delete S.planCache[ym]; toast('نُسخ جدول ' + ymName(prev) + ' مع الدوام الثابت.'); }
   },
   planCsv(){ const ym = S.planYm || S.ym, R = planRows(ym === S.ym ? S.plan : (S.planCache || {})[ym]); copyText(csv([['رقم الموظف', 'الاسم', 'رقم الموقع', 'العنصر', 'الأيام']].concat(R.map(r => { const p = S.staff.find(x => String(x.num) === r.n); return [r.n, p ? p.name : '', r.l, r.e === '*' ? 'الكل' : r.e, daysText(r.d)]; }))), 'نُسخ الجدول.'); },
   async catsSave(){
