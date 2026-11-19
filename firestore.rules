@@ -24,7 +24,7 @@ service cloud.firestore {
       allow read: if signed();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (manager() && active())
-        || (active() && onlyKeys(['lastClean', 'lastBy', 'lastIdx', 'flaggedAt', 'flaggedBy', 'ops', 'lc'])
+        || (active() && onlyKeys(['lastClean', 'lastBy', 'lastIdx', 'flaggedAt', 'flaggedBy', 'ops', 'lc', 'ref'])
             && request.resource.data.get('lastBy', '') in [resource.data.get('lastBy', ''), sid()]
             && request.resource.data.get('flaggedBy', '') in [resource.data.get('flaggedBy', ''), sid()]);
     }
@@ -56,6 +56,11 @@ service cloud.firestore {
     match /xtra/{d} {
       allow read: if manager() || (signed() && d.matches(sid() + '_[0-9]{6}'));
       allow write: if active() && ownMonthly(d);
+    }
+    // الصورة المرجعية لكل موقع: يعدّها المدقق أو المدير (معتمدة)، أو الموظف (بانتظار الاعتماد)
+    match /ref/{z} {
+      allow read: if signed();
+      allow write: if (manager() && active()) || (active() && request.resource.data.ok == false);
     }
     // الفحص الميداني اليومي للمفتش العام
     match /insp/{day} {

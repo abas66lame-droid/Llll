@@ -86,6 +86,13 @@ nav.tabs .mid span.c{width:46px;height:46px;border-radius:14px;background:var(--
 .lv-st{position:absolute;top:8px;right:8px;left:8px;display:flex;justify-content:space-between;gap:6px;pointer-events:none}
 .lv-st span{background:#000000b8;color:#fff;padding:3px 10px;border-radius:7px;font-size:13px}
 .lv-st .ok{background:#0f7a55e6}.lv-st .wa{background:#a8650ee6}
+.gwhole{position:relative;width:min(100%,260px);margin:0 auto;border-radius:10px;overflow:hidden;background:#000}
+.gwhole img{display:block;width:100%;height:auto}
+.gbox{position:absolute;border:3px solid #2ad48f;border-radius:6px;box-shadow:0 0 0 999px rgba(0,0,0,.55);transition:all .5s ease}
+.gref{display:block;width:100%;border-radius:10px}
+.gdots{display:flex;gap:6px;justify-content:center;margin:8px 0}.gdots i{width:9px;height:9px;border-radius:50%;background:var(--line)}.gdots i.on{background:var(--pri)}.gdots i.cur{background:#2ad48f}
+.gres{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}.gres div{position:relative}.gres img{width:100%;border-radius:8px;display:block}.gres span{position:absolute;bottom:4px;right:4px;background:#000c;color:#fff;font-size:11px;padding:1px 6px;border-radius:5px}
+.refcv{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;border-radius:10px}
 .analyzing{height:220px;display:grid;place-items:center;color:#cfe;position:relative;overflow:hidden;background:#0d1b26}
 .idx{display:flex;align-items:center;gap:14px}
 .idx .n{font-size:34px;font-weight:700;line-height:1}
@@ -432,7 +439,7 @@ function drawOverlay(cv, src, an, detail, rect){
 
 /* ================= الحالة ================= */
 const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
-  flow: 'single', open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
+  flow: 'single', autoTorch: true, alignMin: 0.55, open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
 /* فئات العناصر: كل فئة = جولات يومية بنوافذ زمنية. السطر: «تنظيف|فحص HH:MM-HH:MM الوصف».
    extra = يُسمح بتنظيف إضافي (بنقاط مخفّضة) بعد إنجاز جولات اليوم. تُعدَّل من الإعدادات. */
 const CATS_DEF = {
@@ -797,7 +804,7 @@ function render(force){
   if(!S.ready){ v.innerHTML = `<div class="loading"><div><div class="spin"></div>جارٍ الاتصال بقاعدة البيانات…</div></div>`; return; }
   let h;
   if(S.tab === 'admin' && S.admin) h = vAdmin();
-  else if(!S.me) h = vLogin();
+  else if(!S.me && !(F && F.mode === 'ref' && S.tab === 'clean')) h = vLogin();
   else h = ({ home: vHome, zones: vZones, clean: vClean, rank: vRank, acc: vAcc })[S.tab] ? ({ home: vHome, zones: vZones, clean: vClean, rank: vRank, acc: vAcc })[S.tab]() : vHome();
   // حفظ موضع المؤشر في حقول البحث
   const ae = document.activeElement, fk = ae && ae.dataset && ae.dataset.f, pos = fk ? ae.selectionStart : 0;
@@ -1033,13 +1040,16 @@ function flowAfterZone(){
     }
   }
   F.step = F.mode === 'scan' ? 'before' : F.single ? 'after' : 'before';
+  // موقع له مرجع معتمد ← تصوير موجّه رفاً رفاً
+  if(F.single && z.ref && z.ref.ok && z.ref.n){ F.step = 'gLoad'; F.guide = null; F.guideRes = null; setTimeout(loadGuide, 0); }
 }
 const STEPS = ['الموقع', 'قبل', 'التنظيف', 'بعد', 'النتيجة'], STEPS1 = ['الموقع', 'التصوير', 'النتيجة'];
 function vClean(){
   if(!S.zones.length) return `<div class="card empty">لا توجد مواقع مسجّلة بعد.</div>`;
   if(!F) newFlow('clean');
+  if(F.mode === 'ref') return vRefSetup();
   const z = zoneById(F.zoneId), scan = F.mode === 'scan', s = F.step;
-  const n = F.single ? { zone: 0, code: 0, el: 0, blocked: 0, after: 1, result: 2 }[s] : { zone: 0, code: 0, el: 0, blocked: 0, before: 1, beforeRes: 1, cleaning: 2, after: 3, result: 4, scanRes: 4 }[s];
+  const n = F.single ? { zone: 0, code: 0, el: 0, blocked: 0, after: 1, gLoad: 1, gShot: 1, gWait: 1, result: 2 }[s] : { zone: 0, code: 0, el: 0, blocked: 0, before: 1, beforeRes: 1, cleaning: 2, after: 3, result: 4, scanRes: 4 }[s];
   let h = `<div class="ttl"><h2>${scan ? 'فحص وبلاغ' : 'عملية تنظيف'}</h2><span class="sp"></span>${s !== 'zone' ? `<button class="btn sm" data-act="flowCancel">${ic('x', 16)} إلغاء</button>` : ''}</div>`;
   if(!scan) h += `<div class="steps">${(F.single ? STEPS1 : STEPS).map((t, i) => `<div class="${i <= n ? 'on' : ''}"><i></i>${t}</div>`).join('')}</div>`;
   if(z && s !== 'zone') h += `<div class="list">${zoneRow(z, 'noop')}</div>${F.el && s !== 'el' ? `<div class="row sm" style="margin:-4px 0 8px"><span class="tag t-pri">${esc(F.el)}</span>${F.rlabel ? `<span class="mut">${esc(F.rlabel)}</span>` : ''}${F.extra ? '<span class="tag t-inf">تنظيف إضافي</span>' : ''}</div>` : ''}`;
@@ -1060,6 +1070,10 @@ function vClean(){
       return `<button class="zr" data-act="pickEl" data-k="${esc(el.k)}"><span class="dot d-${st.includes('late') ? 'da' : st.includes('now') ? 'wa' : 'ok'}"></span><div style="flex:1"><span class="nm">${esc(el.k)}</span> <span class="tag t-inf">${esc(el.c)}</span><div class="xs mut">${d} من ${rs.length} جولات اليوم</div></div></button>`; }).join('')}</div></div>`;
   } else if(s === 'blocked'){
     h += `<div class="card" style="text-align:center"><div style="color:var(--wa)">${ic('clock', 34)}</div><p>${esc(F.blockMsg)}</p><button class="btn pri w" data-act="flowHome">العودة إلى مهامي</button></div>`;
+  } else if(s === 'gLoad' || s === 'gWait'){
+    h += `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">${s === 'gLoad' ? 'تحميل الصورة المرجعية…' : 'جارٍ إكمال تحليل الرفوف…'}</div></div>`;
+  } else if(s === 'gShot'){
+    h += vGuide();
   } else if(s === 'before' || s === 'after'){
     const b = s === 'before';
     if(!F.busy && F.live && LIVE.stream) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
@@ -1098,7 +1112,8 @@ function vClean(){
       <button class="btn pri big" id="doneBtn" data-act="toAfter" ${left > 0 ? 'disabled' : ''}>تصوير بعد التنظيف</button></div>`;
   } else if(s === 'result' && F.res && F.res.single){
     const R = F.res, v = verdict(R.a);
-    h += `<div class="shot"><canvas data-ov="after"></canvas><span class="lbl">التقييم المبدئي · ${R.a}</span></div>
+    h += `<div class="shot"><canvas data-ov="after"></canvas><span class="lbl">${F.guideRes ? 'أسوأ رف' : 'التقييم المبدئي'} · ${R.a}</span></div>
+      ${F.guideRes ? `<div class="gres" style="margin-top:8px">${F.guideRes.map(g => `<div><img src="${g.th}"><span>${esc(g.l)} · ${g.idx ?? '—'}</span></div>`).join('')}</div>` : ''}
       <label class="row sm" style="margin:6px 0"><input type="checkbox" style="width:auto" data-act="toggleDetail" ${S.detail ? 'checked' : ''}> إظهار الحبيبات المكتشفة</label>`;
     if(!F.saved){
       h += `<div class="card idx"><div><div class="xs mut">مؤشر الغبار</div><div class="n" style="color:${v.c}">${R.a}</div></div><div style="flex:1"><span class="tag ${v.k}" style="font-size:13px">${v.t}</span>
@@ -1148,6 +1163,8 @@ function rf(){ render(true); }
 function afterRender(){
   if(F && S.tab === 'clean') document.querySelectorAll('canvas[data-ov]').forEach(cv => { const k = cv.dataset.ov; if(F[k]) drawOverlay(cv, F[k].canvas, F[k].an, S.detail, F[k].rect); });
   if(F && F.pick) roiInit();
+  if(F && F.mode === 'ref' && F.step === 'rMark') refMarkInit();
+  if(F && (F.step === 'gShot' || F.step === 'rShot')) animGuide();
   if(LIVE.stream){ const v = $('#lvV'); if(!v) stopLive(); else if(v.srcObject !== LIVE.stream){ v.srcObject = LIVE.stream; v.play().catch(() => {}); v.onloadedmetadata = drawLive; } }
   if(S.tab === 'admin' && S.atab === 'labels' && window.QRCode) document.querySelectorAll('.qr[data-code]').forEach(el => { if(!el.childNodes.length){ try{ new QRCode(el, { text: el.dataset.code, width: 92, height: 92 }); }catch(e){} } });
 }
@@ -1205,7 +1222,7 @@ async function analyzePick(){
 async function finishShot(which, img, p, rect, live){
   F.busy = true; F.step = which; rf();
   try{
-    const an = await analyzeRegion(img, rect, cfg('sens') || 1); await sleep(300);
+    const an = await analyzeRegion(img, rect, cfg('sens') || 1, DUST_MAX, { d0: zoneD0(zoneById(F.zoneId)) }); await sleep(300);
     F[which] = { an, canvas: p.canvas, rect, thumb: thumbRect(p.canvas, rect), sig: signature(p.g, p.w, p.h), t: Date.now(), live: !!live };
     F.busy = false;
     if(which === 'before') F.step = F.mode === 'scan' ? 'scanRes' : 'beforeRes';
@@ -1214,6 +1231,162 @@ async function finishShot(which, img, p, rect, live){
     if(F.step === 'result' && F.res.pass && !F.res.single) saveClean(false);
   }catch(e){ F.busy = false; rf(); toast('تعذّر تحليل الصورة. حاول مرة أخرى.'); }
 }
+/* ================= الصور المرجعية لكل موقع =================
+   مرجع الموقع: صورة كاملة للعارضة + خطوات (رفوف) محددة عليها، ولكل خطوة صورة قريبة وهي نظيفة.
+   تُستخدم للتوجيه (حركة من العارضة إلى الرف + صورة شفافة فوق الكاميرا + التقاط تلقائي عند التطابق)
+   وللمعايرة الخاصة بكل رف: خط الأساس d0 = كثافة الحبيبات في صورته النظيفة.
+   التخزين: مجموعة ref في Firebase، أو IndexedDB في الوضع المحلي (الصور أكبر من سعة localStorage). */
+const REF_RECT = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 }, FULL = { x: 0, y: 0, w: 1, h: 1 };
+const RefStore = {
+  _db: null, cache: {},
+  _idb(){ if(!this._db) this._db = new Promise((res, rej) => { try{ const r = indexedDB.open('dh2_refs', 1); r.onupgradeneeded = () => r.result.createObjectStore('ref'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }catch(e){ rej(e); } }); return this._db; },
+  async get(zid){
+    if(zid in this.cache) return this.cache[zid];
+    let d = null;
+    try{
+      if(Store.fb || Store.db) d = await Store.getDoc('ref', zid);
+      else { const db = await this._idb(); d = await new Promise((res, rej) => { const q = db.transaction('ref').objectStore('ref').get(zid); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
+    }catch(e){ d = null; }
+    return this.cache[zid] = d;
+  },
+  async put(zid, d){
+    this.cache[zid] = d;
+    if(Store.fb || Store.db) return Store.set('ref', zid, d);
+    try{ const db = await this._idb(); await new Promise((res, rej) => { const t = db.transaction('ref', 'readwrite'); t.objectStore('ref').put(d, zid); t.oncomplete = res; t.onerror = () => rej(t.error); }); return true; }
+    catch(e){ toast('تعذّر حفظ الصورة المرجعية على هذا الجهاز.'); return false; }
+  },
+  async del(zid){ delete this.cache[zid]; if(Store.fb || Store.db) return Store.del('ref', zid); try{ const db = await this._idb(); db.transaction('ref', 'readwrite').objectStore('ref').delete(zid); }catch(e){} return true; }
+};
+// خط أساس الموقع (للتصوير غير الموجّه): أقل خط أساس بين رفوفه المرجعية المعتمدة، وإلا المعايرة العامة
+const zoneD0 = z => z && z.ref && z.ref.ok && z.ref.d0 != null ? z.ref.d0 : (+cfg('d0') || 0);
+// قصّ منطقة من صورة أو فيديو إلى لوحة بحد أقصى mx للضلع الأطول
+function cropTo(src, r, mx){
+  const W = srcW(src), H = srcH(src), sw = r.w * W, sh = r.h * H, k = Math.min(1, mx / Math.max(sw, sh)), c = document.createElement('canvas');
+  c.width = Math.round(sw * k); c.height = Math.round(sh * k); c.getContext('2d').drawImage(src, r.x * W, r.y * H, sw, sh, 0, 0, c.width, c.height); return c;
+}
+const cropURL = (src, r, mx, q = 0.62) => cropTo(src, r, mx).toDataURL('image/jpeg', q);
+// بصمة 16×12 لقياس تطابق اللقطة مع الصورة المرجعية (معامل ارتباط بيرسون)
+function imgSig(src){
+  const c = cropTo(src, FULL, 160), x = c.getContext('2d', { willReadFrequently: true }), t = document.createElement('canvas'); t.width = 160; t.height = 120;
+  const tx = t.getContext('2d', { willReadFrequently: true }); tx.drawImage(c, 0, 0, 160, 120);
+  const d = tx.getImageData(0, 0, 160, 120).data, s = new Float32Array(192);
+  for(let y = 0; y < 120; y++) for(let k = 0; k < 160; k++){ const i = (y * 160 + k) * 4; s[((y / 10) | 0) * 16 + ((k / 10) | 0)] += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; }
+  return Array.from(s, v => Math.round(v / 100));
+}
+// تطابق متسامح مع إزاحة بسيطة لليد: أفضل ارتباط بين البصمتين مع إزاحة خلية واحدة (من 16×12) في كل اتجاه
+function alignScore(a, b){
+  if(!a || !b || a.length !== 192 || b.length !== 192) return 0;
+  let best = -1;
+  for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++){
+    const p = [], q = [];
+    for(let y = 0; y < 12; y++) for(let x = 0; x < 16; x++){ const y2 = y + dy, x2 = x + dx; if(y2 < 0 || y2 >= 12 || x2 < 0 || x2 >= 16) continue; p.push(a[y * 16 + x]); q.push(b[y2 * 16 + x2]); }
+    best = Math.max(best, corr(p, q));
+  }
+  return best;
+}
+const loadDataImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const canRef = () => !me() || me().role !== 'insp';
+const refAuto = () => !me() || ['sup', 'admin'].includes(me().role); // مرجع المدقق أو المدير معتمد مباشرة
+
+/* ----- إعداد المرجع: صورة كاملة ← تحديد الرفوف ← صورة نظيفة لكل رف ← حفظ ----- */
+function vRefSetup(){
+  const z = zoneById(F.zoneId), R = F.ref;
+  let h = `<div class="ttl"><h2>الصورة المرجعية</h2><span class="sp"></span><button class="btn sm" data-act="flowCancel">${ic('x', 16)} إلغاء</button></div><div class="list">${zoneRow(z, 'noop')}</div>`;
+  if(F.busy) return h + `<div class="shot analyzing"><div class="scanl"></div><div style="text-align:center">جارٍ المعالجة…</div></div>`;
+  if(F.step === 'rWhole'){
+    h += `<div class="card"><h3>1) صورة الموقع كاملاً</h3><p class="sm">نظّف الموقع ورتّبه، ثم صوّره كاملاً من المكان الذي يقف فيه الموظف عادةً. هذه الصورة ستظهر للموظفين كدليل.</p>
+      <button class="btn pri big" data-act="refWhole">${ic('cam')} تصوير الموقع كاملاً</button></div>`;
+  } else if(F.step === 'rMark'){
+    h += `<div class="card"><h3>2) حدّد الرفوف بالترتيب</h3><p class="sm mut" style="margin-top:0">اسحب بإصبعك على كل رف أو جزء يُصوَّر وحده، بالترتيب الذي سيصوّره به الموظف.</p><canvas id="refCv" class="refcv"></canvas>
+      ${R.steps.map((st, i) => `<div class="row" style="margin-top:8px;gap:6px"><b style="width:22px">${i + 1}</b><input id="rl_${i}" value="${esc(st.l)}" style="flex:2"><select id="re_${i}" style="flex:1"><option value="*">كل العناصر</option>${zEls(z).map(e => `<option ${st.el === e.k ? 'selected' : ''}>${esc(e.k)}</option>`).join('')}</select><button class="btn sm" data-act="refDelStep" data-i="${i}">${ic('x', 14)}</button></div>`).join('')}
+      <button class="btn pri big" style="margin-top:12px" data-act="refMarkDone" ${R.steps.length ? '' : 'disabled'}>التالي: تصوير ${R.steps.length || ''} رفوف</button></div>`;
+  } else if(F.step === 'rShot'){
+    const st = R.steps[F.ri];
+    h += `<div class="card"><h3>3) الرف ${F.ri + 1} من ${R.steps.length}: ${esc(st.l)}</h3>
+      <div class="gwhole"><img src="${R.whole}"><i class="gbox" id="gBox" data-r="${[st.r.x, st.r.y, st.r.w, st.r.h].join(',')}"></i></div>
+      <p class="sm">اقترب من هذا الرف وصوّره وهو نظيف، بالمسافة والزاوية التي تريد أن يلتزم بها الموظفون (20 إلى 40 سم).</p>
+      <button class="btn pri big" data-act="refShot">${ic('cam')} تصوير الرف</button></div>`;
+  } else if(F.step === 'rDone'){
+    h += `<div class="card"><h3>4) المراجعة والحفظ</h3><div class="gres">${R.steps.map(st => `<div><img src="${st.img}"><span>${esc(st.l)}</span></div>`).join('')}</div>
+      <p class="sm mut">${refAuto() ? 'سيُعتمد المرجع مباشرة.' : 'سيُرسل المرجع إلى المدقق لاعتماده قبل استخدامه.'}</p>
+      <div class="g2"><button class="btn pri" data-act="refSave">${ic('check')} حفظ المرجع</button><button class="btn" data-act="refRedo">إعادة تصوير الرفوف</button></div></div>`;
+  }
+  return h;
+}
+// رسم الصورة الكاملة والمستطيلات + السحب لإضافة رف جديد
+function refMarkInit(){
+  const cv = $('#refCv'); if(!cv || cv._on || !F.ref || !F.ref.wc) return; cv._on = 1;
+  const src = F.ref.wc, draw = tmp => {
+    cv.width = src.width; cv.height = src.height; const x = cv.getContext('2d'); x.drawImage(src, 0, 0);
+    x.lineWidth = Math.max(2, src.width / 180); x.font = `bold ${Math.round(src.width / 16)}px sans-serif`;
+    F.ref.steps.concat(tmp ? [{ r: tmp }] : []).forEach((st, i) => { const r = st.r; x.strokeStyle = tmp && i === F.ref.steps.length ? '#ffb340' : '#2ad48f'; x.strokeRect(r.x * cv.width, r.y * cv.height, r.w * cv.width, r.h * cv.height);
+      if(!tmp || i < F.ref.steps.length){ x.fillStyle = '#2ad48f'; x.fillText(String(i + 1), r.x * cv.width + 8, r.y * cv.height + src.width / 14); } });
+  };
+  draw();
+  let st = null, cur = null;
+  const pt = e => { const b = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - b.left) / b.width)), Math.max(0, Math.min(1, (e.clientY - b.top) / b.height))]; };
+  cv.addEventListener('pointerdown', e => { st = pt(e); cur = null; cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+  cv.addEventListener('pointermove', e => { if(!st) return; const q = pt(e); cur = { x: Math.min(st[0], q[0]), y: Math.min(st[1], q[1]), w: Math.abs(q[0] - st[0]), h: Math.abs(q[1] - st[1]) }; draw(cur); });
+  cv.addEventListener('pointerup', () => { if(cur && cur.w > 0.05 && cur.h > 0.03){ refKeepInputs(); const els = zEls(zoneById(F.zoneId)); F.ref.steps.push({ l: 'الرف ' + (F.ref.steps.length + 1), el: els.length === 1 ? els[0].k : '*', r: cur }); rf(); } st = null; cur = null; });
+}
+function refKeepInputs(){ (F.ref.steps || []).forEach((st, i) => { const l = $('#rl_' + i), e = $('#re_' + i); if(l) st.l = l.value.trim() || st.l; if(e) st.el = e.value; }); }
+
+/* ----- التصوير الموجّه: لكل رف حركة قصيرة ثم التقاط تلقائي عند التطابق، والتحليل في الخلفية ----- */
+async function loadGuide(){
+  const f0 = F, z = zoneById(F.zoneId), r = await RefStore.get(z.id);
+  if(F !== f0) return;
+  const steps = r && r.steps ? r.steps.filter(x => !x.el || x.el === '*' || x.el === F.el) : [];
+  if(!steps.length){ F.step = 'after'; rf(); return; }
+  try{ F.guide = { r, steps, i: 0, res: [], ok: 0, wimg: await loadDataImg(r.whole), imgs: await Promise.all(steps.map(x => loadDataImg(x.img))) }; }
+  catch(e){ F.step = 'after'; rf(); return; }
+  if(F !== f0) return;
+  F.step = 'gShot';
+  if(liveAvail()) startLive('after', true); else rf();
+}
+function setBox(b, r){ if(b) Object.assign(b.style, { left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.w * 100 + '%', height: r.h * 100 + '%' }); }
+// الحركة: الإطار يبدأ على العارضة كاملة ثم يتحرك إلى الرف (أو من الرف السابق إلى التالي)
+function animGuide(){
+  const b = $('#gBox'); if(!b || b._a) return; b._a = 1;
+  const r = b.dataset.r.split(',').map(Number), from = b.dataset.from ? b.dataset.from.split(',').map(Number) : [0, 0, 1, 1];
+  setBox(b, { x: from[0], y: from[1], w: from[2], h: from[3] }); setTimeout(() => setBox(b, { x: r[0], y: r[1], w: r[2], h: r[3] }), 60);
+}
+function updateGuideUI(){ // في البث المباشر: تحديث الخطوة دون إعادة رسم الصفحة حتى لا تنقطع الكاميرا
+  const G = F.guide, st = G.steps[G.i], b = $('#gBox'), l = $('#gLbl'), c = $('#gCnt'), d = $('#gDots');
+  setBox(b, st.r); if(l) l.textContent = st.l; if(c) c.textContent = (G.i + 1) + ' / ' + G.steps.length;
+  if(d) d.innerHTML = G.steps.map((x, i) => `<i class="${i < G.i ? 'on' : i === G.i ? 'cur' : ''}"></i>`).join('');
+  LIVE.good = 0; G.ok = 0; G.cool = Date.now() + 900;
+}
+function guideStore(c, live, align){
+  const G = F.guide, st = G.steps[G.i], p = prep(c);
+  const item = { l: st.l, live, align, an: null, canvas: p.canvas, thumb: c.width ? cropURL(c, FULL, 300, 0.6) : '' };
+  G.res[G.i] = item;
+  item.prom = analyzeRegion(c, FULL, cfg('sens') || 1, DUST_MAX, { d0: st.d0 != null ? st.d0 : zoneD0(zoneById(F.zoneId)) }).then(an => { item.an = an; }).catch(() => {});
+  G.i++; tone();
+  if(G.i >= G.steps.length) finishGuide(); else if(live) updateGuideUI(); else rf();
+}
+async function finishGuide(){
+  const G = F.guide, f0 = F; F.step = 'gWait'; rf();
+  await Promise.all(G.res.map(x => x.prom)); if(F !== f0) return;
+  const ok = G.res.filter(x => x.an); if(!ok.length){ F.step = 'after'; toast('تعذّر التحليل. صوّر مرة أخرى.'); rf(); return; }
+  const worst = ok.reduce((a, b) => b.an.idx > a.an.idx ? b : a);
+  F.after = { an: worst.an, canvas: worst.canvas, rect: FULL, thumb: worst.thumb, t: Date.now(), live: G.res.some(x => x.live) };
+  F.guideRes = G.res.map(x => ({ l: x.l, idx: x.an ? x.an.idx : null, th: x.thumb, al: x.align == null ? null : Math.round(x.align * 100) / 100 }));
+  compute(); F.step = 'result'; tone(F.res.pass); rf(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function vGuide(){
+  const G = F.guide, st = G.steps[G.i], prev = G.i > 0 ? G.steps[G.i - 1].r : null, live = F.live && LIVE.stream;
+  let h = `<div class="card" style="padding:10px"><div class="gwhole"><img src="${G.r.whole}"><i class="gbox" id="gBox" data-r="${[st.r.x, st.r.y, st.r.w, st.r.h].join(',')}" ${prev ? `data-from="${[prev.x, prev.y, prev.w, prev.h].join(',')}"` : ''}></i></div>
+    <div class="row" style="justify-content:center;margin-top:6px"><b id="gLbl">${esc(st.l)}</b><span class="sm mut" id="gCnt">${G.i + 1} / ${G.steps.length}</span></div>
+    <div class="gdots" id="gDots">${G.steps.map((x, i) => `<i class="${i < G.i ? 'on' : i === G.i ? 'cur' : ''}"></i>`).join('')}</div></div>`;
+  if(live) h += `<div class="live"><video id="lvV" playsinline muted autoplay></video><canvas id="lvC"></canvas>
+      <div class="lv-st"><span id="lvS" class="wa">طابِق اللقطة مع الصورة الشفافة</span><span id="gAl"></span></div></div>
+      <div class="note" style="margin:8px 0">قرّب الكاميرا حتى تنطبق الصورة الشفافة على الرف. يلتقط التطبيق تلقائياً عند التطابق وثبات اليد.</div>
+      <div class="g2"><button class="btn" id="lvCapBtn" data-act="gCap">${ic('cam')} التقاط يدوي</button>${LIVE.canTorch ? `<button class="btn ${LIVE.torch ? 'pri' : ''}" id="lvTorch" data-act="liveTorch">${ic('fire')} الضوء</button>` : '<span></span>'}</div>`;
+  else h += `<div class="card"><img class="gref" src="${st.img}" alt=""><p class="sm" style="margin-bottom:6px">صوّر هذا الرف <b>كما في الصورة</b>: نفس المسافة والزاوية. شغّل الضوء الجانبي إن توفّر.</p>
+      <button class="btn pri big" data-act="gPhoto">${ic('cam')} تصوير ${esc(st.l)}</button></div>`;
+  return h;
+}
+
 /* ================= الفحص المباشر بالكاميرا =================
    بث حي من الكاميرا الخلفية + إطار توجيه ثابت. كل ~300ms يُحلَّل ما داخل الإطار بدقة 560px
    (للتوجيه فقط)، وعند الالتقاط يُؤخذ إطار كامل الدقة ويُحلَّل بالمحرك نفسه حتى 900px.
@@ -1221,15 +1394,18 @@ async function finishShot(which, img, p, rect, live){
 const GUIDE = { x: 0.1, y: 0.14, w: 0.8, h: 0.66 };
 const LIVE = { stream: null, on: false, an: null, torch: false, prev: null, good: 0, msg: '' };
 const liveAvail = () => !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-async function startLive(which){
+async function startLive(which, keep){
   try{
     const st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } } });
     stopLive(); LIVE.stream = st; LIVE.on = true; LIVE.an = null; LIVE.prev = null; LIVE.good = 0; LIVE.torch = false;
     const tr = st.getVideoTracks()[0];
     try{ const c = tr.getCapabilities ? tr.getCapabilities() : {}; LIVE.canTorch = !!c.torch; if(c.focusMode && c.focusMode.includes('continuous')) await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); }catch(e){}
-    F.pick = null; F.live = { which }; F.step = which; rf(); liveLoop();
+    // تشغيل الضوء تلقائياً حيث يسمح الجهاز (أندرويد)؛ متصفحات iPhone لا تسمح بالتحكم بالفلاش
+    if(LIVE.canTorch && cfg('autoTorch')){ try{ await tr.applyConstraints({ advanced: [{ torch: true }] }); LIVE.torch = true; }catch(e){} }
+    F.pick = null; F.live = { which }; if(!keep) F.step = which; rf(); liveLoop();
   }catch(e){
     toast(e && e.name === 'NotAllowedError' ? 'لم يُسمح باستخدام الكاميرا. فعّل الإذن من إعدادات المتصفح.' : 'الكاميرا المباشرة غير متاحة هنا؛ سيُستخدم التصوير العادي.', 3600);
+    if(keep){ if(F) F.live = null; rf(); return; }
     if(!(e && e.name === 'NotAllowedError')) shoot(which);
   }
 }
@@ -1273,6 +1449,7 @@ function drawLive(){
   x.strokeStyle = col; x.lineWidth = 4; x.beginPath();
   [[gx, gy, 1, 1], [gx + gw, gy, -1, 1], [gx, gy + gh, 1, -1], [gx + gw, gy + gh, -1, -1]].forEach(([a, b, sx, sy]) => { x.moveTo(a, b + sy * L); x.lineTo(a, b); x.lineTo(a + sx * L, b); });
   x.stroke();
+  const G = F && F.guide; if(G && F.step === 'gShot' && G.imgs[G.i]){ x.globalAlpha = 0.38; x.drawImage(G.imgs[G.i], gx, gy, gw, gh); x.globalAlpha = 1; }
 }
 async function liveLoop(){
   let peak = 0, peakT = 0;
@@ -1284,14 +1461,26 @@ async function liveLoop(){
       q.still = !LIVE.prev || corr(Array.from(q.sig), Array.from(LIVE.prev)) > 0.99; LIVE.prev = q.sig;
       // الوضوح نسبي: نقارن بأفضل وضوح خلال آخر 3 ثوانٍ لأن قيمته المطلقة تختلف بين الأسطح
       if(q.sharp > peak || now - peakT > 3000){ peak = q.sharp; peakT = now; } q.blur = q.sharp < peak * 0.45;
-      const [k, msg] = liveStatus(q); LIVE.good = k === 'ok' ? LIVE.good + 1 : 0;
-      const st = $('#lvS'), cap = $('#lvCapBtn');
+      let [k, msg] = liveStatus(q); LIVE.good = k === 'ok' ? LIVE.good + 1 : 0;
+      const G = F && F.guide, st = $('#lvS'), cap = $('#lvCapBtn');
+      if(G && F.step === 'gShot' && G.i < G.steps.length){
+        // التطابق مع الصورة المرجعية للرف الحالي، ثم التقاط تلقائي بعد قراءتين متتاليتين جيدتين
+        const al = alignScore(Array.from(q.sig), G.steps[G.i].sig); G.al = al; const ae = $('#gAl'); if(ae) ae.textContent = 'التطابق ' + Math.max(0, Math.round(al * 100)) + '%';
+        if(k === 'ok' && al < +cfg('alignMin')){ k = 'wa'; msg = 'طابِق اللقطة مع الصورة الشفافة'; }
+        G.ok = k === 'ok' && Date.now() > (G.cool || 0) ? (G.ok || 0) + 1 : 0;
+        if(G.ok >= 2 && !G.busy){ G.busy = true; guideLiveCapture().finally(() => { G.busy = false; }); }
+      }
       if(st){ st.className = k; st.textContent = msg; }
       if(cap) cap.classList.toggle('pri', LIVE.good >= 2);
       drawLive();
     }catch(e){}
     await sleep(250);
   }
+}
+// لقطة من البث للرف الحالي: تُقصّ منطقة الإطار وحدها (حتى 1600px) فتبقى الذاكرة صغيرة
+async function guideLiveCapture(){
+  const v = $('#lvV'), G = F && F.guide; if(!v || !v.videoWidth || !G) return;
+  guideStore(cropTo(v, GUIDE, DUST_MAX), true, G.al == null ? null : G.al);
 }
 async function liveCapture(){
   const v = $('#lvV'); if(!v || !v.videoWidth) return;
@@ -1314,6 +1503,7 @@ function computeSingle(){
   if(mult > 1) R.lines.push(['مضاعف الالتزام (' + stk + ' أيام)', '×' + mult.toFixed(2)]);
   if(F.extra) R.lines.push(['تنظيف إضافي', '×0.5']);
   const why = []; if(!pass) why.push('التقييم المبدئي مرتفع (' + a + ')'); if(F.manual) why.push('رقم الموقع أُدخل يدوياً');
+  if(F.guideRes && F.guideRes.some(g => g.al != null && g.al < 0.35)) why.push('لقطة لا تطابق الصورة المرجعية');
   R.sus = why.length > 0; R.susWhy = why.join('، ');
   R.total = Math.max(1, Math.round(base * mult * (F.extra ? 0.5 : 1)));
   if(!pass){ R.held = R.total; R.lines.push(['معلّقة حتى اعتماد المدقق', '']); }
@@ -1394,7 +1584,7 @@ async function record(type, R, extra = {}){
     const one = F.after || F.before;
     await Store.set('proof', rid(), { ts, ym, staff: m.id, zone: z.id, zoneName: zTitle(z), section: z.section || '', branch: z.branch || '', type, el: F.el || '', round: F.rlabel || '', before: R.b ?? null, after: R.a,
       red: Math.round((R.red || 0) * 100), pts: R.pts, held: R.held || 0, sim: Math.round((R.sim ?? 1) * 100) / 100, sus: !!R.sus, why: R.susWhy || (type === 'f' ? 'بلاغ' : R.extra ? 'تنظيف إضافي' : 'تدقيق'), status: 'pending',
-      thumbB: F.before && F.after ? F.before.thumb : '', thumbA: one ? one.thumb : '', live: !!(one && one.live) }, true);
+      thumbB: F.before && F.after ? F.before.thumb : '', thumbA: one ? one.thumb : '', live: !!(one && one.live), steps: F.guideRes || [] }, true);
   }
   return true;
 }
@@ -1573,6 +1763,10 @@ function aStaff(){
     <div class="list">${list.slice(0, f.lim).map(p => `<button class="zr" data-act="staffForm" data-id="${esc(p.id)}"><div class="av">${initials(p.name)}</div><div style="flex:1;min-width:0"><div class="row" style="justify-content:space-between"><span class="nm">${esc(p.name)}</span>${p.role === 'sup' ? '<span class="tag t-inf">مدقق</span>' : p.role === 'insp' ? '<span class="tag t-pri">مفتش عام</span>' : ''}${p.active === false ? '<span class="tag t-da">موقوف</span>' : ''}${!(p.pinH || p.activated) ? '<span class="tag t-wa">لم يفعّل</span>' : ''}${p.role === 'admin' ? '<span class="tag t-ok">مدير</span>' : ''}</div><div class="xs mut">${esc(p.num)} · ${esc(p.section || '')}${p.branch ? ' · ' + esc(p.branch) : ''}</div></div></button>`).join('') || '<div class="empty">لا يوجد موظفون.</div>'}</div>
     ${list.length > f.lim ? `<button class="btn w" data-act="more" data-k="sf">عرض المزيد (${list.length - f.lim})</button>` : ''}`;
 }
+function aReviewTabs(inS, refQ){
+  const pend = inS.filter(p => p.status === 'pending');
+  return `<div class="seg" style="margin:10px 0">${[['pending', 'بانتظار التدقيق (' + pend.length + ')'], ['sus', 'تحتاج انتباهاً'], ['refs', 'المراجع' + (refQ.length ? ' (' + refQ.length + ')' : '')], ['flags', 'البلاغات'], ['all', 'الكل']].map(([k, n]) => `<button class="${S.rv === k ? 'on' : ''}" data-act="rv" data-v="${k}">${n}</button>`).join('')}</div>`;
+}
 function aReview(){
   subscribeProofs();
   if(!S.proofs) return `<div class="loading" style="height:30vh"><div><div class="spin"></div>جارٍ التحميل…</div></div>`;
@@ -1580,11 +1774,13 @@ function aReview(){
   const P = inS.filter(p => S.rv === 'pending' ? p.status === 'pending' : S.rv === 'sus' ? p.status === 'pending' && p.sus : S.rv === 'flags' ? p.type === 'f' : true)
     .sort((a, b) => S.rv === 'pending' ? ((b.sus ? 1 : 0) - (a.sus ? 1 : 0) || (b.after || 0) - (a.after || 0) || b.ts - a.ts) : b.ts - a.ts);
   const tn = { c: 'تنظيف', x: 'محاولة', f: 'بلاغ', k: 'فحص' }, sn = { pending: ['بانتظار التدقيق', 't-wa'], ok: ['معتمدة', 't-ok'], rej: ['مرفوضة', 't-da'] };
+  const refQ = S.zones.filter(z => inScope(z) && z.ref && !z.ref.ok);
+  if(S.rv === 'refs') return aReviewTabs(inS, refQ) + (refQ.length ? `<div class="list">${refQ.map(z => `<button class="zr" data-act="refView" data-id="${esc(z.id)}"><span class="dot d-wa"></span><div style="flex:1"><span class="nm">${esc(zTitle(z))}</span><div class="xs mut">${z.ref.n} رفوف · ${esc((staffById(z.ref.by) || { name: '—' }).name)} · ${ago(z.ref.at)}</div></div></button>`).join('')}</div>` : '<div class="card empty">لا توجد صور مرجعية بانتظار الاعتماد.</div>');
   const pend = inS.filter(p => p.status === 'pending'), easy = P.filter(p => p.status === 'pending' && !p.sus);
   return `<div class="note">كل عملية تنظيف تصل هنا بصورتها وتقييمها المبدئي. اعتمد أو ارفض بعد النظر في الصورة. الرفض يخصم نقاط العملية، واعتماد العمليات المعلّقة يمنح نقاطها.</div>
-    <div class="seg" style="margin:10px 0">${[['pending', 'بانتظار التدقيق (' + pend.length + ')'], ['sus', 'تحتاج انتباهاً'], ['flags', 'البلاغات'], ['all', 'الكل']].map(([k, n]) => `<button class="${S.rv === k ? 'on' : ''}" data-act="rv" data-v="${k}">${n}</button>`).join('')}</div>
+    ${aReviewTabs(inS, refQ)}
     ${easy.length > 1 ? `<button class="btn w" style="margin-bottom:10px" data-act="rvBulk">${ic('check', 16)} اعتماد ${Math.min(easy.length, 60)} عملية مقبولة مبدئياً دفعة واحدة</button>` : ''}
-    ${P.slice(0, 60).map(p => { const s = staffById(p.staff) || { name: '—' }; return `<div class="card"><div class="row" style="align-items:flex-start"><div class="thumbs">${p.thumbB ? `<img src="${esc(p.thumbB)}" alt="قبل">` : ''}${p.thumbA ? `<img src="${esc(p.thumbA)}" alt="الصورة" data-act="rvImg" data-src="${esc(p.thumbA)}">` : ''}</div>
+    ${P.slice(0, 60).map(p => { const s = staffById(p.staff) || { name: '—' }; return `<div class="card"><div class="row" style="align-items:flex-start"><div class="thumbs">${p.thumbB ? `<img src="${esc(p.thumbB)}" alt="قبل">` : ''}${p.thumbA && !(p.steps || []).length ? `<img src="${esc(p.thumbA)}" alt="الصورة" data-act="rvImg" data-src="${esc(p.thumbA)}">` : ''}${(p.steps || []).map(g => `<img src="${esc(g.th)}" alt="${esc(g.l)}" title="${esc(g.l)} · ${g.idx}" data-act="rvImg" data-src="${esc(g.th)}">`).join('')}</div>
       <div style="flex:1;min-width:0"><b>${esc(p.zoneName)}</b> <span class="tag ${sn[p.status][1]}">${sn[p.status][0]}</span><div class="xs mut">${esc(s.name)} · ${esc(p.section)} · ${ago(p.ts)}${p.live ? ' · تصوير مباشر' : ''}</div>
       <div class="xs">${tn[p.type] || ''}${p.el ? ' · ' + esc(p.el) : ''}${p.round ? ' · ' + esc(p.round) : ''} · المؤشر ${p.before != null && p.type !== 'k' && p.type !== 'f' ? p.before + ' ← ' : ''}${p.after ?? p.before} · ${p.held ? p.held + ' نقطة معلّقة' : p.pts + ' نقطة'}</div>${p.sus || p.type === 'f' ? `<div class="xs" style="color:var(--wa)">${esc(p.why)}</div>` : ''}</div></div>
       ${p.status === 'pending' ? `<div class="g2" style="margin-top:10px"><button class="btn sm" data-act="rvOk" data-id="${esc(p.id)}">${ic('check', 16)} اعتماد${p.held ? ' ومنح النقاط' : ''}</button><button class="btn sm dan" data-act="rvRej" data-id="${esc(p.id)}">${ic('x', 16)} رفض${p.pts ? ' وخصم النقاط' : ''}</button></div>` : ''}</div>`; }).join('') || '<div class="card empty">لا توجد عناصر.</div>'}`;
@@ -1612,6 +1808,7 @@ function aSet(){
     <div class="tg"><div><b>عيّنة الفحص الميداني اليومية</b><div class="sm mut">نسبة مواقع الشركة التي تُختار عشوائياً للمفتش العام كل يوم.</div></div>${opt('inspRate', [5, 10, 15, 20, 25, 30], '%')}</div>
     <div class="tg"><div><b>خصم «غير مطابق» في الفحص الميداني</b><div class="sm mut">يُخصم ممن نظّف الموقع ذلك اليوم.</div></div>${opt('inspPen', [0, 5, 10, 15, 20, 30], ' نقطة')}</div>
     <div class="tg"><div><b>إلزام الفحص المباشر</b><div class="sm mut">يمنع رفع صور من المعرض حيث تتوفر الكاميرا المباشرة (يتطلب فتح التطبيق عبر https).</div></div>${sw('requireLive')}</div>
+    <div class="tg"><div><b>تشغيل الضوء تلقائياً</b><div class="sm mut">عند فتح الكاميرا المباشرة يُشغَّل فلاش الهاتف وحده حيث يسمح الجهاز (أندرويد). متصفحات iPhone لا تسمح بذلك.</div></div>${sw('autoTorch')}</div>
     <div class="tg"><div><b>الأصوات والاهتزاز</b></div>${sw('sound')}</div></div>
     <div class="card"><h3>فئات العناصر وجولاتها اليومية</h3><p class="sm mut" style="margin-top:0">كل سطر جولة: «تنظيف» أو «فحص»، ثم الوقت من–إلى، ثم وصف اختياري. مثال: <code>فحص 12:00-15:00 فحص منتصف اليوم</code></p>
       ${Object.entries(cats()).map(([k, c]) => `<div style="border-top:1px solid var(--line2);padding:10px 0"><div class="row"><b style="font-size:18px;width:28px">${esc(k)}</b><input id="cn_${k}" value="${esc(c.name)}" style="flex:1"></div>
@@ -1634,6 +1831,7 @@ function zoneForm(z){
     <div class="fld"><label>الفرع (اختياري)</label><input id="zB" list="dlB" value="${esc(z.branch || '')}"><datalist id="dlB">${brs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div></div>
     <div class="fld"><label>العناصر وفئاتها</label><input id="zE" value="${esc(elsText(z.id ? zEls(z) : []))}" placeholder="زجاج:G، رفوف:B، أجهزة:B"></div>
     <div class="xs mut">الفئات: ${Object.entries(C).map(([k, c]) => '<b>' + esc(k) + '</b> ' + esc(c.name.replace(/^[A-Z]\s*—\s*/, ''))).join(' · ')}</div>
+    ${z.id ? `<button class="btn w" style="margin-top:10px" data-act="refStart" data-id="${esc(z.id)}">${ic('eye')} ${z.ref ? 'تحديث الصورة المرجعية (' + z.ref.n + ' رفوف' + (z.ref.ok ? '' : '، بانتظار الاعتماد') + ')' : 'إعداد الصورة المرجعية'}</button>` : ''}
     <div class="g2" style="margin-top:14px"><button class="btn pri" data-act="zoneSave" data-id="${esc(z.id || '')}">حفظ</button>${z.id ? `<button class="btn dan" data-act="zoneDel" data-id="${esc(z.id)}">حذف</button>` : '<button class="btn" data-act="close">إلغاء</button>'}</div>`;
 }
 function staffForm(p){
@@ -1722,6 +1920,7 @@ const A = {
         <div class="row" style="flex-wrap:wrap;gap:4px;margin-top:4px">${rs.map(r => { const st = roundSt(z, el, r); return `<span class="tag ${{ done: 't-ok', now: 't-wa', late: 't-da', soon: '' }[st]}" title="${esc(r.label)}">${r.t === 'k' ? 'فحص' : 'تنظيف'} ${hm(r.f)}</span>`; }).join('')}</div></div>`; }).join('');
     openModal(`<h2>${esc(zTitle(z))}</h2><div class="row" style="margin-bottom:6px">${stTag(z)}<span class="sm mut">${esc(z.section)}${z.branch ? ' · ' + esc(z.branch) : ''}</span></div>
       ${zs.flagged ? `<div class="note wa" style="margin-bottom:8px">بلاغ ${ago(z.flaggedAt)}${staffById(z.flaggedBy) ? ' — ' + esc(staffById(z.flaggedBy).name) : ''}</div>` : ''}${rows}
+      ${canRef() ? `<button class="btn w" style="margin-top:10px" data-act="refStart" data-id="${esc(z.id)}">${ic('eye')} ${z.ref ? 'تحديث الصورة المرجعية' + (z.ref.ok ? '' : ' (بانتظار الاعتماد)') : 'إعداد الصورة المرجعية'}</button>` : ''}
       ${S.me ? `<button class="btn w" style="margin-top:10px" data-act="scanZone" data-id="${esc(z.id)}">${ic('flag')} فحص وبلاغ</button>` : ''}`);
   },
   inspOpen(d){
@@ -1784,6 +1983,44 @@ const A = {
   },
   async catAdd(){ const used = Object.keys(cats()), k = 'DEFHIJKLMNOPQRSTUVWXYZ'.split('').find(x => !used.includes(x)); if(!k) return;
     if(await saveCfg({ cats: Object.assign({}, cats(), { [k]: { name: k + ' — فئة جديدة', rules: 'تنظيف 08:00-21:00 تنظيف يومي', extra: true } }) })) toast('أُضيفت الفئة ' + k + '.'); },
+  refStart(d){ closeModal(); F = { mode: 'ref', zoneId: d.id, step: 'rWhole', ref: { steps: [] }, back: S.tab, f: {} }; S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
+  async refWhole(){
+    const f = await pickPhoto(); if(!f) return;
+    try{ const img = await loadImg(f), p = prep(img, 900); F.ref.wc = p.canvas; F.ref.whole = cropURL(p.canvas, FULL, 520); F.step = 'rMark'; rf(); }catch(e){ toast('تعذّرت قراءة الصورة.'); }
+  },
+  refDelStep(d){ refKeepInputs(); F.ref.steps.splice(+d.i, 1); rf(); },
+  refMarkDone(){ refKeepInputs(); if(!F.ref.steps.length) return toast('حدّد رفاً واحداً على الأقل.'); F.ri = 0; F.step = 'rShot'; rf(); },
+  async refShot(){
+    const f = await pickPhoto(); if(!f) return; F.busy = true; rf();
+    try{
+      const img = await loadImg(f), c = cropTo(img, REF_RECT, DUST_MAX), st = F.ref.steps[F.ri];
+      const an = await analyzeRegion(c, FULL, 1, DUST_MAX, { d0: 0 });
+      st.img = cropURL(c, FULL, 480); st.sig = imgSig(c); st.d0 = Math.round(an.density * 1.1 * 100) / 100; st.n0 = an.n;
+      F.busy = false; if(F.ri + 1 < F.ref.steps.length){ F.ri++; F.step = 'rShot'; } else F.step = 'rDone'; rf(); window.scrollTo(0, 0);
+    }catch(e){ F.busy = false; rf(); toast('تعذّرت قراءة الصورة.'); }
+  },
+  refRedo(){ F.ri = 0; F.step = 'rShot'; rf(); },
+  async refSave(){
+    const z = zoneById(F.zoneId), R = F.ref, ok = refAuto(), at = Date.now();
+    const doc = { zone: z.id, whole: R.whole, steps: R.steps.map(x => ({ l: x.l, el: x.el || '*', r: x.r, img: x.img, sig: x.sig, d0: x.d0 })), by: S.me || 'admin', at, ok };
+    if(!(await RefStore.put(z.id, doc))) return;
+    await Store.update('zones', z.id, { ref: { n: doc.steps.length, ok, d0: Math.min(...doc.steps.map(x => x.d0)), at, by: doc.by } });
+    toast(ok ? 'حُفظت الصورة المرجعية وفُعّل التصوير الموجّه لهذا الموقع.' : 'حُفظت الصورة المرجعية، وأُرسلت للمدقق لاعتمادها.', 4000);
+    const back = F.back; F = null; S.tab = !S.me ? 'admin' : back === 'admin' ? 'admin' : 'home'; render(true);
+  },
+  async refView(d){
+    const z = zoneById(d.id), r = await RefStore.get(d.id); if(!z || !r) return toast('لم تُحمّل الصورة المرجعية.');
+    openModal(`<h2>${esc(zTitle(z))}</h2><img src="${r.whole}" class="gref"><div class="gres" style="margin-top:8px">${r.steps.map(x => `<div><img src="${x.img}"><span>${esc(x.l)}</span></div>`).join('')}</div>
+      <p class="sm mut">اعتمد المرجع فقط إن كانت الصور لموقع نظيف ومرتّب وتُظهر الرفوف بوضوح.</p>
+      <div class="g2"><button class="btn pri" data-act="refOk" data-id="${esc(z.id)}">${ic('check')} اعتماد</button><button class="btn dan" data-act="refDel" data-id="${esc(z.id)}">${ic('x')} رفض وحذف</button></div>`);
+  },
+  async refOk(d){ const r = await RefStore.get(d.id), z = zoneById(d.id); if(!r || !z) return; r.ok = true; if(await RefStore.put(d.id, r)){ await Store.update('zones', d.id, { ref: Object.assign({}, z.ref, { ok: true }) }); closeModal(); toast('اعتُمد المرجع.'); } },
+  async refDel(d){ await RefStore.del(d.id); await Store.update('zones', d.id, { ref: null }); closeModal(); toast('حُذف المرجع.'); },
+  async gPhoto(){
+    const f = await pickPhoto(); if(!f) return;
+    try{ const img = await loadImg(f), c = cropTo(img, REF_RECT, DUST_MAX), G = F.guide; guideStore(c, false, alignScore(imgSig(c), G.steps[G.i].sig)); }catch(e){ toast('تعذّرت قراءة الصورة.'); }
+  },
+  gCap(){ const G = F && F.guide; if(G && !G.busy){ G.busy = true; guideLiveCapture().finally(() => { G.busy = false; }); } },
   doTask(d){ closeModal(); F = null; newFlow(d.t === 'k' ? 'scan' : 'clean', d.id, d.k, d.l); S.tab = 'clean'; render(true); window.scrollTo(0, 0); },
   addXtra(){ openModal(`<h2>إضافة موقع إضافي</h2><p class="sm mut" style="margin-top:0">يظهر ضمن مهامك اليومية حتى نهاية الشهر.</p><div class="fld"><label>رقم الموقع</label><input id="xN" inputmode="numeric"></div><div class="fld"><label>العنصر (اختياري)</label><input id="xE" placeholder="مثل: رفوف — اتركه فارغاً لكل العناصر"></div><button class="btn pri w" data-act="saveXtra">إضافة</button>`); },
   async saveXtra(){
@@ -1813,7 +2050,7 @@ const A = {
   },
   pickEl(d){ F.el = d.k; flowAfterZone(); rf(); },
   submitClean(){ saveClean(false); },
-  flowCancel(){ F = null; clearInterval(tmrI); render(true); },
+  flowCancel(){ const back = F && F.mode === 'ref' ? (S.me ? F.back : 'admin') : null; F = null; clearInterval(tmrI); if(back) S.tab = back === 'clean' ? 'home' : back; render(true); },
   shoot(d){ if(liveAvail() && !d.photo) startLive(d.w); else shoot(d.w); },
   liveCap(){ liveCapture(); },
   liveTorch(){ toggleTorch(); },
