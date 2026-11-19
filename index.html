@@ -4412,6 +4412,88 @@ html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions button{height:3
   background:#ffffff14!important;color:#fff!important;border:0!important;box-shadow:none!important;font-size:13px!important;width:auto!important;margin:0!important}
 html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions button:hover{background:#ffffff26!important}
 </style>
+<style id="amCleanStyle">
+/* ═══════ المرحلة 1 (أ) — الأساس لكل الشاشات: زجاج، عناوين، أزرار، شارات ═══════
+   الألوان كلها من رموز الهوية النشطة، فتعمل الهويات الست ليلاً ونهاراً. */
+body{--amGl:color-mix(in srgb,var(--ui-panel) 62%,transparent);--amEdge:color-mix(in srgb,var(--accent) 14%,transparent);--amSep:color-mix(in srgb,var(--ui-muted) 14%,transparent);
+  --amHi:rgba(255,255,255,.045);--amSh:inset 0 1px 0 rgba(255,255,255,.05),0 10px 28px rgba(0,0,0,.22);
+  --amTint:color-mix(in srgb,var(--accent) 13%,transparent);--amTint2:color-mix(in srgb,var(--accent) 6%,transparent);--amAcEdge:color-mix(in srgb,var(--accent) 40%,transparent);
+  --amAcTx:color-mix(in srgb,var(--accent2) 60%,#fff);--amSoft:rgba(0,0,0,.16);--amR:22px}
+html body.lightMode{--amGl:color-mix(in srgb,var(--ui-panel) 80%,transparent);--amEdge:var(--line-strong);--amHi:rgba(255,255,255,.5);
+  --amSh:inset 0 1px 0 rgba(255,255,255,.7),0 6px 20px rgba(40,60,90,.07);--amAcTx:var(--accent2);--amSoft:color-mix(in srgb,var(--ui-muted) 8%,transparent)}
+/* البطاقات: زجاج هادئ بانحناء ناعم */
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen):not(#amTopBar){
+  background:linear-gradient(180deg,var(--amHi),transparent 60%),var(--amGl)!important;
+  -webkit-backdrop-filter:blur(14px) saturate(1.2)!important;backdrop-filter:blur(14px) saturate(1.2)!important;
+  border:1px solid var(--amEdge)!important;border-radius:var(--amR)!important;box-shadow:var(--amSh)!important;padding:16px!important}
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen):not(#amTopBar):hover{border-color:var(--amEdge)!important;box-shadow:var(--amSh)!important}
+/* الشريط العلوي: زجاجي داكن */
+html body #appScreen > #amTopBar:not(#_a):not(#_b):not(#_c){background:color-mix(in srgb,var(--amBar) 86%,transparent)!important;-webkit-backdrop-filter:blur(14px)!important;backdrop-filter:blur(14px)!important;border-bottom:1px solid rgba(255,255,255,.06)!important;box-shadow:none!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .brand-logo-sm{border-radius:11px!important;background:#ffffff14!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions button{border-radius:12px!important;background:#ffffff12!important;border:1px solid #ffffff10!important}
+/* العناوين: بلون الهوية، بلا خط تحتي */
+html body #appScreen :is(h2,h3):not(#_a):not(#_b):not(#_c)::after{display:none!important;content:none!important}
+html body #appScreen .card > h2:not(#_a):not(#_b):not(#_c){margin:0 0 6px!important;padding:0!important;border:0!important;font-size:17px!important;font-weight:800!important;letter-spacing:0!important;
+  background:none!important;-webkit-text-fill-color:currentColor!important;color:var(--accent2)!important}
+html body.lightMode #appScreen .card > h2:not(#_a):not(#_b):not(#_c){color:var(--accent2)!important}
+html body #appScreen :is(.card,.dept-card) h3:not(#_a):not(#_b):not(#_c){padding-bottom:0!important;border:0!important;letter-spacing:0!important}
+/* الأزرار الأساسية: أخضر الهوية الهادئ الشفاف */
+html body #appScreen button:not([class]):not(#_a):not(#_b):not(#_c){background:linear-gradient(180deg,var(--amTint),var(--amTint2))!important;color:var(--amAcTx)!important;
+  border:1px solid var(--amAcEdge)!important;border-radius:15px!important;box-shadow:none!important;text-shadow:none!important;font-weight:800!important}
+/* الأزرار الثانوية */
+html body #appScreen button.secondary:not(#_a):not(#_b):not(#_c):not(.neoSettingsUnread){border-radius:13px!important}
+/* شارات الأعداد */
+html body #appScreen .dept-summary-badge:not(#_a):not(#_b):not(#_c){background:var(--amSoft)!important;border:1px solid var(--amSep)!important;color:var(--ui-muted)!important;font-weight:600!important;letter-spacing:0!important;padding:3px 10px!important}
+/* الأيام المتتالية: شارة صغيرة بدل رقم كبير منفرد */
+html body #appScreen :is(#hallSummaryStreak,#streakBox) > div:not(#_a):not(#_b):not(#_c){display:table!important;margin:0 auto 12px!important;padding:4px 12px!important;border-radius:99px!important;font-size:12px!important;font-weight:800!important;
+  background:rgba(255,140,66,.09)!important;border:1px solid rgba(255,140,66,.25)!important;line-height:1.5!important}
+html body #appScreen :is(#hallSummaryStreak,#streakBox) > div:not(#_a):not(#_b):not(#_c)::before{content:"أيام متتالية: ";font-weight:600;opacity:.8}
+
+/* ═══════ المرحلة 1 (ب) — شاشة مسؤول الصالة ═══════ */
+/* بطاقة العنوان: العنوان ← الشرح ← أدوات التدقيق (شبكة 2×2) */
+html body #hallView > .card:first-child:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:flex!important;flex-direction:column!important}
+html body #hallView > .card:first-child > h2:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){order:1}
+html body #hallView > .card:first-child > div:not(.tabs):not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){order:2;margin:0!important;font-size:11.5px!important;line-height:1.7!important;color:var(--ui-muted)!important;text-align:start!important}
+html body #hallView > .card:first-child > .tabs:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){order:3;display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin:16px 0 0!important;padding:0!important;background:none!important;border:0!important;box-shadow:none!important}
+html body #hallView > .card:first-child > .tabs > .tab:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;margin:0!important;padding:12px!important;
+  border-radius:16px!important;background:var(--amSoft)!important;border:1px solid var(--amSep)!important;color:var(--ui-title)!important;font-size:13px!important;font-weight:700!important;box-shadow:none!important;text-align:start!important;white-space:nowrap}
+html body #hallView > .card:first-child > .tabs > .tab.active:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){background:linear-gradient(180deg,var(--amTint),var(--amTint2))!important;border-color:var(--amAcEdge)!important;color:var(--amAcTx)!important}
+/* شريط الأيام: مفتاح واحد من ثلاثة أجزاء، «اليوم» المختار بارز */
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]):not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:grid!important;grid-template-columns:1fr 1fr 1fr!important;gap:2px!important;margin:0 0 12px!important;padding:3px!important;border-radius:15px!important;
+  background:var(--amGl)!important;border:1px solid var(--amSep)!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]) > *:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:flex!important;align-items:center!important;justify-content:center!important;min-height:38px!important;margin:0!important;padding:0 6px!important;border-radius:12px!important;font-size:12.5px!important;box-shadow:none!important}
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]) > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){background:transparent!important;border:0!important;color:var(--ui-muted)!important;opacity:1!important}
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]) > button[title="انتهت المهلة"]:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){opacity:.55!important}
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]) > span:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){background:linear-gradient(180deg,var(--amTint),var(--amTint2))!important;border:1px solid var(--amAcEdge)!important;color:var(--amAcTx)!important;font-weight:800!important}
+html body #hallContentWrap > div:has(> button[onclick^="hallGoPrev"]) > div:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){grid-column:1/-1;min-height:0!important;font-size:11px!important}
+/* بطاقة النسبة: حلقة تقدّم + النص + زر الحفظ */
+html body #hallAuditSummary > .card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:grid!important;grid-template-columns:88px 1fr!important;grid-template-rows:auto auto!important;column-gap:16px!important;align-items:center!important;margin-bottom:12px!important}
+html body #hallAuditSummary > .card > div:first-child:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:contents!important}
+html body #hallAuditSummary > .card > div:first-child > span:first-child:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){grid-column:2;grid-row:1;align-self:end;color:var(--ui-title)!important;font-size:14px!important;font-weight:700!important}
+html body #hallAuditSummary > .card > div:first-child > span:last-child:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){grid-column:1;grid-row:1/3;position:relative;width:84px;height:84px;display:grid!important;place-items:center;font-size:20px!important}
+html body #hallAuditSummary > .card > div:first-child > span:last-child:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::before{content:"";position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--amPct,0) * 1%),color-mix(in srgb,var(--ui-muted) 16%,transparent) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 7px));mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 7px))}
+html body #hallAuditSummary > .card > div:nth-child(2):not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){grid-column:2;grid-row:2;align-self:start;margin-top:4px!important;font-size:12px!important;color:var(--ui-muted)!important}
+html body #hallAuditSummary > .card > div:nth-child(3):not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:none!important}
+html body #hallAuditSummary > .card > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){grid-column:1/-1;min-height:48px;margin-top:16px!important}
+html body #hallAuditSummary > .card > div:last-child:not(:nth-child(2)):not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:none!important}
+/* «تحديث النسب» صغير بجانب عنوان «الأقسام» */
+html body #hallContentWrap > button.secondary:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:flex!important;align-items:center;width:auto!important;min-height:32px!important;margin:20px auto 10px 0!important;padding:0 14px!important;font-size:12px!important;border-radius:11px!important}
+html body #hallContentWrap > button.secondary + .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){position:relative;overflow:visible!important}
+html body #hallContentWrap > button.secondary + .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::before{content:"الأقسام"!important;display:block!important;position:absolute;top:-35px;right:6px;font-size:12px;font-weight:700;color:var(--ui-muted);background:none!important;animation:none!important;opacity:1!important;width:auto;height:auto;inset:auto 6px auto auto;top:-35px}
+/* الأقسام: صفوف داخل بطاقة واحدة */
+html body #hallContentWrap > .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){margin:0!important;padding:0!important;border-radius:0!important;border-top-width:0!important;box-shadow:none!important}
+html body #hallContentWrap > button.secondary + .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){border-top-width:1px!important;border-radius:var(--amR) var(--amR) 0 0!important}
+html body #hallContentWrap > .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(:has(+ .dept-card)){border-radius:0 0 var(--amR) var(--amR)!important;margin-bottom:14px!important;box-shadow:var(--amSh)!important}
+html body #hallContentWrap > button.secondary + .dept-card:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(:has(+ .dept-card)){border-radius:var(--amR)!important}
+html body #hallContentWrap > .dept-card > div:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){display:flex!important;align-items:center!important;gap:12px!important;padding:14px 16px!important;margin:0!important;border-top:1px solid var(--amSep)}
+html body #hallContentWrap > button.secondary + .dept-card > div:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){border-top:0}
+html body #hallContentWrap > .dept-card h3:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){flex:1;display:flex!important;align-items:center;gap:10px;margin:0!important;font-size:14.5px!important;font-weight:700!important;color:var(--accent)!important}
+html body #hallContentWrap > .dept-card h3:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::before{content:""!important;display:block!important;flex:none;width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 4px var(--amTint2);position:static!important;opacity:1!important}
+html body #hallContentWrap > .dept-card > div:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e)::after{content:"‹";color:var(--ui-muted);font-size:16px;line-height:1}
+
+</style>
 </head>
 <body>
 <script>window.__neoApplyPrepaintBody&&window.__neoApplyPrepaintBody();</script>
@@ -10930,7 +11012,7 @@ function hallDateBar(){
     + '<button class="secondary" onclick="hallGoPrev()" title="' + (can ? 'متاح حتى الساعة ٣ فجراً' : 'انتهت المهلة') + '" style="font-size:12px;padding:8px 14px;'
     + (!can ? 'opacity:0.45;' : y ? 'border-color:#d3a04f;color:#d3a04f;' : '') + '">◀ أمس' + (can ? '' : ' 🔒') + '</button>'
     + '<span style="color:' + (y ? '#d3a04f' : '#8fb8d8') + ';font-size:12px;font-weight:600;">'
-    + (y ? '📅 ' + hallDate() + ' (أمس)' : '📅 اليوم') + '</span>'
+    + (y ? hallDate() + ' (أمس)' : 'اليوم') + '</span>'
     + '<button class="secondary" onclick="hallGoToday()" style="font-size:12px;padding:8px 14px;'
     + (!y ? 'opacity:0.5;' : 'border-color:#38d9b9;color:#38d9b9;') + '">اليوم ▶</button>'
     + (y && can ? '<div style="width:100%;text-align:center;color:#d3a04f;font-size:11px;margin-top:5px;">⏳ التعديل على الأمس متاح حتى الساعة ٣ فجراً</div>' : '')
@@ -31423,5 +31505,20 @@ window.neoStreakZero = async function(id,kind){
 })();
 </script>
 
+<script id="amCleanScript">
+/* عرض فقط: يمرّر نسبة شريط التقدّم الموجود إلى متغيّر CSS (--amPct) لرسم الحلقة. لا يغيّر أي بيانات ولا يستدعي أي دالة من التطبيق. */
+(function(){
+  var q = 0;
+  function sync(){ q = 0;
+    document.querySelectorAll('#hallAuditSummary > .card').forEach(function(c){
+      var b = c.querySelector(':scope > div:nth-child(3) > div');
+      if (b) c.style.setProperty('--amPct', String(parseFloat(b.style.width) || 0));
+    });
+  }
+  new MutationObserver(function(){ if (!q) q = requestAnimationFrame(sync); }).observe(document.body, { childList: true, subtree: true });
+  sync();
+})();
+
+</script>
 </body>
 </html>
