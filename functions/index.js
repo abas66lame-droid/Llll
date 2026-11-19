@@ -144,7 +144,7 @@ exports.bootstrap = onCall(async req => {
     tx.set(db.doc('staff/' + id), { num, name, section: clean(d.section) || 'الإدارة', branch: clean(d.branch), role: 'admin', active: true, activated: true, created: Date.now(), st: {} });
     tx.set(db.doc('secrets/' + id), newSecret(d.pin));
     tx.set(db.doc('nums/' + num), { id });
-    tx.set(db.doc('config/main'), Object.assign({ orgName: clean(d.org) || 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 10, selfReg: false, sound: true, requireLive: true }, c.exists ? c.data() : {}, { setupDone: true }));
+    tx.set(db.doc('config/main'), Object.assign({ orgName: clean(d.org) || 'شركة الأماني', requireCode: false, minSec: 30, sens: 1, auditRate: 10, selfReg: false, sound: true, requireLive: true }, c.exists ? c.data() : {}, { setupDone: true }));
   });
   return { token: await tokenFor({ id, role: 'admin' }) };
 });
