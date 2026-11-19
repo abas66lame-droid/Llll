@@ -4368,6 +4368,50 @@ html body #neoSplash .sub.amSub{letter-spacing:1px;font-size:13px;animation:amT 
 #loginScreen .amOrg{font-size:13px;opacity:.75;margin-top:2px}
 @media (prefers-reduced-motion:reduce){html body .amLogo.anim img,html body #neoSplash .amName,html body #neoSplash .amSub{animation:none!important}}
 </style>
+<style id="amUnifyStyle">
+/* ═══ توحيد التصميم مع تطبيق النظافة (شركة الأماني) ═══ */
+/* لون الشريط: كحلي تطبيق النظافة للهوية الأصلية، وما يقابله في كل هوية؛ ثابت داكن ليلاً ونهاراً */
+:root{--amBar:#0f2742;--amR:12px}
+body{--amCard:#121e30;--amLine:rgba(255,255,255,.09)}
+body[data-neo-palette="sapphire"]{--amCard:#18243d}body[data-neo-palette="bronze"]{--amCard:#25222c}
+body[data-neo-palette="garnet"]{--amCard:#28202e}body[data-neo-palette="olive"]{--amCard:#222e26}body[data-neo-palette="amethyst"]{--amCard:#27223b}
+html body.lightMode,html body.lightMode[data-neo-palette]{--amCard:#fff;--amLine:#e2e7ee}
+body[data-neo-palette="sapphire"]{--amBar:#18243d}
+body[data-neo-palette="bronze"]{--amBar:#25222c}
+body[data-neo-palette="garnet"]{--amBar:#28202e}
+body[data-neo-palette="olive"]{--amBar:#222e26}
+body[data-neo-palette="amethyst"]{--amBar:#27223b}
+/* البطاقات */
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen):not(#amTopBar){
+  background:var(--amCard)!important;background-image:none!important;padding:14px!important;margin-bottom:12px!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+  border:1px solid var(--amLine)!important;border-radius:var(--amR)!important;
+  box-shadow:none!important;animation:none!important;transition:border-color .2s ease!important}
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen):not(#amTopBar):hover{box-shadow:none!important;transform:none!important;border-color:var(--amLine)!important}
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen)::before,
+html body :is(.card,.neo-card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen)::after{display:none!important;content:none!important}
+html body :is(.card,.dept-card):not(#_a):not(#_b):not(#_c):not(#loginScreen) :is(h2,h3){letter-spacing:0!important;text-shadow:none!important}
+/* الشريط العلوي */
+@supports (overflow:clip){html,body{overflow-x:clip!important}}
+html body #appScreen > #amTopBar:not(#_a):not(#_b):not(#_c){
+  position:sticky!important;top:0!important;z-index:50!important;
+  width:auto!important;max-width:none!important;margin:-18px calc(50% - 50vw) 14px!important;
+  padding:0 max(14px, calc(50vw - 561px))!important;min-height:58px!important;box-sizing:border-box!important;
+  background:var(--amBar)!important;background-image:none!important;color:#fff!important;
+  border:0!important;border-radius:0!important;box-shadow:0 1px 0 rgba(255,255,255,.06)!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;animation:none!important;
+  flex-wrap:nowrap!important;gap:10px!important;overflow:visible!important}
+html body #appScreen > #amTopBar:not(#_a):not(#_b):not(#_c)::before,html body #appScreen > #amTopBar:not(#_a):not(#_b):not(#_c)::after{display:none!important;content:none!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .header-brand{gap:10px!important;min-width:0!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .brand-logo-sm{width:34px!important;height:34px!important;margin:0!important;padding:6px 4px!important;box-sizing:border-box!important;
+  border-radius:9px!important;background:#ffffff1a!important;filter:none!important;object-fit:contain!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) #userNameLabel{color:#fff!important;font-size:15px!important;font-weight:700!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) #userRoleLabel{color:#fff!important;opacity:.7!important;font-size:11.5px!important;margin-top:-2px}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions{flex-shrink:0}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions button{height:36px!important;min-height:36px!important;padding:0 12px!important;border-radius:9px!important;
+  background:#ffffff14!important;color:#fff!important;border:0!important;box-shadow:none!important;font-size:13px!important;width:auto!important;margin:0!important}
+html body #amTopBar:not(#_a):not(#_b):not(#_c) .neoHeaderActions button:hover{background:#ffffff26!important}
+</style>
 </head>
 <body>
 <script>window.__neoApplyPrepaintBody&&window.__neoApplyPrepaintBody();</script>
@@ -4411,7 +4455,7 @@ html body #neoSplash .sub.amSub{letter-spacing:1px;font-size:13px;animation:amT 
   </script>
 
   <div id="appScreen" class="hidden">
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+    <div class="card" id="amTopBar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
       <div class="header-brand">
         <img id="neoBrandLogo2" src="" alt="شركة الاماني" class="brand-logo-sm">
         <script>document.getElementById('neoBrandLogo2').src = document.getElementById('neoBrandLogo').src;</script>
