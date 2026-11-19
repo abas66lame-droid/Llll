@@ -357,12 +357,49 @@ function analyzeDust(px, w, h, sens, opt){
   const rawD = heat.map((v, k) => okCell(k) ? v / (cellV[k] / 10000) : -1), cells = rawD.filter(v => v >= 0).sort((a, b) => a - b);
   const meanD = parts.length / (area / 10000), p70 = cells.length ? cells[Math.min(cells.length - 1, (cells.length * 0.7) | 0)] : 0;
   const density = Math.max(meanD, p70);
-  const idx = Math.round(100 * (1 - Math.exp(-Math.max(0, density - d0) * sens / K))); // d0 = خط أساس السطح النظيف من المعايرة
-  // خلية "مغبّرة" إذا تجاوزت كثافتها ما يعادل مؤشر ~35
-  const cellD = rawD.map(v => v > 0 ? Math.max(0, v - d0) : 0);
+  const sIdx = Math.round(100 * (1 - Math.exp(-Math.max(0, density - d0) * sens / K))); // d0 = خط أساس السطح النظيف من المعايرة
+
+  // 6) البقع والطبقة الضبابية على الأسطح الداكنة اللامعة (شاشات وظهور الأجهزة، الزجاج):
+  //    الغبار الحقيقي في الصور غالباً طبقة باهتة وبصمات ومسحات، لا حبيبات منفصلة. السطح الداكن النظيف أملس
+  //    (حتى انعكاسه ناعم ومتدرج)، أما الممسوح أو المغبّر فملمسه متبقّع في كل الاتجاهات.
+  //    على نصف الدقة: طاقة التفاصيل المتوسطة (فرق تنعيمين) + تجانس الاتجاه (موتّر البنية) + داخل سطح داكن متصل،
+  //    بعيداً عن الحواف الحادة. النتيجة نسبة مساحة البقع من الأسطح الداكنة، ويُطرح منها خط أساس h0 (من المرجع النظيف).
+  const hz = (() => {
+    const f = Math.max(1, Math.round(Math.max(w, h) / 900)), hw = Math.floor(w / f), hh = Math.floor(h / f), M = hw * hh;
+    if(hw < 40 || hh < 40) return { frac: 0, cells: [], blocks: [], f, hw, hh };
+    const a = new Float32Array(M);
+    for(let y = 0; y < hh; y++) for(let x = 0; x < hw; x++){ let t = 0; for(let j = 0; j < f; j++) for(let i = 0; i < f; i++) t += Ls[(y * f + j) * w + x * f + i]; a[y * hw + x] = t / (f * f); }
+    const r2 = Math.max(4, Math.round(Math.max(hw, hh) / 130)), rI = Math.round(r2 * 1.5), rE = Math.max(2, Math.round(r2 / 2));
+    const H1 = hw + 1, ii = fn => { const I = new Float64Array(H1 * (hh + 1)); for(let y = 0; y < hh; y++){ let row = 0; for(let x = 0; x < hw; x++){ row += fn(y * hw + x); I[(y + 1) * H1 + x + 1] = I[y * H1 + x + 1] + row; } } return I; };
+    const bx = (I, x, y, r) => { const x0 = Math.max(0, x - r), x1 = Math.min(hw - 1, x + r), y0 = Math.max(0, y - r), y1 = Math.min(hh - 1, y + r);
+      return (I[(y1 + 1) * H1 + x1 + 1] - I[y0 * H1 + x1 + 1] - I[(y1 + 1) * H1 + x0] + I[y0 * H1 + x0]) / ((x1 - x0 + 1) * (y1 - y0 + 1)); };
+    const IA = ii(i => a[i]), b1 = new Float32Array(M), b2 = new Float32Array(M);
+    for(let y = 0; y < hh; y++) for(let x = 0; x < hw; x++){ const i = y * hw + x; b1[i] = bx(IA, x, y, 2); b2[i] = bx(IA, x, y, r2); }
+    const gx = new Float32Array(M), gy = new Float32Array(M);
+    for(let y = 1; y < hh - 1; y++) for(let x = 1; x < hw - 1; x++){ const i = y * hw + x; gx[i] = (b1[i + 1] - b1[i - 1]) / 2; gy[i] = (b1[i + hw] - b1[i - hw]) / 2; }
+    const dark = 110, ID = ii(i => Math.abs(b1[i] - b2[i])), IXX = ii(i => gx[i] * gx[i]), IYY = ii(i => gy[i] * gy[i]), IXY = ii(i => gx[i] * gy[i]);
+    const IM = ii(i => b2[i] < dark && b2[i] > 8 ? 1 : 0), IG = ii(i => Math.hypot(gx[i], gy[i]) > 14 ? 1 : 0);
+    const HX = 8, HY = Math.max(4, Math.min(14, Math.round(HX * hh / hw))), cm = new Float64Array(HX * HY), cs = new Float64Array(HX * HY), blocks = [], BS = 8, bset = new Set();
+    let nm = 0, ns = 0;
+    for(let y = 1; y < hh - 1; y += 2) for(let x = 1; x < hw - 1; x += 2){
+      const i = y * hw + x; if(!(b2[i] < dark && b2[i] > 8) || bx(IM, x, y, rI) <= 0.85) continue;
+      const c = Math.min(HY - 1, (y / hh * HY) | 0) * HX + Math.min(HX - 1, (x / hw * HX) | 0); nm++; cm[c]++;
+      const E = bx(ID, x, y, r2); if(E <= 3 || E >= 16 || bx(IG, x, y, rE) > 0) continue;
+      const jxx = bx(IXX, x, y, r2), jyy = bx(IYY, x, y, r2), jxy = bx(IXY, x, y, r2), tr = jxx + jyy;
+      if(((jxx - jyy) * (jxx - jyy) + 4 * jxy * jxy) / (tr * tr + 1e-6) >= 0.45) continue;
+      ns++; cs[c]++; const bk = ((y / BS) | 0) * Math.ceil(hw / BS) + ((x / BS) | 0); if(!bset.has(bk) && blocks.length < 4000){ bset.add(bk); blocks.push(bk); }
+    }
+    // ملمس السطح نفسه (قماش، نقوش) منتشر بالتساوي في كل الخلايا، أما البقع فمتفرقة: نطرح مستوى المئين 30 بين الخلايا
+    // ملمس السطح نفسه (قماش خشن، نقوش) يُطرح بخط الأساس h0 المأخوذ من الصورة المرجعية النظيفة للموقع أو من المعايرة
+    return { frac: nm > 50 ? ns / nm : 0, darkFrac: nm * 4 / M, cells: Array.from(cs, (v, k) => cm[k] > 20 ? v / cm[k] : 0), HX, HY, blocks, bw: Math.ceil(hw / BS), BS: BS * f };
+  })();
+  const h0 = opt.h0 == null ? 0.03 : opt.h0, hIdx = Math.round(100 * (1 - Math.exp(-Math.max(0, hz.frac - h0) * 10)));
+  const idx = Math.max(sIdx, hIdx);
+  // خلية "مغبّرة" إذا تجاوزت كثافتها ما يعادل مؤشر ~35 (حبيبات)، أو غطّت البقع 8% فأكثر من أسطحها الداكنة فوق خط الأساس
   const dThr = K * 0.43 / sens;
+  const cellD = rawD.map((v, k) => { let d = v > 0 ? Math.max(0, v - d0) : 0; if(hz.cells.length){ const cx = (k % GX) / GX, cy = ((k / GX) | 0) / GY, hk = Math.min(hz.HY - 1, (cy * hz.HY + 0.5 / GY * hz.HY) | 0) * hz.HX + Math.min(hz.HX - 1, (cx * hz.HX + 0.5 / GX * hz.HX) | 0); d = Math.max(d, dThr * Math.max(0, hz.cells[hk] - h0) / 0.08); } return d; });
   const zonesDusty = cellD.filter(v => v >= dThr).length, cellsValid = cells.length;
-  return { v: 2, idx, n: parts.length, density, parts: parts.slice(0, 2000), mean, sharp, heat: cellD, GX, GY, cellThr: dThr, zonesDusty, cellsValid, w, h, R, valid: validN / N, rej };
+  return { v: 2, idx, sIdx, hIdx, haze: Math.round(hz.frac * 1000) / 1000, darkFrac: hz.darkFrac || 0, hzb: { b: hz.blocks, bw: hz.bw, BS: hz.BS }, n: parts.length, density, parts: parts.slice(0, 2000), mean, sharp, heat: cellD, GX, GY, cellThr: dThr, zonesDusty, cellsValid, w, h, R, valid: validN / N, rej };
 }
 const DUST_MAX = 1600;
 let _wk = null, _wkBad = false;
@@ -388,7 +425,7 @@ function runAnalysis1(px, w, h, sens, opt){
 // قصّ المنطقة المحددة من الصورة الأصلية بدقتها الكاملة (حتى DUST_MAX) ثم تحليلها
 const srcW = im => im.videoWidth || im.naturalWidth || im.width, srcH = im => im.videoHeight || im.naturalHeight || im.height;
 async function analyzeRegion(img, rect, sens, maxS = DUST_MAX, opt){
-  opt = opt || { d0: +cfg('d0') || 0 };
+  opt = opt || { d0: +cfg('d0') || 0, h0: cfg('h0') };
   const iw = srcW(img), ih = srcH(img);
   const sx = rect.x * iw, sy = rect.y * ih, sw = rect.w * iw, sh = rect.h * ih;
   const k = Math.min(1, maxS / Math.max(sw, sh)), w = Math.max(60, Math.round(sw * k)), h = Math.max(60, Math.round(sh * k));
@@ -453,6 +490,10 @@ function drawOverlay(cv, src, an, detail, rect){
     x.fillStyle = a > 0.6 ? `rgba(200,40,40,${0.12 + 0.14 * a})` : `rgba(230,150,30,${0.10 + 0.12 * a})`;
     x.fillRect(cx + 1, cy + 1, cw - 2, ch - 2);
   });
+  if(detail && an.hzb && an.hzb.b && an.hzb.b.length){
+    const sx = rw / an.w, sy = rh / an.h, B = an.hzb.BS; x.fillStyle = 'rgba(200,60,255,.38)';
+    for(const k of an.hzb.b){ const bx = (k % an.hzb.bw) * B, by = ((k / an.hzb.bw) | 0) * B; x.fillRect(rx + bx * sx, ry + by * sy, B * sx, B * sy); }
+  }
   if(detail){
     const sx = rw / an.w, sy = rh / an.h; x.strokeStyle = 'rgba(255,40,40,.95)'; x.lineWidth = 1.3;
     for(const p of an.parts.slice(0, 1500)){ x.beginPath(); x.arc(rx + p[0] * sx, ry + p[1] * sy, 3.2, 0, 7); x.stroke(); }
@@ -460,7 +501,7 @@ function drawOverlay(cv, src, an, detail, rect){
 }
 
 /* ================= الحالة ================= */
-const DEF = { orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
+const DEF = { h0: 0.03, orgName: 'الشركة', requireCode: false, minSec: 30, sens: 1, auditRate: 100, selfReg: true, sound: true, requireLive: false,
   flow: 'single', autoTorch: true, alignMin: 0.55, guideK: 4, open: '07:45', close: '03:00', inspRate: 20, inspPen: 10, elTypes: 'زجاج، رفوف، أجهزة، عارضات، أرضية' };
 /* فئات العناصر: كل فئة = جولات يومية بنوافذ زمنية. السطر: «تنظيف|فحص HH:MM-HH:MM الوصف».
    extra = يُسمح بتنظيف إضافي (بنقاط مخفّضة) بعد إنجاز جولات اليوم. تُعدَّل من الإعدادات. */
@@ -1139,7 +1180,8 @@ function vClean(){
       <label class="row sm" style="margin:6px 0"><input type="checkbox" style="width:auto" data-act="toggleDetail" ${S.detail ? 'checked' : ''}> إظهار الحبيبات المكتشفة</label>`;
     if(!F.saved){
       h += `<div class="card idx"><div><div class="xs mut">مؤشر الغبار</div><div class="n" style="color:${v.c}">${R.a}</div></div><div style="flex:1"><span class="tag ${v.k}" style="font-size:13px">${v.t}</span>
-        <div class="sm" style="margin-top:6px">${R.pass ? 'التقييم المبدئي: مقبول.' : 'التقييم المبدئي مرتفع. يُفضّل إكمال التنظيف وإعادة التصوير، أو الإرسال للمدقق.'}</div></div></div>
+        <div class="sm" style="margin-top:6px">${R.pass ? 'التقييم المبدئي: مقبول.' : 'التقييم المبدئي مرتفع. يُفضّل إكمال التنظيف وإعادة التصوير، أو الإرسال للمدقق.'}</div>
+        ${F.after.an.hIdx != null ? `<div class="xs mut" style="margin-top:4px">حبيبات غبار ${F.after.an.sIdx} · بقع وطبقة ضبابية ${F.after.an.hIdx}</div>` : ''}</div></div>
         ${qualityBad(F.after.an) ? `<div class="note wa">${ic('alert', 16)} ${qualityBad(F.after.an)}</div>` : ''}
         <button class="btn pri big" data-act="submitClean">${ic('check')} تم التنظيف</button><div style="height:8px"></div>
         <button class="btn w" data-act="retry">إعادة التصوير</button>`;
@@ -1244,7 +1286,7 @@ async function analyzePick(){
 async function finishShot(which, img, p, rect, live){
   F.busy = true; F.step = which; rf();
   try{
-    const an = await analyzeRegion(img, rect, cfg('sens') || 1, DUST_MAX, { d0: zoneD0(zoneById(F.zoneId)) }); await sleep(300);
+    const an = await analyzeRegion(img, rect, cfg('sens') || 1, DUST_MAX, { d0: zoneD0(zoneById(F.zoneId)), h0: zoneH0(zoneById(F.zoneId)) }); await sleep(300);
     F[which] = { an, canvas: p.canvas, rect, thumb: thumbRect(p.canvas, rect), sig: signature(p.g, p.w, p.h), t: Date.now(), live: !!live };
     F.busy = false;
     if(which === 'before') F.step = F.mode === 'scan' ? 'scanRes' : 'beforeRes';
@@ -1281,6 +1323,7 @@ const RefStore = {
 };
 // خط أساس الموقع (للتصوير غير الموجّه): أقل خط أساس بين رفوفه المرجعية المعتمدة، وإلا المعايرة العامة
 const zoneD0 = z => z && z.ref && z.ref.ok && z.ref.d0 != null ? z.ref.d0 : (+cfg('d0') || 0);
+const zoneH0 = z => z && z.ref && z.ref.ok && z.ref.h0 != null ? z.ref.h0 : cfg('h0');
 // قصّ منطقة من صورة أو فيديو إلى لوحة بحد أقصى mx للضلع الأطول
 function cropTo(src, r, mx){
   const W = srcW(src), H = srcH(src), sw = r.w * W, sh = r.h * H, k = Math.min(1, mx / Math.max(sw, sh)), c = document.createElement('canvas');
@@ -1385,7 +1428,7 @@ function guideStore(c, live, align){
   const G = F.guide, st = G.steps[G.i], p = prep(c);
   const item = { l: st.l, live, align, an: null, canvas: p.canvas, thumb: c.width ? cropURL(c, FULL, 300, 0.6) : '' };
   G.res[G.i] = item;
-  item.prom = analyzeRegion(c, FULL, cfg('sens') || 1, DUST_MAX, { d0: st.d0 != null ? st.d0 : zoneD0(zoneById(F.zoneId)) }).then(an => { item.an = an; }).catch(() => {});
+  item.prom = analyzeRegion(c, FULL, cfg('sens') || 1, DUST_MAX, { d0: st.d0 != null ? st.d0 : zoneD0(zoneById(F.zoneId)), h0: st.h0 != null ? st.h0 : zoneH0(zoneById(F.zoneId)) }).then(an => { item.an = an; }).catch(() => {});
   G.i++; tone();
   if(G.i >= G.steps.length) finishGuide(); else if(live) updateGuideUI(); else rf();
 }
@@ -2020,17 +2063,17 @@ const A = {
     const f = await pickPhoto(); if(!f) return; F.busy = true; rf();
     try{
       const img = await loadImg(f), c = cropTo(img, REF_RECT, DUST_MAX), st = F.ref.steps[F.ri];
-      const an = await analyzeRegion(c, FULL, 1, DUST_MAX, { d0: 0 });
-      st.img = cropURL(c, FULL, 480); st.sig = imgSig(c); st.d0 = Math.round(an.density * 1.1 * 100) / 100; st.n0 = an.n;
+      const an = await analyzeRegion(c, FULL, 1, DUST_MAX, { d0: 0, h0: 0 });
+      st.img = cropURL(c, FULL, 480); st.sig = imgSig(c); st.d0 = Math.round(an.density * 1.1 * 100) / 100; st.h0 = Math.round((an.haze * 1.1 + 0.01) * 1000) / 1000; st.n0 = an.n;
       F.busy = false; if(F.ri + 1 < F.ref.steps.length){ F.ri++; F.step = 'rShot'; } else F.step = 'rDone'; rf(); window.scrollTo(0, 0);
     }catch(e){ F.busy = false; rf(); toast('تعذّرت قراءة الصورة.'); }
   },
   refRedo(){ F.ri = 0; F.step = 'rShot'; rf(); },
   async refSave(){
     const z = zoneById(F.zoneId), R = F.ref, ok = refAuto(), at = Date.now();
-    const doc = { zone: z.id, whole: R.whole, steps: R.steps.map(x => ({ l: x.l, el: x.el || '*', r: x.r, img: x.img, sig: x.sig, d0: x.d0 })), by: S.me || 'admin', at, ok };
+    const doc = { zone: z.id, whole: R.whole, steps: R.steps.map(x => ({ l: x.l, el: x.el || '*', r: x.r, img: x.img, sig: x.sig, d0: x.d0, h0: x.h0 })), by: S.me || 'admin', at, ok };
     if(!(await RefStore.put(z.id, doc))) return;
-    await Store.update('zones', z.id, { ref: { n: doc.steps.length, ok, d0: Math.min(...doc.steps.map(x => x.d0)), at, by: doc.by } });
+    await Store.update('zones', z.id, { ref: { n: doc.steps.length, ok, d0: Math.min(...doc.steps.map(x => x.d0)), h0: Math.min(...doc.steps.map(x => x.h0 ?? 0.03)), at, by: doc.by } });
     toast(ok ? 'حُفظت الصورة المرجعية وفُعّل التصوير الموجّه لهذا الموقع.' : 'حُفظت الصورة المرجعية، وأُرسلت للمدقق لاعتمادها.', 4000);
     const back = F.back; F = null; S.tab = !S.me ? 'admin' : back === 'admin' ? 'admin' : 'home'; render(true);
   },
@@ -2178,14 +2221,15 @@ const A = {
   async calShot(d){
     const f = await pickPhoto(); if(!f) return;
     toast('جارٍ التحليل…');
-    let an; try{ an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1, DUST_MAX, { d0: 0 }); }catch(e){ return toast('تعذّرت قراءة الصورة.'); }
+    let an; try{ an = await analyzeRegion(await loadImg(f), { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 1, DUST_MAX, { d0: 0, h0: 0 }); }catch(e){ return toast('تعذّرت قراءة الصورة.'); }
     if(qualityBad(an)) toast(qualityBad(an) + ' يُفضّل إعادة التصوير.', 4000);
-    S.cal = S.cal || {}; S.cal[d.k] = an.density;
+    S.cal = S.cal || {}; S.cal[d.k] = an.density; S.cal[d.k + 'H'] = an.haze;
     if(d.k === 'dirty') return openModal(`<h2>معايرة من مواقعكم</h2><p class="sm">سُجّلت صورة السطح المغبّر (${an.n} حبيبة).</p><p class="sm">الآن نظّف السطح جيداً، ثم صوّر <b>المكان نفسه</b> بالمسافة نفسها.</p><button class="btn pri w" data-act="calShot" data-k="clean">${ic('cam')} 2) تصوير السطح بعد التنظيف</button>`);
     const dd = S.cal.dirty, dc = S.cal.clean, K = 10;
     if(!(dd > dc * 1.4 && dd - dc > 0.4)) return openModal(`<h2>تعذّرت المعايرة</h2><p class="sm">الفرق بين الصورتين صغير جداً (${dd.toFixed(2)} مقابل ${dc.toFixed(2)})، فلا يستطيع المحرك التمييز بينهما بهذه الطريقة في التصوير.</p><ul class="sm"><li>اقترب أكثر من السطح.</li><li>استخدم ضوءاً جانبياً مائلاً (مصباح الهاتف من الجانب) لإبراز الغبار.</li><li>اختر سطحاً غباره أوضح.</li></ul><button class="btn pri w" data-act="calibrate">إعادة المعايرة</button>`);
     const d0 = Math.round(dc * 1.1 * 100) / 100, sens = Math.round(Math.max(0.2, Math.min(5, 1.204 * K / (dd - d0))) * 100) / 100;
-    if(await saveCfg({ sens, d0 })){
+    const h0 = Math.round((S.cal.cleanH * 1.1 + 0.01) * 1000) / 1000;
+    if(await saveCfg({ sens, d0, h0 })){
       const idx = dens => Math.round(100 * (1 - Math.exp(-Math.max(0, dens - d0) * sens / K)));
       openModal(`<h2>تمت المعايرة</h2><p class="sm">بالإعدادات الجديدة: السطح المغبّر ≈ <b>${idx(dd)}</b>، وبعد التنظيف ≈ <b>${idx(dc)}</b>.</p><p class="xs mut">الحساسية ×${sens} · خط الأساس ${d0}</p><button class="btn pri w" data-act="closeModal">تم</button>`);
     }
