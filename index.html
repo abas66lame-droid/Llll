@@ -8464,6 +8464,8 @@ window.neoEnableViewerMode = function(){
 };
 
 async function neoSafeUpsert(table, payload, conflict, opts){
+  /* تأشير حقيقي من مسؤول الشفت — يُستعمل لحفظ نسبته فوراً بعده */
+  try{ if (!/^(daily_stats|hall_stats|user_prefs|notifications)$/.test(table) && (window.__fleetProfile||{}).role === 'shift') window.__amEditAt = Date.now(); }catch(e){}
   opts = opts || {};
   if (window.__neoViewer){ try{ neoViewerDenied(); }catch(e){} return false; }   /* حساب الاطلاع فقط */
   let { error } = await supabaseClient.from(table).upsert(payload, { onConflict: conflict });
@@ -8714,8 +8716,9 @@ window.neoSaveShiftPct = async function(deptId, date, silent){
     if (!neoStatsCache[date]) await neoLoadSavedStats(date);
     const _sv = neoSavedPct(date, deptId);
     if (_sv && Number(_sv.pct) > r.pct){
-      if (silent) return false;
-      if (typeof neoConfirm === 'function' && !(await neoConfirm('تخفيض النسبة المثبَّتة؟',
+      /* تخفيض بعد تأشير المسؤول نفسه الآن مسموح؛ غير ذلك لا يُنزل الحفظ التلقائي شيئاً */
+      if (silent && !(window.__amEditAt && (Date.now() - window.__amEditAt) < 15000)) return false;
+      if (!silent && typeof neoConfirm === 'function' && !(await neoConfirm('تخفيض النسبة المثبَّتة؟',
           'المثبَّت الآن ' + _sv.pct + '٪ والحالي ' + r.pct + '٪. هل تريد تثبيت الأقل؟'))) return false;
     }
   }catch(e){}
@@ -8757,9 +8760,10 @@ function neoRefreshShiftPctBox(deptId, date){
     /* اكتشف التغيير مقارنةً بالمحفوظ — فيظهر التذكير تلقائياً */
     try{
       const saved = neoSavedPct(date, deptId);
-      if (r.total && (!saved || saved.pct !== r.pct)){
+      const _same = saved && saved.pct === r.pct && (!Number(saved.total) || (Number(saved.done) === r.done && Number(saved.total) === r.total));
+      if (r.total && !_same){
         if (!neoDirty) neoMarkDirty(deptId, date);
-      } else if (saved && saved.pct === r.pct){
+      } else if (_same){
         neoDirty = false;
         document.getElementById('neoSaveBar')?.remove();
       }
@@ -9077,14 +9081,15 @@ window.neoMarkDirty = function(deptId, date){
   neoDirty = true;
   neoShowSaveBanner(deptId, date);
   clearTimeout(neoAutoSaveT);
-  /* حفظ تلقائي بعد ٤٥ ثانية من التوقف — فلا يضيع العمل بالنسيان */
+  /* بعد تأشير حقيقي: حفظ فوري (أقل من ثانية لتجميع الضغطات المتتالية)؛ غير ذلك ٤٥ ثانية كما كان */
+  const _fresh = window.__amEditAt && (Date.now() - window.__amEditAt) < 15000;
   neoAutoSaveT = setTimeout(async () => {
     if (!neoDirty) return;
     try{
       await neoSaveShiftPct(deptId, date, true);
-      if (typeof neoToast === 'function') neoToast('💾 حُفظت نسبتك تلقائياً', true);
+      if (!_fresh && !neoDirty && typeof neoToast === 'function') neoToast('💾 حُفظت نسبتك تلقائياً', true);
     }catch(e){}
-  }, 45000);
+  }, _fresh ? 700 : 45000);
 };
 
 /* شريط تذكير لاصق لا يختفي حتى الحفظ */
@@ -31725,6 +31730,10 @@ window.neoStreakZero = async function(id,kind){
     return '<div class="amSaBtns neoAnalyticsSwitch" role="tablist" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px;">'
       + b('shift', 'الشفت', 'amSaClose()') + b('trend', 'الاتجاه', 'amShiftAnalytics(\'trend\')') + b('report', 'التقرير', 'amShiftAnalytics(\'report\')') + '</div>';
   };
+  /* لحظة ضغط المسؤول على خانة في شاشته = تأشير حقيقي، فيُحفظ بعده فوراً */
+  ['click','change'].forEach(function(ev){ document.addEventListener(ev, function(e){
+    try{ if ((window.__fleetProfile||{}).role === 'shift' && e.target.closest && e.target.closest('#shiftView [onclick], #shiftView input, #shiftView textarea, #shiftView select')) window.__amEditAt = Date.now(); }catch(x){}
+  }, true); });
   window.amShiftAnalytics = function(tab){ if (!myDept()) return; st.tab = tab || 'trend'; st.off = 0; render(); };
 })();
 </script>
