@@ -91,6 +91,8 @@ const DET = (() => {
     const In = pts.filter(p => res(T, p) < 3); if(In.length >= bestIn.length){ const T2 = fit(In); if(sane(T2)) T = T2; }
     T.inliers = In.length; T.total = n; return T;
   }
+  // صحة الصورة: متوسط السطوع ومتوسط قوة الحواف (الملمس). العدسة المغطاة أو المظلمة = ملمس شبه معدوم
+  function health(F){ let s = 0, t = 0, n = 0; for(let i = 0; i < F.g.length; i += 7){ s += F.g[i]; t += F.G[i]; n++; } return { mu: s / n, tex: t / n }; }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -241,7 +243,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;

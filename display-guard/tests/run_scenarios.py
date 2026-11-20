@@ -40,6 +40,9 @@ SCENARIOS = {
     # السرقة لا تُخفى داخل «حركة الكاميرا»: ذراع تملأ الصورة، أو دفع الموبايل مع الأخذ
     'reach': ('reach.y4m', [GUM, MOUSE], 32, lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
     'bumpsteal': ('bumpsteal.y4m', [GUM, MOUSE], 32, lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
+    # العبث بالكاميرا: تغطية العدسة مع أخذ قطعة تحتها، أو توجيهها لمكان آخر
+    'cover': ('cover.y4m', [GUM, MOUSE], 44, lambda ev: any(k == 'tamper' for _, k, _ in ev) and {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
+    'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
 

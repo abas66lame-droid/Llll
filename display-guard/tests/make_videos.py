@@ -129,5 +129,24 @@ def steal():
     write_y4m('bumpsteal.y4m', seq)
 
 
+def tamper():
+    """العبث بالكاميرا: تغطية العدسة، أو توجيه الكاميرا لمكان آخر."""
+    rng = np.random.default_rng(21); base, gone = _pair('gum_mouse_pair.png'); OW, OH = base.size
+    g = np.asarray(gone).copy(); b = np.asarray(base); g[:, 190:] = b[:, 190:]; gum_gone = Image.fromarray(g)
+    # 1) يد تغطي العدسة ~15 ث وتُؤخذ العلكة تحتها ثم تُرفع اليد — يُفترض: تنبيه «تغطية الكاميرا» + نقص العلكة (لا الماوس)
+    def cover(img, k):  # k: 0..1 نسبة التغطية
+        out = img.copy(); d = ImageDraw.Draw(out); r = int(60 + k * 900)
+        d.ellipse([OW // 2 - r, OH // 2 - r, OW // 2 + r, OH // 2 + r], fill=(150, 105, 85))
+        return out.filter(ImageFilter.GaussianBlur(6 if k >= 1 else 2))
+    seq = [noisy(rng, base) for _ in range(24)] + [noisy(rng, cover(base, i / 4)) for i in range(1, 5)]
+    seq += [noisy(rng, cover(gum_gone, 1), 3) for _ in range(60)] + [noisy(rng, gum_gone) for _ in range(100)]
+    write_y4m('cover.y4m', seq)
+    # 2) توجيه الكاميرا لمشهد آخر (رف مختلف) — يُفترض: تنبيه «تغيّر اتجاه الكاميرا» بلا حالات نقص
+    rng = np.random.default_rng(22); other = _pair('shelf_focus_pair.png')[0].resize((OW, OH))
+    mv = lambda img, dx: img.transform(img.size, Image.AFFINE, (1, 0, dx, 0, 1, 0), fillcolor=(30, 30, 40))
+    seq = [noisy(rng, base) for _ in range(24)] + [noisy(rng, mv(base, 60 * i)) for i in range(1, 4)] + [noisy(rng, other) for _ in range(120)]
+    write_y4m('turn.y4m', seq)
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal()
+    live(); gum(); user(); focus(); steal(); tamper()

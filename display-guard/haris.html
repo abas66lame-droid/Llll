@@ -168,6 +168,8 @@ const DET = (() => {
     const In = pts.filter(p => res(T, p) < 3); if(In.length >= bestIn.length){ const T2 = fit(In); if(sane(T2)) T = T2; }
     T.inliers = In.length; T.total = n; return T;
   }
+  // صحة الصورة: متوسط السطوع ومتوسط قوة الحواف (الملمس). العدسة المغطاة أو المظلمة = ملمس شبه معدوم
+  function health(F){ let s = 0, t = 0, n = 0; for(let i = 0; i < F.g.length; i += 7){ s += F.g[i]; t += F.G[i]; n++; } return { mu: s / n, tex: t / n }; }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -318,7 +320,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 /* =================== أدوات =================== */
@@ -361,6 +363,9 @@ const grace = () => isDemo() ? (FAST ? 0.25 : 0.5) : isTest() ? Math.max(3, +S.c
 const cleanMin = () => isDemo() ? (FAST ? 0.65 : 1.3) : isTest() ? 1 : +S.cfg.cleaning || 15;
 const saleWin = () => isDemo() ? 2 : isTest() ? 2 : +S.cfg.saleWin || 30;
 const pollSec = () => isDemo() ? 2 : isTest() ? 1 : Math.max(2, +S.cfg.poll || 10);
+const blindSec = () => isTest() ? Math.max(3, +S.cfg.testSec || 10) : 60; // مدة تغطية العدسة قبل التنبيه
+// حساسية كل عارضة: «دقيق» للقطع الصغيرة، «عادي»، أو «تلقائي» = الإعداد العام
+const fineOf = z => z.sens === 'fine' || (z.sens !== 'normal' && !!S.cfg.fine);
 const fmtGrace = () => { const s = Math.round(grace() * 60); return s < 60 ? s + ' ثانية' : Math.round(s / 60) + ' دقيقة'; };
 function isNight(){
   if(!S.cfg.night || isDemo() || isTest()) return false;
@@ -389,6 +394,8 @@ async function loadMP(){
     MP.obj = await make(mp.ObjectDetector, { baseOptions: { modelAssetPath: MP_MODELS + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite' }, runningMode: 'IMAGE', scoreThreshold: 0.35, maxResults: 25 });
     try{ MP.hand = await make(mp.GestureRecognizer, { baseOptions: { modelAssetPath: MP_MODELS + 'gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task' }, runningMode: 'IMAGE', numHands: 4, minHandDetectionConfidence: 0.45, minHandPresenceConfidence: 0.45 }); }catch(e){ MP.hand = null; }
     MP.state = 'ready';
+    // تسخين: أول استدعاء للنماذج بطيء جداً (ثوانٍ). نستهلكه الآن حتى لا يتأخر الحكم لحظة أول حركة عند العارضة
+    try{ const w = document.createElement('canvas'); w.width = 320; w.height = 240; const x = w.getContext('2d'); x.fillStyle = '#888'; x.fillRect(0, 0, 320, 240); mpPeople(w); }catch(e){}
   }catch(e){ MP.state = 'error'; MP.err = (e && e.message) || String(e); }
   refreshSoon();
 }
@@ -493,7 +500,7 @@ function loop(){
   busy = true;
   try{
     const c = grabFrame();
-    if(c){ const t0 = performance.now(); const ppl = (S.cfg.ai && !isDemo()) ? mpPeople(c) : []; ENG.process(c, ppl); S.lastMs = Math.round(performance.now() - t0); S.lastTick = now(); S.frames++; if(S.tab === 'mon') updMon(); }
+    if(c){ const t0 = performance.now(); ENG.process(c, (S.cfg.ai && !isDemo()) ? () => mpPeople(c) : null); S.lastMs = Math.round(performance.now() - t0); S.lastTick = now(); S.frames++; if(S.tab === 'mon') updMon(); }
   }catch(e){ console.error(e); }
   busy = false;
 }
@@ -501,22 +508,22 @@ function loop(){
 /* =================== المحرك =================== */
 const ENG = {
   base: null, prev: null, baseCv: null, zst: {},
-  camMove: 0, camBump: 0, settle: 0,
-  reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
-  rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; },
+  camMove: 0, camBump: 0, settle: 0, hb: null, blindSince: 0, blindEv: null,
+  reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; this.hb = null; this.blindSince = 0; this.blindEv = null; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
+  rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; this.hb = DET.health(F); },
   // قبل إعادة ضبط المرجع كاملاً (بعد حركة الكاميرا): نقارن كل عارضة بالمرجع القديم بعد محاذاته بالإزاحة المقاسة،
   // حتى لا تُخفى سرقة حدثت مع حركة الموبايل (دفعه وأخذ القطعة في نفس اللحظة). نفتح فقط حالات «نقص» واضحة، ونغلق ما رجع.
-  realign(F, c, sh, ppl, night){
+  realign(F, c, sh, ppl, night, gb){
     let n = 0;
     const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
     // نطابق المرجع القديم على الصورة الحالية (إزاحة + دوران + تقريب). إذا تعذّر القياس بثقة لا نفتح حالات (تفادياً للإنذار الكاذب)
     const T = DET.estimateAffine(this.base, F, sh);
-    if(!T){ this.rebaseAll(F, c); return 0; }
+    if(!T){ if(gb > 0.5) this.newTamper('turn', c); this.rebaseAll(F, c); return 0; } // المشهد كله تغيّر ولا يمكن مطابقته: الكاميرا وُجّهت لمكان آخر
     const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
     const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
     const B = DET.frameFromCanvas(wc);
     for(const z of S.zones){
-      const r = DET.compareZone(B, F, z, [0, 0], { fine: !!S.cfg.fine });
+      const r = DET.compareZone(B, F, z, [0, 0], { fine: fineOf(z) });
       if(r.changed > 0.5) continue; // تغيّر شامل للعارضة بعد الحركة: لا نستطيع الحكم بثقة
       const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
       for(const reg of mergeNear(r.regions, 0.04)){
@@ -528,15 +535,29 @@ const ENG = {
     this.rebaseAll(F, c);
     return n;
   },
-  process(c, ppl){
-    ppl = ppl || [];
+  process(c, pplFn){
+    // كشف الأشخاص والأيادي (MediaPipe) مكلف: لا نشغّله إلا عند الحاجة (حركة، أو تغيّر، أو شخص كان موجوداً) ومرة واحدة لكل قراءة
+    let pc = null; const P = () => pc || (pc = typeof pplFn === 'function' ? (S.mpCalls = (S.mpCalls || 0) + 1, pplFn() || []) : (pplFn || []));
     const F = DET.frameFromCanvas(c);
     if(!this.base || this.base.w !== F.w || this.base.h !== F.h){
-      this.base = DET.clone(F); this.prev = F; this.baseCv = document.createElement('canvas'); this.baseCv.width = c.width; this.baseCv.height = c.height; this.baseCv.getContext('2d').drawImage(c, 0, 0); return;
+      this.hb = DET.health(F); this.base = DET.clone(F); this.prev = F; this.baseCv = document.createElement('canvas'); this.baseCv.width = c.width; this.baseCv.height = c.height; this.baseCv.getContext('2d').drawImage(c, 0, 0); return;
     }
     const sh = DET.estimateShift(this.base, F), night = isNight(), FULL = { x: 0, y: 0, w: 1, h: 1 };
     // 0) لمس الشاشة يحرّك الموبايل: نوقف الحكم حتى يثبت، ثم نعيد الضبط تلقائياً
     if(now() - (S.touchAt || 0) < 2.5){ S.camState = 'touch'; S.zones.forEach(z => S.diag[z.id] = { state: 'touch' }); this.settle = 2; this.prev = F; return; }
+    // العبث: العدسة مغطاة أو الصورة مظلمة. لا نحكم ولا نعيد ضبط المرجع (حتى لا تُخفى سرقة تحت الغطاء)،
+    // وعند رجوع الرؤية نقارن بالمرجع القديم (عبر التثبيت ثم realign). التغطية أطول من المهلة = تنبيه، إلا الظلام ليلاً (إطفاء الأضواء)
+    const hl = DET.health(F), hb = this.hb || hl;
+    if(hl.tex < Math.max(1.5, 0.3 * hb.tex) || hl.mu < 12){
+      const t = now(); if(!this.blindSince) this.blindSince = t;
+      S.camState = 'blind'; S.zones.forEach(z => S.diag[z.id] = { state: 'blind' });
+      if(!this.blindEv && !(night && hl.mu < 12) && t - this.blindSince >= blindSec()) this.blindEv = this.newTamper('cover', c);
+      this.settle = Math.max(this.settle, 2); this.prev = F; return;
+    }
+    if(this.blindSince){
+      const e = this.blindEv; if(e){ e.img_r = this.shot(c, { x: 0, y: 0, w: 1, h: 1 }, '#38a169'); e.t_end = now(); e.note = (e.note + ' عادت الرؤية بعد ' + Math.round(now() - this.blindSince) + ' ثانية.').trim(); putEvent(e); }
+      this.blindSince = 0; this.blindEv = null;
+    }
     // 1) هل الكاميرا نفسها تتحرك الآن؟
     const gm = DET.motion(this.prev, F, FULL)[0];
     if(gm > 0.45){ this.camMove++; S.camState = 'moving'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' }); this.settle = Math.max(this.settle, 2); this.prev = F; return; }
@@ -544,15 +565,15 @@ const ENG = {
     // 2) بعد اللمس أو الاهتزاز: ننتظر قراءتين مستقرتين ثم نعتمد الصورة الحالية مرجعاً (إذا تغيّرت الصورة عموماً)
     if(this.settle > 0){
       S.camState = 'settle'; S.zones.forEach(z => S.diag[z.id] = { state: 'settle' });
-      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ const n = this.realign(F, c, sh, ppl, night); toast(n ? 'تحرك الموبايل؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
+      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ const n = this.realign(F, c, sh, P(), night, gb); toast(n ? 'تحرك الموبايل؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
       this.prev = F; return;
     }
     S.camState = 'ok';
     // 3) انزياح الكاميرا بدون لمس: الصورة كلها اختلفت عن المرجع مع إزاحة واضحة (الشيل يغيّر جزءاً صغيراً فقط)
     const gBase = DET.motion(this.base, F, FULL)[0], moved = Math.abs(sh[0]) >= 4 || Math.abs(sh[1]) >= 4;
-    if(gBase > 0.22 && (moved || gBase > 0.6) && gm < 0.03 && !ppl.length){
+    if(gBase > 0.22 && (moved || gBase > 0.6) && gm < 0.03 && !P().length){
       S.camState = 'bumped'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' });
-      if(++this.camBump >= 2){ const n = this.realign(F, c, sh, ppl, night); this.camBump = 0; S.camState = 'ok'; toast(n ? 'انزاحت الكاميرا؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
+      if(++this.camBump >= 2){ const n = this.realign(F, c, sh, P(), night, gBase); this.camBump = 0; S.camState = 'ok'; toast(n ? 'انزاحت الكاميرا؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
       this.prev = F; return;
     }
     this.camBump = 0;
@@ -560,6 +581,8 @@ const ENG = {
       const zs = this.zst[z.id] = this.zst[z.id] || { big: 0 };
       const ez = { x: Math.max(0, z.x - 0.04), y: Math.max(0, z.y - 0.04) }; ez.w = Math.min(1 - ez.x, z.w + 0.08); ez.h = Math.min(1 - ez.y, z.h + 0.08);
       const [frac, cnt] = DET.motion(this.prev, F, ez);
+      // كشف الأشخاص فقط إذا تحرك شيء في العارضة أو كان فيها شخص في القراءة السابقة (توفير المعالج والبطارية)
+      const ppl = (frac > 0 || cnt > 0 || zs.busy || zs.still) ? P() : [];
       // اليد داخل العارضة تمنع الحكم دائماً؛ الشخص يمنعه فقط إذا غطّى جزءاً كبيراً منها
       const hands = ppl.filter(b => b.kind === 'يد' && ix(b, ez)), persons = ppl.filter(b => b.kind === 'شخص' && coverage(b, z) > 0.35);
       if(!hands.length && persons.length && frac < 0.01 && cnt < 3){ zs.still = (zs.still || 0) + 1; } else zs.still = 0;
@@ -574,7 +597,7 @@ const ENG = {
       zs.busy = false;
       if(frac > 0.01 || cnt >= 3){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
       S.moving[z.id] = false;
-      const r = DET.compareZone(this.base, F, z, sh, { fine: !!S.cfg.fine });
+      const r = DET.compareZone(this.base, F, z, sh, { fine: fineOf(z) });
       S.diag[z.id] = { state: 'ok', changed: r.changed, r };
       if(r.changed > 0.5){
         // تغيّر كبير في المنطقة (قطعة تملأ أغلب المربع، أو حجب): ننتظر 3 قراءات مستقرة ثم نعامله كالمعتاد
@@ -588,7 +611,7 @@ const ENG = {
       zs.big = 0;
       // إذا كان شخص أو يد يلامس مكان التغيّر نؤجّل الحكم (قد يكون ذراعاً تغطي القطعة لا شيلاً)
       const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
-      if(ppl.length && r.regions.some(reg => ppl.some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
+      if(r.regions.length && P().length && r.regions.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
       const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
       const handled = new Set();
       for(const reg of mergeNear(r.regions, 0.04)){
@@ -604,7 +627,7 @@ const ENG = {
       this.rebase(z, F, c);
     }
     // انزياح بسيط مستقر بدون أي تغيّر في العارضات: نعيد المحاذاة بهدوء حتى لا تتراكم الإزاحة
-    if(moved && gm < 0.03 && !ppl.length && S.zones.every(z => { const d = S.diag[z.id]; return d && d.state === 'ok' && d.r && !d.r.regions.length; })) this.rebaseAll(F, c);
+    if(moved && gm < 0.03 && S.zones.every(z => { const d = S.diag[z.id]; return d && d.state === 'ok' && d.r && !d.r.regions.length; }) && !P().length) this.rebaseAll(F, c);
     this.prev = F;
   },
   extras(z, e){
@@ -639,6 +662,14 @@ const ENG = {
     addEvent(e);
     if(!night) trySale(e);
     if(night) alertEv(e);
+  },
+  // عبث بالكاميرا (تغطية العدسة أو توجيهها لمكان آخر): تنبيه فوري على مستوى الكاميرا كلها
+  newTamper(sub, c){
+    const full = { x: 0, y: 0, w: 1, h: 1 };
+    const e = { id: rid(), zone: '_cam', kind: 'tamper', sub, status: 'incident', t_start: now(), deadline: now(), box: full,
+      img_b: this.shot(this.baseCv, full, '#e53e3e'), img_a: this.shot(c, full, '#e53e3e'),
+      note: sub === 'cover' ? 'العدسة مغطاة أو الصورة مظلمة.' : 'تغيّر المشهد كله: وُجّهت الكاميرا لمكان آخر. أُعيد ضبط الصورة المرجعية على المشهد الجديد.' };
+    addEvent(e); alertEv(e); return e;
   },
   newInfo(z, reg, kind, c){
     addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
@@ -703,12 +734,12 @@ function ix(a, b){ return Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) &&
 function countInteraction(zid){ const d = new Date().toLocaleDateString('en-CA'), all = LS.get('haris_inter', {}); all[d] = all[d] || {}; all[d][zid] = (all[d][zid] || 0) + 1;
   const keys = Object.keys(all).sort(); while(keys.length > 60) delete all[keys.shift()]; LS.set('haris_inter', all); }
 const interToday = zid => ((LS.get('haris_inter', {})[new Date().toLocaleDateString('en-CA')] || {})[zid] || 0);
-const zoneOf = id => S.zones.find(z => z.id === id) || { name: 'منطقة محذوفة', section: '' };
+const zoneOf = id => id === '_cam' ? { name: 'الكاميرا', section: '' } : S.zones.find(z => z.id === id) || { name: 'منطقة محذوفة', section: '' };
 function alertEv(e){
   S.alertSeq++; beep();
   const z = zoneOf(e.zone);
-  const txt = `⚠️ ${e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر'}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\nمنتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.`;
-  toast('⚠️ تنبيه جديد: ' + z.name, 6000);
+  const txt = `${e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
+  toast(e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
   notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : ''), e.img_p || e.img_c);
 }
 function notifyAll(text, img){
@@ -783,7 +814,7 @@ class DemoSource {
 }
 
 /* =================== الواجهة =================== */
-const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير' };
+const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا' };
 const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
 const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه' };
 let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
@@ -883,7 +914,7 @@ function updMon(){
   if(S.tab !== 'mon' || !$('#chips')) return;
   const kp = $('.kpis'); if(kp){ const c = counts(); const vals = [c.pending, c.incident, c.today, c.returned, c.sold, c.inc]; kp.querySelectorAll('.v').forEach((el, i) => el.textContent = vals[i]); }
   const st = $('#mstat'); if(st) st.textContent = S.lastTick ? ` · آخر تحليل ${ago(S.lastTick)} (${S.lastMs} ms)` : ' · بانتظار أول صورة…';
-  const cw = $('#camwarn'); if(cw) cw.innerHTML = (S.camState === 'touch' || S.camState === 'settle') ? '<div class="note" style="margin-top:8px">✋ لمست الشاشة: المراقبة متوقفة لحظات حتى يثبت الموبايل، ثم تُعاد معايرة الصورة تلقائياً.</div>' : S.camState === 'moving' ? '<div class="note da" style="margin-top:8px">⚠️ الكاميرا تتحرك أو تهتز. ثبّتها على حامل حتى يبدأ النظام بالحكم.</div>' : S.camState === 'bumped' ? '<div class="note wa" style="margin-top:8px">الصورة كلها اختلفت (انزاحت الكاميرا أو تغيّرت الإضاءة). جارٍ إعادة الضبط…</div>' : '';
+  const cw = $('#camwarn'); if(cw) cw.innerHTML = (S.camState === 'touch' || S.camState === 'settle') ? '<div class="note" style="margin-top:8px">✋ لمست الشاشة: المراقبة متوقفة لحظات حتى يثبت الموبايل، ثم تُعاد معايرة الصورة تلقائياً.</div>' : S.camState === 'moving' ? '<div class="note da" style="margin-top:8px">⚠️ الكاميرا تتحرك أو تهتز. ثبّتها على حامل حتى يبدأ النظام بالحكم.</div>' : S.camState === 'bumped' ? '<div class="note wa" style="margin-top:8px">الصورة كلها اختلفت (انزاحت الكاميرا أو تغيّرت الإضاءة). جارٍ إعادة الضبط…</div>' : S.camState === 'blind' ? '<div class="note da" style="margin-top:8px">🚫 العدسة مغطاة أو الصورة مظلمة. المراقبة متوقفة، وإذا استمر ذلك يصدر تنبيه «عبث بالكاميرا». عند رجوع الرؤية تُقارن العارضات بالصورة قبل التغطية.</div>' : '';
   const ai = $('#aistat'); if(ai){ const m = { off: '', loading: ' · ⏳ تحميل الذكاء الاصطناعي…', ready: ` · 🤖 الذكاء الاصطناعي يعمل${MP.hand ? ' (أيادٍ + أشخاص + أجسام)' : ' (أشخاص + أجسام)'}`, error: ' · الذكاء الاصطناعي غير متاح (يحتاج إنترنت أول مرة)' };
     ai.textContent = isDemo() || !S.cfg.ai ? '' : m[MP.state] || ''; ai.style.color = MP.state === 'error' ? 'var(--wa)' : 'var(--ok)'; }
   const t = now();
@@ -897,7 +928,7 @@ function updMon(){
     + (S.cfg.ai && !isDemo() && MP.state === 'ready' && now() - S.lastTick < 3 ? MP.boxes.map(b => `<rect x="${b.x * 100}" y="${b.y * 100}" width="${b.w * 100}" height="${b.h * 100}" fill="none" stroke="#fff" stroke-dasharray="3 3" style="stroke-width:1.5px" vector-effect="non-scaling-stroke"/>`).join('') : '');
   $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
     const pe = ev.filter(e => e.status === 'pending').sort((a, b) => a.deadline - b.deadline)[0], left = pe ? Math.max(0, Math.ceil(pe.deadline - t)) : 0;
-    const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
+    const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>', blind: '<b style="color:var(--da)">الكاميرا مغطاة أو مظلمة</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
     return `<span class="chip ${inc ? 'i' : pen ? 'p' : cl ? 'c' : ''}">${esc(z.name)} · ${dtx}${inc ? ` · <b style="color:var(--da)">${inc} تنبيه</b>` : ''}${pen ? ` · ${pen} ضمن المهلة (${left < 120 ? left + ' ث' : Math.ceil(left / 60) + ' د'})` : ''}${cl ? ' · تنظيف جارٍ' : ''}${interToday(z.id) ? ' · ' + interToday(z.id) + ' تفاعل اليوم' : ''}
       <button class="btn sm" onclick="startCleaning('${z.id}');toast('لن تُعدّ «${esc(z.name)}» حالة اختفاء لمدة ${cleanMin()} دقيقة')">تنظيف/عرض</button></span>`; }).join('');
 }
@@ -922,12 +953,12 @@ function vEv(){
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
 }
 function evCard(e){
-  const z = zoneOf(e.zone), s = STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
+  const z = zoneOf(e.zone), s = (e.kind === 'tamper' && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
   return `<div class="card ev"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
     <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
     <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
     ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
-    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button><button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
+    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
     ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="addSale('${e.zone}',1,'','يدوي');toast('سُجّل البيع')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="startCleaning('${e.zone}');toast('مُدّدت المهلة')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
 }
 function zoom(src){ openModal(`<img src="${src}" style="width:100%;border-radius:10px"><div style="height:8px"></div><button class="btn w" onclick="closeModal()">إغلاق</button>`, true); }
@@ -971,12 +1002,13 @@ function zoneForm(id, rect){
   const secs = [...new Set(S.zones.map(z => z.section).filter(Boolean))];
   openModal(`<h2>${id ? 'تعديل منطقة' : 'منطقة جديدة'}</h2><div class="fld"><label>اسم العارضة / الرف</label><input id="zn" value="${esc(z.name)}" placeholder="مثال: عارضة آيفون — الرف العلوي"></div>
     <div class="fld"><label>القسم</label><input id="zs" list="secs" value="${esc(z.section || '')}"><datalist id="secs">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+    <div class="fld"><label>الحساسية</label><select id="zf"><option value="">تلقائي (حسب الإعداد العام)</option><option value="normal" ${z.sens === 'normal' ? 'selected' : ''}>عادي: قطع متوسطة وكبيرة</option><option value="fine" ${z.sens === 'fine' ? 'selected' : ''}>دقيق: قطع صغيرة (علكة، شاحن، سماعة)</option></select></div>
     <div class="f2"><button class="btn pri" onclick="saveZone()">حفظ</button><button class="btn" onclick="closeModal();window._afterZone=null;drawEd()">إلغاء</button></div>`);
   setTimeout(() => $('#zn') && $('#zn').focus(), 50);
 }
 function saveZone(){
   const z = window._pz, name = $('#zn').value.trim(); if(!name) return toast('اكتب اسم المنطقة');
-  z.name = name; z.section = $('#zs').value.trim();
+  z.name = name; z.section = $('#zs').value.trim(); z.sens = $('#zf').value || undefined;
   if(z.id){ const i = S.zones.findIndex(x => x.id === z.id); S.zones[i] = z; } else { z.id = rid(); S.zones.push(z); }
   saveZones(); closeModal(); if(window._afterZone){ const f = window._afterZone; window._afterZone = null; f(); } else render(); toast('تم حفظ العارضة؛ المراقبة تعمل عليها الآن');
 }
