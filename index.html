@@ -8013,7 +8013,7 @@ async function renderPointsSection(deptId){
         const _lbl = NEO_NS_LABEL[_lk] || 'إجازة';
         const _undo = _shiftUser && (_lk === 'leave' || _lk === 'غ')
           ? ` <span style="cursor:pointer;color:#3ecf6b;font-size:11px;margin-inline-start:6px;" onclick="amAbsTap('${s.id}','${deptId}','${date}','${_lk}')">إلغاء</span>` : '';
-        rowsHtml += `<tr style="opacity:.6;"><td class="code-cell">${esc(s.name)} <span style="background:#123a52;color:#8fd0f0;font-size:10px;padding:2px 7px;border-radius:8px;white-space:nowrap;">${_lbl}</span>${_undo}</td>${crit.map(() => '<td><span style="color:#5d6d80;">—</span></td>').join('')}<td style="color:#5d6d80;">—</td></tr>`;
+        rowsHtml += `<tr style="opacity:.6;"><td class="code-cell">${esc(s.name)} <span style="background:#123a52;color:#8fd0f0;font-size:10px;padding:2px 7px;border-radius:8px;white-space:nowrap;">${_lbl}</span><div class="amChips">${_undo}</div></td>${crit.map(() => '<td><span style="color:#5d6d80;">—</span></td>').join('')}<td style="color:#5d6d80;">—</td></tr>`;
         continue;
       }
       const _btns = _shiftUser
@@ -8032,7 +8032,7 @@ async function renderPointsSection(deptId){
         cells += `<td><div class="point-cell" onclick="openPointSlider('${s.id}','${deptId}','${date}','${c.id}',${neoJsArg(c.name)}, ${val === null ? 'null' : val})">${display}</div></td>`;
       }
       const totalColor = !hasAny ? '#999' : (total/(maxTotal||1)) >= 0.8 ? '#3ecf6b' : (total/(maxTotal||1)) >= 0.5 ? '#ffcf5c' : '#ff7b7b';
-      rowsHtml += `<tr><td class="code-cell">${esc(s.name)}${_btns}</td>${cells}<td style="color:${totalColor}; font-weight:bold;">${hasAny ? total : '—'}${maxTotal ? '/'+maxTotal : ''}</td></tr>`;
+      rowsHtml += `<tr><td class="code-cell">${esc(s.name)}<div class="amChips">${_btns}</div></td>${cells}<td style="color:${totalColor}; font-weight:bold;">${hasAny ? total : '—'}${maxTotal ? '/'+maxTotal : ''}</td></tr>`;
     }
     return `<div class="table-wrap">
       <table>
@@ -10277,7 +10277,7 @@ function progBuildRows(cfg){
     const leaveBtn = (cfg.leaveDeptId && lvKind !== 'ص' && lvKind !== 'م')
       ? ` <span style="cursor:pointer;color:${onLeave ? '#3ecf6b' : '#8fb8d8'};font-size:11px;margin-inline-start:6px;"
             title="${onLeave ? 'إلغاء الإجازة — ترجع خاناته للتأشير' : 'إجازة اليوم — تظهر خاناته «—» ولا تُحتسب عليه'}"
-            onclick="neoLeaveTap('${it.id}','${cfg.leaveDeptId}','${cfg.leaveDate}','${cfg.key}')">${onLeave ? 'إلغاء الإجازة' : 'تسجيل إجازة'}</span>` : '';
+            onclick="neoLeaveTap('${it.id}','${cfg.leaveDeptId}','${cfg.leaveDate}','${cfg.key}')">${onLeave ? 'إلغاء الإجازة' : 'إجازة'}</span>` : '';
     const nsBtn = (cfg.leaveDeptId && cfg.nsKind && lvKind !== 'leave')
       ? ` <span style="cursor:pointer;color:${onLeave ? '#3ecf6b' : '#d3a04f'};font-size:11px;margin-inline-start:6px;"
             title="${onLeave ? 'إلغاء — يرجع للتأشير في هذا الشفت' : 'الموظف اليوم ليس في هذا الشفت — تظهر خاناته «—» ولا تُحتسب عليه'}"
@@ -10286,7 +10286,7 @@ function progBuildRows(cfg){
       ? ` <span style="cursor:pointer;color:${onLeave ? '#3ecf6b' : '#c9a0ff'};font-size:11px;margin-inline-start:6px;"
             title="${onLeave ? 'إلغاء — يرجع للتأشير' : 'دوامك لم يصادف دوامه اليوم — خاناته ونقاطه «—» ولا تُحتسب'}"
             onclick="amAbsTap('${it.id}','${cfg.leaveDeptId}','${cfg.leaveDate}','غ')">${onLeave ? 'إلغاء «ليس موجود»' : 'ليس موجود'}</span>` : '';
-    html += `<tr${(offBadge || onLeave) ? ' style="opacity:.6;"' : ''}><td class="code-cell">${esc(it.label)}${offBadge}${leaveBadge}${lvKind === 'غ' ? '' : leaveBtn + nsBtn}${nfBtn}</td>${cells}</tr>`;
+    html += `<tr${(offBadge || onLeave) ? ' style="opacity:.6;"' : ''}><td class="code-cell">${esc(it.label)}${offBadge}${leaveBadge}<div class="amChips">${lvKind === 'غ' ? '' : leaveBtn + nsBtn}${nfBtn}</div></td>${cells}</tr>`;
     for (const w of wrong){
       const val = (fn[w.key]||'').replace(/"/g,'&quot;');
       html += `<tr><td colspan="${totalCols}" style="padding:4px 8px;">
@@ -31762,6 +31762,14 @@ html body #amLvOv:not(#_a):not(#_b){position:fixed!important;inset:0!important;z
 #amLvOv .amLvRow small{display:block;color:var(--ui-muted);font-size:11px}
 #amLvOv .amLvRow button{width:auto;margin:0;padding:6px 12px;font-size:12px}
 .amLvDockBtn{width:100%;margin-top:8px}
+</style>
+<style id="amChipStyle">
+/* أزرار الإجازة و«ليس موجود»: سطر مستقل تحت الاسم، أزرار واضحة ومتباعدة سهلة الضغط */
+html body .amChips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+html body .amChips:empty{display:none}
+html body .amChips>span{display:inline-flex!important;align-items:center;justify-content:center;min-height:32px;padding:0 14px!important;margin:0!important;
+  border-radius:999px;border:1px solid currentColor;background:rgba(255,255,255,.04);font-size:12.5px!important;font-weight:700;white-space:nowrap;line-height:1}
+html body .amChips>span:active{transform:scale(.96)}
 </style>
 <style id="amCalStyle">
 #amSaOv .amCalHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
