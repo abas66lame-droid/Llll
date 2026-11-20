@@ -13,6 +13,9 @@ const crypto = require('crypto');
 initializeApp();
 setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
 
+// الحكم الذكي لحارس العارضات (Claude عند كل حدث) — منفصل عن دوال النظافة
+exports.judgeEvent = require('./judge').judgeEvent;
+
 // مفتاح الإعداد الأول: يُستخدم مرة واحدة لإنشاء أول مدير، ويُضبط من أسرار GitHub عند النشر
 const SETUP_KEY = defineString('SETUP_KEY', { default: '' });
 

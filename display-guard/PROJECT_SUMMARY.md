@@ -272,6 +272,30 @@ tamper:   zone='_cam'، sub = cover | turn → incident فوراً + تنبيه 
 
 ---
 
+## 3.11) الحكم الذكي عند كل حدث (Claude) — بموافقة المستخدم
+
+- **السبب:** «لا زال غبي وبدائي». المحرك قواعد على البكسلات لا يفهم المشهد، وكل إصلاح رقعة لحالة واحدة.
+- **التصميم:**
+  - المحرك على الجهاز يبقى المنبّه المجاني على مدار الساعة.
+  - **عند كل حدث فقط** (removal، night، moved، added، swap، major، conceal) تُرسل حتى 4 صور صغيرة: مقارنة، وقبل، ولحظة اليد، وبعد/الوجهة.
+  - تذهب إلى دالة الخادم `judgeEvent` في `functions/judge.js`. تستدعي Claude Opus 5.5 افتراضياً (Haiku 5.5 اختياري)، بمخرجات JSON مقيّدة بمخطط، وبـ `fallbacks: "default"` لـ Opus.
+  - يرجع `{verdict, item, summary, confidence, risk}`، و verdict إحدى القيم: taken، moved، returned، added، rearranged، concealed، no_change، unclear.
+- **تطبيق الحكم** (`JUDGE.apply` في الصفحة):
+  - ثقة ≥ 0.7 وحكم «ليس أخذاً» على حالة معلّقة (أو اشتباه إخفاء) ← تُغلق (`moved` / `returned` / `resolved:false`) بسبب مكتوب.
+  - ثقة ≥ 0.7 وحكم «أخذ أو إخفاء» على حدث معلوماتي (moved، added، swap، major) ← يتحوّل إلى `removal` معلّق بمهلة، أو `night` ليلاً.
+  - غير ذلك ← يُعرض الحكم فقط، ويبقى قرار المحرك.
+  - المهلة تنتظر الحكم حتى 45 ثانية إضافية (`aiPending`).
+- **الأمان:**
+  - مفتاح Anthropic على الخادم فقط.
+  - الجهاز يرسل `x-guard-key` (رمز الربط).
+  - حد يومي على الجهاز (`judgeMax`) وعلى الخادم (`GUARD_DAILY`)، وحدود لعدد الصور وحجمها.
+- **الاستضافة:** النشر ينسخ `haris.html` إلى `https://<project>.web.app/haris.html`، ويعيد توجيه `/api/judge` إلى الدالة، فالرابط الافتراضي يعمل تلقائياً من نفس الموقع.
+- **بلا إنترنت أو بلا إعداد:** يعمل الحارس كما كان.
+- **الاختبارات:**
+  - `tests/judge_server.js`: عميل Claude وهمي.
+  - `tests/judge_client.js`: خادم وهمي عبر Playwright.
+  - **لم يُجرَّب على Claude الحقيقي داخل بيئة التطوير** (لا مفتاح). أول تجربة حقيقية بعد ضبط الأسرار والنشر.
+
 ## 4) نسخة Python / Hikvision NVR (`archive/nvr-python/`) — مؤجلة
 
 - **`sources.py` → `HikvisionClient`:**

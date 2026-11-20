@@ -48,6 +48,7 @@ h2{font-size:18px;margin:16px 0 6px}
 .feed .it{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line);cursor:pointer}.feed h3+.it{border-top:0}
 .feed img{width:64px;height:44px;object-fit:cover;border-radius:6px;flex:none;background:#eee}
 .card.hl{outline:3px solid var(--da);outline-offset:2px}
+.ai{background:#eef4ff;border:1px solid #c9dafc;border-radius:8px;padding:6px 9px;margin-top:6px;font-size:13px;line-height:1.6}.ai.bad{background:#fdecec;border-color:#f3c0c0}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;padding:3px 4px 3px 10px;font-size:12.5px;background:#fff}
 .chip.p{border-color:#e9c98e;background:var(--wal)}.chip.i{border-color:#e8b4b4;background:var(--dal)}.chip.c{border-color:#b9c9ec;background:var(--infl)}
@@ -439,7 +440,7 @@ const DB = {
   del(st, id){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).delete(id); }catch(e){} },
   clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
 };
-const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true };
+const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true, judge: true, judgeModel: 'claude-opus-5-5', judgeUrl: '', judgeKey: '', judgeMax: 400 };
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -871,6 +872,7 @@ const ENG = {
     const t = now();
     for(const e of S.events){
       if(e.status !== 'pending' || e.deadline > t) continue;
+      if(e.aiPending && t < e.deadline + 45) continue; // ننتظر حكم Claude قليلاً قبل التنبيه
       if(trySale(e)) continue;
       const cu = S.cleaning[e.zone] || 0;
       if(cu > t){ e.deadline = cu + 60; putEvent(e); continue; }
@@ -878,7 +880,7 @@ const ENG = {
     }
   }
 };
-function addEvent(e){ if(isDemo()) e.demo = true; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); }
+function addEvent(e){ if(isDemo()) e.demo = true; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); }
 function putEvent(e){ DB.put('events', e); refreshSoon(); }
 function trySale(e){
   const w = saleWin() * 60, s = S.sales.filter(s => s.zone === e.zone && s.remaining > 0 && s.t >= e.t_start - w).sort((a, b) => a.t - b.t)[0];
@@ -905,6 +907,61 @@ function resolveEv(id, res, note, who){
   e.status = 'resolved'; e.resolution = res; e.resolved_by = who || ''; e.t_resolved = now(); if(note) e.note = ((e.note || '') + ' ' + note).trim();
   putEvent(e);
 }
+/* =================== الحكم الذكي (Claude) عند كل حدث ===================
+   المحرك على الجهاز ينبّه مجاناً 24 ساعة، وعند كل حدث تُرسل صوره الصغيرة (قبل / لحظة اليد / بعد / مقارنة) إلى
+   دالة على خادم Firebase تسأل Claude: ماذا حدث فعلاً؟ الحكم الواثق (≥70%) يصحّح قرار المحرك في الاتجاهين:
+   شيل كان نقلاً أو رجوعاً = يُغلق، و«إضافة/نقل» كان أخذاً = يصبح شيلاً بمهلة. بدون إنترنت يبقى قرار المحرك كما هو.
+   المفتاح على الخادم فقط؛ الجهاز يحمل «رمز ربط» يحدده المشرف. */
+const AIV = { taken: 'أُخذت', moved: 'نُقلت', returned: 'رجعت', added: 'أُضيفت', rearranged: 'رُتّبت', concealed: 'إخفاء', no_change: 'لا تغيير حقيقي', unclear: 'غير واضح' };
+const judgeUrl = () => S.cfg.judgeUrl || (location.protocol === 'https:' && !/claude|anthropic/.test(location.host) ? location.origin + '/api/judge' : '');
+const JUDGE = { busy: 0, queue: [],
+  ready(){ return S.cfg.judge && !isDemo() && judgeUrl() && S.cfg.judgeKey; },
+  left(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); return (+S.cfg.judgeMax || 400) - (u.d === d ? u.n : 0); },
+  count(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); LS.set('haris_judge', { d, n: (u.d === d ? u.n : 0) + 1 }); },
+  ask(e){
+    if(!this.ready() || !['removal', 'night', 'moved', 'added', 'swap', 'major', 'conceal'].includes(e.kind) || e.ai || e.aiPending) return;
+    if(this.left() <= 0){ e.aiErr = 'انتهى الحد اليومي للحكم الذكي'; return; }
+    e.aiPending = true; this.queue.push(e); this.pump();
+  },
+  pump(){ while(this.busy < 2 && this.queue.length){ const e = this.queue.shift(); this.busy++; this.send(e, 0).finally(() => { this.busy--; this.pump(); }); } },
+  async send(e, tries){
+    const b64 = d => (d || '').split(',')[1] || '', im = [];
+    if(e.kind === 'conceal'){ if(e.img_b) im.push({ label: 'before', data: b64(e.img_b) }); if(e.img_a) im.push({ label: 'hand', data: b64(e.img_a) }); }
+    else { for(const [label, d] of [['compare', e.img_c], ['before', e.img_b], ['hand', e.img_p], [e.kind === 'moved' ? 'dest' : 'after', e.img_a]]) if(d) im.push({ label, data: b64(d) }); }
+    const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: im.slice(0, 4), ctx: { zone: z.name, mode: z.mode || '', guess: KIND[e.kind] || e.kind, hand: /يد/.test(e.note || '') || !!e.img_p, note: e.note || '', noSales: !!S.cfg.noSales } };
+    try{
+      const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if(r.ok && j.verdict){ this.count(); this.apply(e, j); return; }
+      if((r.status === 429 || r.status >= 500) && tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); }
+      e.aiErr = j.error || ('خطأ ' + r.status);
+    }catch(err){ if(tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); } e.aiErr = 'تعذّر الاتصال بالحكم الذكي'; }
+    e.aiPending = false; putEvent(e);
+  },
+  apply(e, v){
+    e.aiPending = false; e.ai = { verdict: v.verdict, item: v.item, summary: v.summary, confidence: v.confidence, risk: v.risk, model: v.model, t: now() };
+    if(v.item && !e.name) e.name = v.item;
+    const strong = v.confidence >= 0.7, clear = ['moved', 'returned', 'added', 'rearranged', 'no_change'].includes(v.verdict), took = v.verdict === 'taken' || v.verdict === 'concealed';
+    if(strong && clear && (e.status === 'pending' || (e.kind === 'conceal' && e.status === 'incident'))){
+      // المحرك ظنّه شيلاً، وClaude واثق أنه ليس كذلك: نغلقه مع السبب
+      if(v.verdict === 'moved' || v.verdict === 'rearranged'){ e.status = 'moved'; }
+      else if(v.verdict === 'returned'){ e.status = 'returned'; }
+      else { e.status = 'resolved'; e.resolution = 'false'; e.resolved_by = 'Claude'; e.t_resolved = now(); }
+      e.t_end = now(); e.note = ((e.note || '') + ' أغلقها حكم Claude.').trim();
+    } else if(strong && took && e.status === 'info' && ['moved', 'added', 'swap', 'major'].includes(e.kind)){
+      // المحرك ظنّه نقلاً أو إضافة، وClaude واثق أن قطعة أُخذت: يصبح شيلاً عادياً (مهلة ثم تنبيه)
+      const night = isNight(); e.was = e.kind; e.kind = night ? 'night' : 'removal'; e.status = night ? 'incident' : 'pending'; e.deadline = now() + grace() * 60; e.t_end = undefined;
+      e.note = ((e.note || '') + ' صحّحه حكم Claude: أُخذت قطعة.').trim(); if(night) alertEv(e);
+    }
+    putEvent(e); refreshSoon();
+  },
+  async ping(){ if(!judgeUrl()) return 'لا يوجد رابط للخادم'; if(!S.cfg.judgeKey) return 'أدخل رمز الربط';
+    try{ const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify({ ping: true }) }); const j = await r.json().catch(() => ({}));
+      return r.ok && j.ok ? 'متصل ✓' : (j.error || 'خطأ ' + r.status); }catch(e){ return 'تعذّر الاتصال: ' + (e.message || e); } }
+};
+const aiLine = e => e.ai ? `<div class="ai ${e.ai.verdict === 'taken' || e.ai.verdict === 'concealed' ? 'bad' : ''}">🤖 <b>Claude:</b> ${esc(e.ai.summary)} <span class="xs mut">(${AIV[e.ai.verdict] || e.ai.verdict} · ثقة ${Math.round(e.ai.confidence * 100)}%)</span></div>`
+  : e.aiPending ? '<div class="xs mut" style="margin-top:4px">🤖 Claude يحلل الصور…</div>' : e.aiErr ? `<div class="xs mut" style="margin-top:4px">🤖 ${esc(e.aiErr)}</div>` : '';
+
 /* =================== كشف حركة الإخفاء (تجريبي) ===================
    يد (معصم من MediaPipe Pose) تلمس عارضة أو رفاً، ثم تذهب مباشرة إلى منطقة الجيب/الخصر/داخل الملابس وتبقى لحظة
    = «اشتباه إخفاء» يحتاج مراجعة المشرف. إذا ذهبت اليد أولاً لمكان آخر (السلة، العربة) يُلغى الاشتباه.
@@ -985,7 +1042,7 @@ function alertEv(e){
   const z = zoneOf(e.zone);
   const txt = `${e.kind === 'conceal' ? '👁 اشتباه إخفاء: ' + e.note : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'conceal' ? 'راجع الصور وتسجيل الكاميرات.' : e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
   toast(e.kind === 'conceal' ? '👁 اشتباه إخفاء عند ' + z.name : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
-  notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : ''), e.img_p || e.img_c);
+  notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : '') + (e.ai ? '\n🤖 Claude: ' + e.ai.summary : ''), e.img_p || e.img_c);
 }
 function notifyAll(text, img){
   if(S.cfg.notify && 'Notification' in window && Notification.permission === 'granted'){ try{ new Notification('حارس العارضات', { body: text }); }catch(e){} }
@@ -1186,11 +1243,11 @@ const evStatus = e => ((e.kind === 'tamper' || e.kind === 'conceal') && e.status
 // شريط أحمر فوق الصورة: أحدث تنبيه لم يُطّلع عليه، ويبقى حتى «تم الاطلاع» أو المعالجة
 function alertBar(){
   const el = $('#abar'); if(!el) return;
-  const L = S.events.filter(e => e.status === 'incident' && !e.ack).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id).join(',');
+  const L = S.events.filter(e => e.status === 'incident' && !e.ack).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id + (e.ai ? 'a' : '')).join(',');
   if(el.dataset.k === key){ const a = el.querySelector('.ago'); if(a && L[0]) a.textContent = ago(L[0].t_start); return; }
   el.dataset.k = key; if(!L.length){ el.innerHTML = ''; return; }
   const e = L[0], z = zoneOf(e.zone), img = e.img_p || e.img_c || e.img_a;
-  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div></div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button><button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
+  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div>${e.ai ? `<div class="s">🤖 ${esc(e.ai.summary)}</div>` : ''}</div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button><button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
 }
 // ملصقات فوق أماكن الأحداث في الصورة: عدّ تنازلي للمعلّقة، «سرقة؟» للتنبيه، ونتيجة الأحداث الأخيرة لثوانٍ
 function liveLabels(){
@@ -1205,10 +1262,10 @@ function liveLabels(){
 // آخر الأحداث تحت الكاميرا (كل الأنواع)، يُعاد بناؤها فقط عند تغيّر الأحداث
 function liveFeed(){
   const el = $('#feed'); if(!el) return;
-  const L = S.events.slice().sort((a, b) => evT(b) - evT(a)).slice(0, 6), key = L.map(e => e.id + e.status + (e.ack ? 1 : 0)).join(',');
+  const L = S.events.slice().sort((a, b) => evT(b) - evT(a)).slice(0, 6), key = L.map(e => e.id + e.status + (e.ack ? 1 : 0) + (e.ai ? 'a' : e.aiPending ? 'p' : '')).join(',');
   if(el.dataset.k !== key){ el.dataset.k = key;
     el.innerHTML = '<h3 style="margin:0 0 4px">آخر الأحداث</h3>' + (L.length ? L.map(e => { const st = evStatus(e);
-      return `<div class="it" onclick="openEv('${e.id}')">${e.img_a || e.img_c ? `<img src="${e.img_a || e.img_c}">` : '<img>'}<div style="flex:1;min-width:0"><div class="row" style="gap:6px"><b class="sm">${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''}</b><span class="tag ${st[1]}">${st[0]}</span></div><div class="xs mut">${esc(zoneOf(e.zone).name)} · <span data-t="${evT(e)}"></span></div></div></div>`; }).join('') : '<div class="xs mut">لا أحداث بعد. أي شيل أو نقل أو تنبيه يظهر هنا فوراً.</div>'); }
+      return `<div class="it" onclick="openEv('${e.id}')">${e.img_a || e.img_c ? `<img src="${e.img_a || e.img_c}">` : '<img>'}<div style="flex:1;min-width:0"><div class="row" style="gap:6px"><b class="sm">${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''}</b><span class="tag ${st[1]}">${st[0]}</span></div><div class="xs mut">${esc(zoneOf(e.zone).name)} · <span data-t="${evT(e)}"></span></div>${e.ai ? `<div class="xs" style="margin-top:2px">🤖 ${esc(e.ai.summary)}</div>` : e.aiPending ? '<div class="xs mut">🤖 يحلل…</div>' : ''}</div></div>`; }).join('') : '<div class="xs mut">لا أحداث بعد. أي شيل أو نقل أو تنبيه يظهر هنا فوراً.</div>'); }
   el.querySelectorAll('[data-t]').forEach(x => x.textContent = ago(+x.dataset.t));
 }
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
@@ -1242,7 +1299,7 @@ function evCard(e){
   return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
     <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
     <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
-    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
+    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${aiLine(e)}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
     ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' || e.kind === 'conceal' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
     ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="addSale('${e.zone}',1,'','يدوي');toast('سُجّل البيع')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="startCleaning('${e.zone}');toast('مُدّدت المهلة')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
 }
@@ -1367,6 +1424,13 @@ function vSet(){
       <button class="sw ${c.ai ? 'on' : ''}" id="c_ai" onclick="this.classList.toggle('on')"></button></div>
       <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">كشف حركة الإخفاء (تجريبي)</b><div class="xs mut">ينبّه إذا لمست يدٌ رفاً أو عارضة ثم ذهبت مباشرة إلى الجيب أو الخصر أو داخل الملابس. يصلح للقطع الصغيرة (شيبس، شوكولا). يحتاج كاميرا ترى جسم الزبون (من زاوية الممر)، ويستهلك المعالج أكثر أثناء وجود أشخاص. تجريبي: كل تنبيه «اشتباه» يحتاج مراجعة، وقد ينبّه لحركة عادية مثل إخراج الموبايل.</div></div>
       <button class="sw ${c.conceal ? 'on' : ''}" id="c_conceal" onclick="this.classList.toggle('on')"></button></div>${c.conceal ? `<div class="xs" style="margin-top:6px">نموذج وضعية الجسم: ${MP.pose ? 'يعمل ✓' : MP.poseLoading ? 'جارٍ التحميل…' : MP.poseErr ? 'تعذّر التحميل: ' + esc(MP.poseErr) : 'يُحمَّل عند تشغيل الكاميرا'}</div>` : ''}<div class="xs" style="margin-top:6px">الحالة: ${{ off: 'لم يُحمَّل بعد (يُحمَّل عند تشغيل الكاميرا)', loading: 'جارٍ التحميل…', ready: 'يعمل ✓', error: 'تعذّر التحميل: ' + esc(MP.err) }[MP.state]}</div></div>
+    <div class="card"><h3>الحكم الذكي (Claude)</h3>
+      <div class="row" style="justify-content:space-between"><div><b class="sm">تحليل صور كل حدث بـ Claude</b><div class="xs mut">عند كل شيل أو نقل أو إضافة تُرسل 3 إلى 4 صور صغيرة، فيحكم Claude ماذا حدث فعلاً ويصحّح قرار المحرك: النقل والرجوع لا يُنذران، والأخذ المتخفّي يُنذر. يعمل عند الأحداث فقط لا لكل إطار، ويحتاج إنترنت. بدونه يبقى النظام يعمل كما هو.</div></div>
+      <button class="sw ${c.judge ? 'on' : ''}" id="c_judge" onclick="this.classList.toggle('on')"></button></div>
+      <div class="fld" style="margin-top:8px"><label>النموذج</label><select id="c_judgeModel"><option value="claude-opus-5-5" ${c.judgeModel !== 'claude-haiku-5-5' ? 'selected' : ''}>Claude Opus 5.5 — الأدق (نحو 2 سنت للحدث)</option><option value="claude-haiku-5-5" ${c.judgeModel === 'claude-haiku-5-5' ? 'selected' : ''}>Claude Haiku 5.5 — الأرخص (أقل من عُشر سنت)</option></select></div>
+      ${f('judgeUrl', 'رابط الخادم (اتركه فارغاً إذا فتحت الصفحة من رابط الموقع نفسه)', 'url', 'placeholder="https://<project>.web.app/api/judge" dir="ltr"')}${f('judgeKey', 'رمز الربط (GUARD_KEY نفسه المحفوظ في أسرار المستودع)', 'password')}
+      ${f('judgeMax', 'الحد الأقصى للتحليلات يومياً على هذا الجهاز', 'number', 'min="1"')}
+      <div class="row"><button class="btn sm" onclick="readSet();saveCfg();JUDGE.ping().then(m=>{$('#jst').textContent=m})">اختبار الاتصال</button><span class="xs" id="jst">${judgeUrl() ? 'الرابط: ' + esc(judgeUrl()) : 'لا يوجد رابط بعد'}</span><span class="xs mut">· اليوم: ${(+c.judgeMax || 400) - JUDGE.left()} تحليل</span></div></div>
     <div class="card"><h3>التنبيهات</h3>
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">تكرار صوت التنبيه حتى الاطلاع</b><div class="xs mut">كل 30 ثانية ما دام هناك تنبيه لم يُضغط عليه «تم الاطلاع» في شاشة المراقبة.</div></div><button class="sw ${c.repeatBeep ? 'on' : ''}" id="c_repeatBeep" onclick="this.classList.toggle('on')"></button></div>
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">إشعارات الكمبيوتر</b><div class="xs mut">تظهر حتى لو كانت الصفحة خلف نوافذ أخرى.</div></div><button class="sw ${c.notify ? 'on' : ''}" id="c_notify" onclick="this.classList.toggle('on');if(this.classList.contains('on')&&'Notification' in window)Notification.requestPermission()"></button></div>
@@ -1381,7 +1445,7 @@ function vSet(){
 }
 function readSet(){ const g = k => $('#c_' + k) ? $('#c_' + k).value.trim() : S.cfg[k];
   Object.assign(S.cfg, { site: g('site'), open: g('open'), close: g('close'), grace: Math.max(1, +g('grace') || 20), cleaning: Math.max(1, +g('cleaning') || 15), saleWin: Math.max(1, +g('saleWin') || 30),
-    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales, repeatBeep: $('#c_repeatBeep') ? $('#c_repeatBeep').classList.contains('on') : S.cfg.repeatBeep }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
+    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales, repeatBeep: $('#c_repeatBeep') ? $('#c_repeatBeep').classList.contains('on') : S.cfg.repeatBeep, judge: $('#c_judge') ? $('#c_judge').classList.contains('on') : S.cfg.judge, judgeModel: $('#c_judgeModel') ? $('#c_judgeModel').value : S.cfg.judgeModel, judgeUrl: g('judgeUrl'), judgeKey: g('judgeKey'), judgeMax: Math.max(1, +g('judgeMax') || 400) }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
 async function importSettings(f){ try{ const j = JSON.parse(await f.text()); if(j.cfg) S.cfg = Object.assign({}, DEF, j.cfg); if(Array.isArray(j.zones)) S.zones = j.zones; saveCfg(); saveZones(); toast('تم الاستيراد'); render(); }catch(e){ toast('ملف غير صالح'); } }
 
 /* =================== التشغيل =================== */

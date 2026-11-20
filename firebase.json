@@ -4,7 +4,11 @@
     "ignore": ["SUMMARY.md", "**/.*"],
     "headers": [
       { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-      { "source": "/vendor/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
+      { "source": "/vendor/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] },
+      { "source": "/haris.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    ],
+    "rewrites": [
+      { "source": "/api/judge", "function": { "functionId": "judgeEvent", "region": "europe-west1" } }
     ]
   },
   "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },

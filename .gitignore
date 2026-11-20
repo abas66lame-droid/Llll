@@ -3,3 +3,5 @@ node_modules/
 .firebase/
 display-guard/tests/out/
 __pycache__/
+# تُنسخ عند النشر فقط
+display-cleaning/haris.html

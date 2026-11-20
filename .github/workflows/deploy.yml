@@ -1,5 +1,6 @@
 # النشر التلقائي على Firebase عند كل دمج في main (أو يدوياً من تبويب Actions)
 # يحتاج ثلاثة أسرار في إعدادات المستودع: FIREBASE_SERVICE_ACCOUNT و FIREBASE_PROJECT_ID و SETUP_KEY (راجع SETUP.md)
+# واختيارياً للحكم الذكي في حارس العارضات: ANTHROPIC_API_KEY و GUARD_KEY
 name: Deploy to Firebase
 on:
   push:
@@ -20,10 +21,14 @@ jobs:
       - name: Write runtime config and credentials
         env:
           SETUP_KEY: ${{ secrets.SETUP_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GUARD_KEY: ${{ secrets.GUARD_KEY }}
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          printf 'SETUP_KEY=%s\n' "$SETUP_KEY" > functions/.env
+          printf 'SETUP_KEY=%s\nANTHROPIC_API_KEY=%s\nGUARD_KEY=%s\n' "$SETUP_KEY" "$ANTHROPIC_API_KEY" "$GUARD_KEY" > functions/.env
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+      - name: Publish the display guard page next to the cleaning app (https://<project>.web.app/haris.html)
+        run: cp display-guard/haris.html display-cleaning/haris.html
       - name: Deploy hosting, rules and functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
