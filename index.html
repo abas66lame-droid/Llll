@@ -5204,8 +5204,9 @@ const NEO_LEAVE_TAG = '⟦leave⟧';
    ونسبته له وحده). وزرّه هذا يقول: الموظف اليوم ليس في هذا الشفت — يُعامَل
    تماماً كالإجازة في كل حساب، ويختلف عنها في الاسم الظاهر فقط.
    ⟦ns:ص⟧<الموظف>|<التاريخ> صباحي · ⟦ns:م⟧<الموظف>|<التاريخ> مسائي */
-const NEO_NS_TAG = { 'ص': '⟦ns:ص⟧', 'م': '⟦ns:م⟧' };
-const NEO_NS_LABEL = { 'ص': 'ليس في الصباحي', 'م': 'ليس في المسائي' };
+const NEO_NS_TAG = { 'ص': '⟦ns:ص⟧', 'م': '⟦ns:م⟧', 'غ': '⟦ns:غ⟧' };
+/* 'غ' = «ليس موجود»: دوام مسؤول الشفت لم يصادف دوام الموظف — يُعامَل كالإجازة في التقييم والنقاط */
+const NEO_NS_LABEL = { 'ص': 'ليس في الصباحي', 'م': 'ليس في المسائي', 'غ': 'ليس موجود' };
 /* نوع القسم من اسمه: 'ص' صباحي، 'م' مسائي، '' قسم عادي */
 function neoShiftSplitKind(deptName){
   const n = String(deptName || '');
@@ -6432,7 +6433,7 @@ function neoJobTitle(profile){
     driver:"موظف توصيل", fleet:"مسؤول التوصيل", clean:"مسؤول التنظيف العام",
     stock:"مسؤول الجرد العام" };
   const t = profile && profile.job_title;
-  if (t && String(t).trim()) return String(t).trim().replace(/^مسؤول (ال)?صالة$/, 'مشرف صالة');
+  if (t && String(t).trim()) return String(t).trim().replace(/^مسؤول (ال)?صالة$/, 'مشرف صالة').replace(/^مشاهد$/, 'قسم التدقيق');
   if (profile && profile.role === 'owner') return 'مبرمج';
   return (profile && (AR[profile.role] || profile.role)) || '';
 }
@@ -7990,6 +7991,7 @@ async function renderPointsSection(deptId){
     let applicable = 0, complete = true;
     staffList.forEach(staff => {
       const group = pgOn ? neoPgOf('staff',staff.id,staff.name) : 0;
+      if (neoOnLeave(staff.id, date)) return;   /* مجاز أو ليس موجود — لا نقاط مطلوبة له */
       criteria.forEach(criterion => {
         if (pgOn && neoPgOf('crit',criterion.id,criterion.name)!==group)return;
         applicable++;
@@ -8004,7 +8006,19 @@ async function renderPointsSection(deptId){
   const buildTable = (crit, staffG) => {
     const maxTotal = crit.length * 10;
     let rowsHtml = "";
+    const _shiftUser = String((window.__fleetProfile || {}).role || '') === 'shift' && !currentManageMode;
     for (const s of staffG){
+      const _lk = neoLeaveKind(s.id, date);
+      if (_lk){
+        const _lbl = NEO_NS_LABEL[_lk] || 'إجازة';
+        const _undo = _shiftUser && (_lk === 'leave' || _lk === 'غ')
+          ? ` <span style="cursor:pointer;color:#3ecf6b;font-size:11px;margin-inline-start:6px;" onclick="amAbsTap('${s.id}','${deptId}','${date}','${_lk}')">إلغاء</span>` : '';
+        rowsHtml += `<tr style="opacity:.6;"><td class="code-cell">${esc(s.name)} <span style="background:#123a52;color:#8fd0f0;font-size:10px;padding:2px 7px;border-radius:8px;white-space:nowrap;">${_lbl}</span>${_undo}</td>${crit.map(() => '<td><span style="color:#5d6d80;">—</span></td>').join('')}<td style="color:#5d6d80;">—</td></tr>`;
+        continue;
+      }
+      const _btns = _shiftUser
+        ? ` <span style="cursor:pointer;color:#8fb8d8;font-size:11px;margin-inline-start:6px;" onclick="amAbsTap('${s.id}','${deptId}','${date}','leave')">إجازة</span>`
+          + ` <span style="cursor:pointer;color:#c9a0ff;font-size:11px;margin-inline-start:6px;" onclick="amAbsTap('${s.id}','${deptId}','${date}','غ')">ليس موجود</span>` : '';
       const p = pointsMap[s.id];
       const scores = p?.scores || {};
       let total = 0;
@@ -8018,7 +8032,7 @@ async function renderPointsSection(deptId){
         cells += `<td><div class="point-cell" onclick="openPointSlider('${s.id}','${deptId}','${date}','${c.id}',${neoJsArg(c.name)}, ${val === null ? 'null' : val})">${display}</div></td>`;
       }
       const totalColor = !hasAny ? '#999' : (total/(maxTotal||1)) >= 0.8 ? '#3ecf6b' : (total/(maxTotal||1)) >= 0.5 ? '#ffcf5c' : '#ff7b7b';
-      rowsHtml += `<tr><td class="code-cell">${esc(s.name)}</td>${cells}<td style="color:${totalColor}; font-weight:bold;">${hasAny ? total : '—'}${maxTotal ? '/'+maxTotal : ''}</td></tr>`;
+      rowsHtml += `<tr><td class="code-cell">${esc(s.name)}${_btns}</td>${cells}<td style="color:${totalColor}; font-weight:bold;">${hasAny ? total : '—'}${maxTotal ? '/'+maxTotal : ''}</td></tr>`;
     }
     return `<div class="table-wrap">
       <table>
@@ -8756,6 +8770,7 @@ window.neoSaveShiftPct = async function(deptId, date, silent){
   try{
     if (!neoStatsCache[date]) await neoLoadSavedStats(date);
     const _sv = neoSavedPct(date, deptId);
+    if (_sv && silent && typeof amIsLeaveRow === 'function' && amIsLeaveRow(_sv)) return false;   /* يوم إجازة ممنوحة */
     if (_sv && Number(_sv.pct) > r.pct){
       /* تخفيض بعد تأشير المسؤول نفسه الآن مسموح؛ غير ذلك لا يُنزل الحفظ التلقائي شيئاً */
       if (silent && !(window.__amEditAt && (Date.now() - window.__amEditAt) < 15000)) return false;
@@ -10267,7 +10282,11 @@ function progBuildRows(cfg){
       ? ` <span style="cursor:pointer;color:${onLeave ? '#3ecf6b' : '#d3a04f'};font-size:11px;margin-inline-start:6px;"
             title="${onLeave ? 'إلغاء — يرجع للتأشير في هذا الشفت' : 'الموظف اليوم ليس في هذا الشفت — تظهر خاناته «—» ولا تُحتسب عليه'}"
             onclick="neoNoShiftTap('${it.id}','${cfg.leaveDeptId}','${cfg.leaveDate}','${cfg.key}')">${onLeave ? 'إلغاء «' + NEO_NS_LABEL[cfg.nsKind] + '»' : NEO_NS_LABEL[cfg.nsKind]}</span>` : '';
-    html += `<tr${(offBadge || onLeave) ? ' style="opacity:.6;"' : ''}><td class="code-cell">${esc(it.label)}${offBadge}${leaveBadge}${leaveBtn}${nsBtn}</td>${cells}</tr>`;
+    const nfBtn = (cfg.leaveDeptId && (!onLeave || lvKind === 'غ'))
+      ? ` <span style="cursor:pointer;color:${onLeave ? '#3ecf6b' : '#c9a0ff'};font-size:11px;margin-inline-start:6px;"
+            title="${onLeave ? 'إلغاء — يرجع للتأشير' : 'دوامك لم يصادف دوامه اليوم — خاناته ونقاطه «—» ولا تُحتسب'}"
+            onclick="amAbsTap('${it.id}','${cfg.leaveDeptId}','${cfg.leaveDate}','غ')">${onLeave ? 'إلغاء «ليس موجود»' : 'ليس موجود'}</span>` : '';
+    html += `<tr${(offBadge || onLeave) ? ' style="opacity:.6;"' : ''}><td class="code-cell">${esc(it.label)}${offBadge}${leaveBadge}${lvKind === 'غ' ? '' : leaveBtn + nsBtn}${nfBtn}</td>${cells}</tr>`;
     for (const w of wrong){
       const val = (fn[w.key]||'').replace(/"/g,'&quot;');
       html += `<tr><td colspan="${totalCols}" style="padding:4px 8px;">
@@ -10301,8 +10320,23 @@ window.neoLeaveTap = async function(staffId, deptId, day, sectionKey){
   if (!await neoSetLeave(deptId, staffId, day, to)) return;
   it.on_leave = to; it.leave_kind = to ? 'leave' : null;
   progRefresh(sectionKey);
+  try{ await renderPointsSection(deptId); }catch(e){}
   try{ neoToast(to ? 'سُجّلت إجازة اليوم — خاناته لا تُحتسب'
                    : 'أُلغيت الإجازة — خاناته رجعت للتأشير', true); }catch(e){}
+};
+/* غياب موحّد (إجازة أو «ليس موجود») — يحدّث جدولي التقييم والنقاط معاً */
+window.amAbsTap = async function(staffId, deptId, day, kind){
+  const on = (typeof neoLeaveKind === 'function') ? neoLeaveKind(staffId, day) : null;
+  let ok;
+  if (kind === 'leave') ok = await neoSetLeave(deptId, staffId, day, on !== 'leave');
+  else ok = await neoSetNoShift(deptId, staffId, day, kind, on !== kind);
+  if (!ok) return;
+  const now = neoLeaveKind(staffId, day);
+  const cfg = progSections && progSections.staff;
+  const it = cfg && (cfg.items || []).find(x => String(x.id) === String(staffId));
+  if (it){ it.on_leave = !!now; it.leave_kind = now; progRefresh('staff'); }
+  try{ await renderPointsSection(deptId); }catch(e){}
+  try{ neoToast(now ? ('سُجّل: ' + (NEO_NS_LABEL[now] || 'إجازة') + ' — في التقييم والنقاط') : 'أُلغي — رجع للتأشير والنقاط', true); }catch(e){}
 };
 /* «ليس في الصباحي/المسائي» — نفس أثر الإجازة، لليوم نفسه فقط */
 window.neoNoShiftTap = async function(staffId, deptId, day, sectionKey){
@@ -12694,13 +12728,14 @@ async function renderSalesTrend(){
     if (mode === 'dept'){
       const palette = (n) => { const h = Math.round((n * 137.508) % 360); return `hsl(${h},70%,58%)`; };
       deptSeries = depts.map((dep, idx) => {
+        const lv = days.map(day => rows.some(r => r.log_date === day && String(r.department_id) === String(dep.id) && amIsLeaveRow(r)));
         const s = days.map(day => {
           const sel = rows.filter(r => r.log_date === day && String(r.department_id) === String(dep.id));
           return sel.length ? Math.round(sel.reduce((a,r)=>a+r.pct,0) / sel.length) : null;
         });
         const vv = s.filter(v => v !== null);
         const dAvg = vv.length ? Math.round(vv.reduce((a,b)=>a+b,0)/vv.length) : null;
-        return { id: dep.id, name: dep.name, color: palette(idx), series: s, avg: dAvg };
+        return { id: dep.id, name: dep.name, color: palette(idx), series: s, avg: dAvg, leave: lv };
       }).filter(d => d.avg !== null).sort((a,b) => b.avg - a.avg);
     }
 
@@ -12785,7 +12820,9 @@ async function renderSalesTrend(){
               <td onclick="event.stopPropagation(); renderDeptStaffMonth('${d.id}');" title="اضغط الاسم لمخطط أداء الموظفين الشهري"
                 style="position:sticky;inset-inline-end:0;background:#0a121e;color:#c8d4e2;padding:6px 10px;white-space:nowrap;cursor:pointer;
                 border-inline-end:2px solid ${d.color};">${esc(d.name)} <span style="color:#38d9b9;font-size:9px;">👥</span></td>
-              ${d.series.map(v => v===null
+              ${d.series.map((v,_i) => d.leave && d.leave[_i]
+                ? `<td title="إجازة مسؤول الشفت" aria-label="إجازة" style="text-align:center;padding:7px 3px;font-weight:800;min-width:29px;background:rgba(148,163,184,.22);color:#aab4c3;border-radius:6px;">100</td>`
+                : v===null
                 ? `<td class="neoTrendHeat neoTrendHeatEmpty" title="لا توجد بيانات محفوظة" style="text-align:center;padding:7px 3px;">—</td>`
                 : `<td class="neoTrendHeat" data-band="${neoTrendBand(v)}" title="${v}٪ — ${neoTrendBandLabel(v)}" aria-label="${v} بالمئة، ${neoTrendBandLabel(v)}" style="text-align:center;padding:7px 3px;font-weight:800;min-width:29px;">${v}</td>`
               ).join('')}
@@ -12857,7 +12894,7 @@ async function renderSalesTrend(){
     }},
     {id:'trendContent',label:'اتجاه الدورة الحالية',run:async()=>{
       const table=mode==='hall'?'hall_stats':'daily_stats',columns=mode==='hall'?'user_id,pct,log_date':'department_id,pct,log_date';
-      const [departments,result]=await Promise.all([loadDepartments(),supabaseClient.from(table).select(columns).gte('log_date',cycle.from).lte('log_date',cycle.to).order('log_date')]);
+      const [departments,result]=await Promise.all([loadDepartments(),supabaseClient.from(table).select(mode==='hall'?columns:columns+',saved_by_name').gte('log_date',cycle.from).lte('log_date',cycle.to).order('log_date')]);
       if(result.error)throw result.error;if(!page.current())return;
       depts=departments;
       rows=mode==='hall'?(result.data||[]).map(r=>({department_id:r.user_id,pct:r.pct,log_date:r.log_date}))
@@ -31644,6 +31681,88 @@ window.neoStreakZero = async function(id,kind){
 })();
 </script>
 
+<script id="amShiftLeave">
+/* ══ إجازة مسؤول شفت كاملة ══
+   تُحفظ في daily_stats نسبةً 100 بعلامة «إجازة مسؤول الشفت» — فتدخل الاتجاه والتقارير 100
+   وتظهر رمادية. يمنحها: مدير المبيعات، ست دلال، حساب قسم التدقيق، المبرمج. */
+var AM_LEAVE_TAG = 'إجازة مسؤول الشفت';
+function amIsLeaveRow(r){ return !!(r && String(r.saved_by_name || '').indexOf(AM_LEAVE_TAG) === 0); }
+window.amIsLeaveRow = amIsLeaveRow;
+(function(){
+  function canGrant(){ var p = window.__fleetProfile || {}; return p.role === 'sales' || p.role === 'owner'; }
+  function today(){ return typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0,10); }
+  function close(){ var o = document.getElementById('amLvOv'); if (o) o.remove(); document.body.style.overflow = ''; }
+  window.amLeaveClose = close;
+  async function draw(msg){
+    var o = document.getElementById('amLvOv');
+    if (!o){ o = document.createElement('div'); o.id = 'amLvOv'; document.body.appendChild(o); document.body.style.overflow = 'hidden'; }
+    var dep = await supabaseClient.from('departments').select('id,name').order('name');
+    var deps = (dep.data || []).filter(function(d){ return !(typeof neoDeptOut === 'function' && neoDeptOut(d.id)); });
+    var nm = {}; deps.forEach(function(d){ nm[d.id] = d.name; });
+    var from = (function(){ var d = new Date(today()+'T12:00:00'); d.setDate(d.getDate()-30); return d.toISOString().slice(0,10); })();
+    var lv = await supabaseClient.from('daily_stats').select('department_id,log_date,saved_by_name').gte('log_date', from).like('saved_by_name', AM_LEAVE_TAG + '%').order('log_date', { ascending:false });
+    var list = (lv.data || []);
+    o.innerHTML = '<div class="amLvBox"><div class="amLvHead"><h2>إجازة مسؤول شفت</h2><button type="button" class="secondary" onclick="amLeaveClose()">إغلاق</button></div>'
+      + '<p class="amLvMu">يوم الإجازة يُحسب للقسم 100٪ ويظهر في الاتجاه والتقارير بلون رمادي.</p>'
+      + '<label>القسم</label><select id="amLvDept">' + deps.map(function(d){ return '<option value="' + neoHtml(d.id) + '">' + neoHtml(d.name) + '</option>'; }).join('') + '</select>'
+      + '<label>اليوم</label><input id="amLvDay" type="date" value="' + today() + '">'
+      + '<button type="button" id="amLvGo" onclick="amLeaveGrant()">منح الإجازة</button>'
+      + (msg ? '<div class="amLvMsg">' + msg + '</div>' : '')
+      + '<h3>الإجازات الممنوحة (آخر 30 يوماً)</h3>'
+      + (list.length ? list.map(function(r){ return '<div class="amLvRow"><span><b>' + neoHtml(nm[r.department_id] || r.department_id) + '</b> · ' + r.log_date + '<small>' + neoHtml(String(r.saved_by_name).slice(AM_LEAVE_TAG.length).replace(/^\s*—\s*/, '')) + '</small></span>'
+          + '<button type="button" class="secondary" onclick="amLeaveCancel(\'' + neoHtml(r.department_id) + '\',\'' + r.log_date + '\')">إلغاء</button></div>'; }).join('')
+        : '<div class="amLvMu">لا توجد إجازات.</div>')
+      + '</div>';
+  }
+  window.amLeaveOpen = function(){ if (!canGrant()) return; try{ window.neoCloseSettings && window.neoCloseSettings(); }catch(e){} draw(''); };
+  window.amLeaveGrant = async function(){
+    var d = document.getElementById('amLvDept').value, day = document.getElementById('amLvDay').value;
+    if (!d || !day) return;
+    var p = window.__fleetProfile || {};
+    var cur = await supabaseClient.from('daily_stats').select('pct,saved_by_name').eq('department_id', d).eq('log_date', day);
+    var prev = (cur.data || [])[0];
+    if (prev && !amIsLeaveRow(prev) && typeof neoConfirm === 'function'
+        && !(await neoConfirm('يوجد نسبة مثبَّتة لهذا اليوم', 'المثبَّت ' + prev.pct + '٪ باسم ' + (prev.saved_by_name || '') + '. منح الإجازة يجعلها 100٪ إجازة. متابعة؟'))) return;
+    var r = await supabaseClient.from('daily_stats').upsert({ department_id:d, log_date:day, pct:100, total:0, done:0,
+      saved_by:p.id || null, saved_by_name: AM_LEAVE_TAG + ' — ' + (p.name || ''), updated_at:new Date().toISOString() }, { onConflict:'department_id,log_date' }).select('department_id');
+    try{ neoStatsCache = {}; }catch(e){}
+    draw(r.error ? 'تعذّر الحفظ: ' + neoHtml(r.error.message) : 'مُنحت الإجازة.');
+  };
+  window.amLeaveCancel = async function(d, day){
+    if (typeof neoConfirm === 'function' && !(await neoConfirm('إلغاء الإجازة؟', 'تُحذف نسبة الإجازة لهذا اليوم، ويُحسب اليوم من تأشير مسؤول الشفت إن وُجد.'))) return;
+    var r = await supabaseClient.from('daily_stats').delete().eq('department_id', d).eq('log_date', day).like('saved_by_name', AM_LEAVE_TAG + '%').select('department_id');
+    try{ neoStatsCache = {}; }catch(e){}
+    draw(r.error ? 'تعذّر الإلغاء: ' + neoHtml(r.error.message) : 'أُلغيت الإجازة.');
+  };
+  /* زر في الإعدادات للحسابات المخوّلة */
+  var orig = window.neoOpenSettings;
+  function addBtn(){
+    if (!canGrant() || document.getElementById('amLvBtn') || typeof window.__neoDock !== 'function') return;
+    var b = document.createElement('button'); b.id = 'amLvBtn'; b.type = 'button'; b.className = 'secondary amLvDockBtn';
+    b.textContent = 'إجازة مسؤول شفت'; b.onclick = window.amLeaveOpen;
+    window.__neoDock().appendChild(b);
+  }
+  /* يُضاف عند فتح الإعدادات — بعد اكتمال تحميل الحساب */
+  var _open = window.neoOpenSettings;
+  if (typeof _open === 'function') window.neoOpenSettings = function(){ try{ addBtn(); }catch(e){} return _open.apply(this, arguments); };
+})();
+</script>
+<style id="amShiftLeaveStyle">
+html body #amLvOv:not(#_a):not(#_b){position:fixed!important;inset:0!important;z-index:999995!important;overflow:auto!important;background:var(--page,#0b1422)!important;padding:calc(14px + env(safe-area-inset-top,0px)) 14px 40px!important;direction:rtl;margin:0!important;width:auto!important;height:auto!important}
+#amLvOv .amLvBox{max-width:560px;margin:0 auto;background:var(--ui-panel,rgba(22,38,58,.8));border:1px solid var(--line-strong,rgba(120,190,180,.16));border-radius:22px;padding:16px}
+#amLvOv .amLvHead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#amLvOv .amLvHead h2{margin:0;font-size:18px;color:var(--accent)}#amLvOv .amLvHead button{width:auto;margin:0;padding:8px 14px}
+#amLvOv .amLvMu{color:var(--ui-muted);font-size:12.5px;line-height:1.7}
+#amLvOv label{display:block;margin:12px 0 6px;font-size:13px;font-weight:700}
+#amLvOv select,#amLvOv input{width:100%;box-sizing:border-box}
+#amLvOv #amLvGo{width:100%;margin-top:14px}
+#amLvOv .amLvMsg{margin-top:10px;padding:10px;border-radius:12px;background:rgba(56,217,185,.12);color:var(--accent);font-size:13px;text-align:center}
+#amLvOv h3{margin:18px 0 8px;font-size:14px;color:var(--accent2,var(--accent))}
+#amLvOv .amLvRow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line-strong,rgba(120,190,180,.12))}
+#amLvOv .amLvRow small{display:block;color:var(--ui-muted);font-size:11px}
+#amLvOv .amLvRow button{width:auto;margin:0;padding:6px 12px;font-size:12px}
+.amLvDockBtn{width:100%;margin-top:8px}
+</style>
 <style id="amCalStyle">
 #amSaOv .amCalHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 #amSaOv .amCalHead small{color:var(--ui-muted);font-size:12px}
@@ -31738,16 +31857,16 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
     }
   }
   /* تقويم الدورة: أسبوع يبدأ بالسبت، رقم اليوم ونقطة ملوّنة ونسبته تحته، اليوم الحالي مميَّز والمستقبل باهت */
-  function amSaCal(c, by, today){
+  function amSaCal(c, by, today, lvs){
     var s0 = new Date(c.from+'T12:00:00'), lead = (s0.getDay() + 1) % 7, cells = '';
     for (var k=0;k<lead;k++) cells += '<div></div>';
     for (var i=0;i<c.days;i++){
       var d = new Date(s0); d.setDate(d.getDate()+i); var iso = f(d), v = (iso in by) ? by[iso] : null;
-      var fut = iso > today, now = iso === today, col = v===null ? 'transparent' : neoTrendColor(v);
+      var fut = iso > today, now = iso === today, lvd = !!(lvs && lvs[iso]), col = lvd ? '#aab4c3' : v===null ? 'transparent' : neoTrendColor(v);
       cells += '<div class="amCalD' + (now?' amCalNow':'') + (fut?' amCalFut':'') + '" title="' + iso + '">'
         + '<b>' + d.getDate() + '</b>'
         + '<i style="background:' + (fut||v===null ? 'transparent' : col) + '"></i>'
-        + '<small style="color:' + (v===null ? 'var(--ui-muted)' : col) + '">' + (fut ? '' : v===null ? '—' : v + '٪') + '</small></div>';
+        + '<small style="color:' + (v===null ? 'var(--ui-muted)' : col) + '">' + (fut ? '' : lvd ? 'إجازة' : v===null ? '—' : v + '٪') + '</small></div>';
     }
     var DW = ['سبت','أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة'];
     var vals = Object.keys(by).filter(function(k){ return k>=c.from && k<=c.to; }).map(function(k){ return by[k]; });
@@ -31756,7 +31875,7 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
       + '<small>' + full + ' يوماً مكتملاً من ' + vals.length + ' مثبّت</small></div><span>' + c.label + '</span></div>'
       + '<div class="amCalGrid">' + DW.map(function(w){ return '<div class="amCalW">' + w + '</div>'; }).join('') + cells + '</div>'
       + '<div class="amCalKey"><span><i style="background:' + neoTrendColor(100) + '"></i>ممتاز</span><span><i style="background:' + neoTrendColor(85) + '"></i>جيد</span>'
-      + '<span><i style="background:' + neoTrendColor(75) + '"></i>متوسط</span><span><i style="background:' + neoTrendColor(10) + '"></i>منخفض</span></div></div>';
+      + '<span><i style="background:' + neoTrendColor(75) + '"></i>متوسط</span><span><i style="background:' + neoTrendColor(10) + '"></i>منخفض</span><span><i style="background:#aab4c3"></i>إجازة</span></div></div>';
   }
   async function trend(dept){
     var c = neoBillingMonth(st.off), pc = neoBillingMonth(st.off + 1);
@@ -31764,7 +31883,7 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
     var days = []; var s = new Date(c.from+'T12:00:00');
     for (var i=0;i<c.days;i++){ var d=new Date(s); d.setDate(d.getDate()+i); var iso=f(d); if (iso>today) break; days.push(iso); }
     var cur = await rows(dept, c.from, c.to), prev = await rows(dept, pc.from, pc.to);
-    var by = {}; cur.forEach(function(r){ by[r.log_date] = Number(r.pct)||0; });
+    var by = {}, lvs = {}; cur.forEach(function(r){ by[r.log_date] = Number(r.pct)||0; if (amIsLeaveRow(r)) lvs[r.log_date] = 1; });
     var series = days.map(function(d){ return d in by ? by[d] : null; });
     var vals = series.filter(function(v){ return v!==null; });
     var a = avg(vals), pa = avg(prev.map(function(r){ return Number(r.pct)||0; }));
@@ -31785,9 +31904,9 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
       + '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:150px;background:rgba(0,0,0,.18);border-radius:12px;">'
       + [0,50,100].map(function(v){ return '<line x1="0" x2="'+W+'" y1="'+y(v).toFixed(1)+'" y2="'+y(v).toFixed(1)+'" stroke="rgba(122,167,255,.15)" stroke-width="0.3"/>'; }).join('')
       + '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>'
-      + series.map(function(v,i){ return v===null?'':'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(v).toFixed(1)+'" r="1" fill="'+neoTrendColor(v)+'"/>'; }).join('')
+      + series.map(function(v,i){ return v===null?'':'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(v).toFixed(1)+'" r="1" fill="'+(lvs[days[i]]?'#aab4c3':neoTrendColor(v))+'"/>'; }).join('')
       + '</svg></div>'
-      + amSaCal(c, by, today)
+      + amSaCal(c, by, today, lvs)
       + (dl.length>=3 ? '<div class="card"><h3 style="margin:0 0 8px;">أداء أيام الأسبوع</h3>' + dl.map(function(r){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;"><span style="min-width:58px;font-size:12px;">'+r.d+'</span><div style="flex:1;height:12px;border-radius:6px;background:rgba(122,167,255,.12);overflow:hidden;"><div class="neoTrendBar" data-band="'+neoTrendBand(r.v)+'" style="height:100%;width:'+r.v+'%;"></div></div><b style="min-width:34px;font-size:12px;">'+r.v+'٪</b></div>'; }).join('') + '</div>' : '');
   }
   var rp = { per:'week', day:null };
@@ -31850,12 +31969,12 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
     var DW = ['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'];
     var daysHtml;
     if (rp.per === 'cycle'){
-      var bm = {}; a.forEach(function(r){ bm[r.log_date] = Number(r.pct)||0; });
-      daysHtml = amSaCal(R, bm, today).replace('<div class="card amCal">', '<div class="c amCal">');
+      var bm = {}, bl = {}; a.forEach(function(r){ bm[r.log_date] = Number(r.pct)||0; if (amIsLeaveRow(r)) bl[r.log_date] = 1; });
+      daysHtml = amSaCal(R, bm, today, bl).replace('<div class="card amCal">', '<div class="c amCal">');
     } else {
       var dots = ''; for (var d2 = R.from; d2 <= R.to; d2 = addD(d2, 1)){
-        var r = by[d2], v = r ? Number(r.pct)||0 : null, fut = d2 > today, col = v===null ? 'rgba(143,163,184,.35)' : neoTrendColor(v);
-        var tag = d2 === today ? '<em style="color:var(--accent)">اليوم</em>' : (r && /تحديث/.test(r.saved_by_name||'') ? '<em>تحديث</em>' : '<em></em>');
+        var r = by[d2], v = r ? Number(r.pct)||0 : null, fut = d2 > today, lvd = r && amIsLeaveRow(r), col = lvd ? '#aab4c3' : v===null ? 'rgba(143,163,184,.35)' : neoTrendColor(v);
+        var tag = lvd ? '<em style="color:#aab4c3">إجازة</em>' : d2 === today ? '<em style="color:var(--accent)">اليوم</em>' : (r && /تحديث/.test(r.saved_by_name||'') ? '<em>تحديث</em>' : '<em></em>');
         dots += '<button type="button" class="amRpD' + (rp.day===d2?' on':'') + (fut?' fut':'') + '" onclick="amSaDay(\'' + d2 + '\')"><small>' + DW[new Date(d2+'T12:00:00').getDay()] + '</small>'
           + '<span style="border-color:' + col + ';color:' + col + '">' + (fut ? Number(d2.slice(8)) : v===null ? '—' : v) + '</span>' + tag + '</button>';
       }
