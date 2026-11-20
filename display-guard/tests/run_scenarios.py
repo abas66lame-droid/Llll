@@ -64,16 +64,16 @@ SCENARIOS = {
     'movelate': ('movelate.y4m', [{'id': 'up', 'name': 'الرف العلوي', 'section': '', 'x': .1, 'y': .2, 'w': .45, 'h': .33}, {'id': 'dn', 'name': 'الرف السفلي', 'section': '', 'x': .1, 'y': .56, 'w': .55, 'h': .3}], 36, NO_ALARM, None),
     # النقل لا يُخفي السرقة: أُخذت العلكة ووُضعت قطعة مختلفة في الأسفل — يجب أن يبقى الإنذار
     'stealadd': ('stealadd.y4m', [{'id': 'all', 'name': 'الستاند', 'section': '', 'x': .08, 'y': .2, 'w': .62, 'h': .65}], 32, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident'] and not [1 for _, k, _ in ev if k == 'moved'], None),
-    # رف بضاعة متكررة (شيبس، رافايلو): سحب القطعة الأمامية = «التقاط»، والتعبئة = «تعبئة»، والثبات = لا شيء
-    'stockpick': ('stockpick.y4m', [SHELF], 34, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['pick', 'pick'] and NO_ALARM(ev), None),
-    'restock': ('restock.y4m', [SHELF], 26, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['restock'] and NO_ALARM(ev), None),
-    'stockidle': ('stockidle.y4m', [SHELF], 30, lambda ev: not ev, None),
+    # رف بضاعة متكررة (شيبس، رافايلو) مع وجود بيع (noSales=False): سحب القطعة الأمامية = «التقاط»، والتعبئة = «تعبئة»، والثبات = لا شيء
+    'stockpick': ('stockpick.y4m', [SHELF], 34, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['pick', 'pick'] and NO_ALARM(ev), None, {'noSales': False}),
+    'restock': ('restock.y4m', [SHELF], 26, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['restock'] and NO_ALARM(ev), None, {'noSales': False}),
+    'stockidle': ('stockidle.y4m', [SHELF], 30, lambda ev: not ev, None, {'noSales': False}),
     # وضع «لا يوجد بيع حالياً»: كل التقاط = حالة شيل بمهلة؛ لم ترجع = تنبيه سرقة، رجعت لنفس الصف = تُغلق بلا إنذار
     'stocksteal': ('stockpick.y4m', [SHELF], 34, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident', 'incident'], None, {'noSales': True}),
     'stockret': ('stockret.y4m', [SHELF], 30, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['returned'], None, {'noSales': True}),
     # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
-    'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE),
-    'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE),
+    'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE, {'noSales': False}),
+    'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE, {'noSales': False}),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
