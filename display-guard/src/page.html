@@ -31,6 +31,23 @@ h2{font-size:18px;margin:16px 0 6px}
 .live{position:relative;background:#111;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
 .live video,.live canvas.v{width:100%;display:block}
 .live svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.lvw{position:relative}
+.live:fullscreen{display:flex;align-items:center;justify-content:center;border-radius:0;border:0}.live:fullscreen .lvw{width:min(100vw,calc(100vh * var(--ar,1.333)))}
+.live.flash{animation:lflash .45s ease-in-out 4}@keyframes lflash{50%{outline:6px solid #e53e3e;outline-offset:-6px}}
+.fsb{position:absolute;bottom:8px;left:8px;z-index:3;background:#000a;color:#fff;border:0;border-radius:8px;padding:5px 9px;font-size:15px;cursor:pointer}
+.alertbar{position:relative;z-index:4;display:flex;gap:10px;align-items:center;color:#fff;padding:8px 10px;animation:apulse .8s ease-in-out infinite alternate}
+@media (min-width:700px){.alertbar{position:absolute;top:8px;left:8px;right:8px;border-radius:12px;box-shadow:0 4px 18px #0007}}
+.live:fullscreen .alertbar{position:absolute;top:14px;left:14px;right:14px;border-radius:14px;box-shadow:0 4px 18px #0007;font-size:1.3em}
+.alertbar img{height:56px;max-width:90px;object-fit:cover;border-radius:8px;border:2px solid #fff9;flex:none}
+.alertbar .t{font-weight:700;font-size:15px}.alertbar .s{font-size:12px;opacity:.92}.alertbar .btns{display:flex;flex-direction:column;gap:5px;flex:none}
+@media (max-width:480px){.alertbar{gap:8px;padding:7px 8px}.alertbar img{height:42px;max-width:60px}.alertbar .t{font-size:13.5px}.alertbar button{padding:5px 8px;font-size:11.5px}}
+.alertbar button{background:#fff;color:#b91c1c;border:0;border-radius:8px;padding:7px 10px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;flex:none}.alertbar button.g{background:#ffffff30;color:#fff}
+@keyframes apulse{from{background:#b91c1c}to{background:#e53e3e}}
+.lbl{position:absolute;inset:0;pointer-events:none;direction:ltr}
+.lbl span{position:absolute;transform:translateY(-110%);font-size:12px;font-weight:700;padding:1px 7px;border-radius:6px;color:#fff;white-space:nowrap;direction:rtl;box-shadow:0 1px 4px #0006}.lbl span.in{transform:translateY(4px)}
+.feed .it{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line);cursor:pointer}.feed h3+.it{border-top:0}
+.feed img{width:64px;height:44px;object-fit:cover;border-radius:6px;flex:none;background:#eee}
+.card.hl{outline:3px solid var(--da);outline-offset:2px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;padding:3px 4px 3px 10px;font-size:12.5px;background:#fff}
 .chip.p{border-color:#e9c98e;background:var(--wal)}.chip.i{border-color:#e8b4b4;background:var(--dal)}.chip.c{border-color:#b9c9ec;background:var(--infl)}
@@ -102,7 +119,7 @@ const DB = {
   del(st, id){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).delete(id); }catch(e){} },
   clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
 };
-const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true };
+const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true };
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -602,7 +619,8 @@ function countInteraction(zid){ const d = new Date().toLocaleDateString('en-CA')
 const interToday = zid => ((LS.get('haris_inter', {})[new Date().toLocaleDateString('en-CA')] || {})[zid] || 0);
 const zoneOf = id => id === '_cam' ? { name: 'الكاميرا', section: '' } : S.zones.find(z => z.id === id) || { name: 'منطقة محذوفة', section: '' };
 function alertEv(e){
-  S.alertSeq++; beep();
+  S.alertSeq++; beep(); S.beepAt = now();
+  const lv = $('#live'); if(lv){ lv.classList.remove('flash'); void lv.offsetWidth; lv.classList.add('flash'); }
   const z = zoneOf(e.zone);
   const txt = `${e.kind === 'conceal' ? '👁 اشتباه إخفاء: ' + e.note : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'conceal' ? 'راجع الصور وتسجيل الكاميرات.' : e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
   toast(e.kind === 'conceal' ? '👁 اشتباه إخفاء عند ' + z.name : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
@@ -726,8 +744,9 @@ function vMon(){
   const c = counts();
   return `    <div class="row" style="margin:12px 0 8px"><b>${S.src === 'camera' ? 'الكاميرا' : 'كاميرا تجريبية'}</b><span class="xs mut" id="mstat"></span><span class="xs" id="aistat"></span><span class="sp"></span>${S.src === 'camera' ? '<button class="btn sm" onclick="flipCam()">تبديل الكاميرا</button>' : ''}<button class="btn sm dan" onclick="confirmBox('إيقاف المراقبة؟', () => stopSource())">إيقاف</button></div>
     <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
-    <div class="live" id="live"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>
+    <div class="live" id="live"><div id="abar"></div><div class="lvw"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="lbl" id="lbl"></div>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>${S.drawMode ? '' : '<button class="fsb" onclick="fullLive()" title="ملء الشاشة">⛶</button>'}</div>
     <div class="chips" id="chips"></div>
+    <div class="card feed" id="feed"></div>
     ${!S.zones.length && !S.drawMode ? `<div class="note wa" style="margin-top:10px"><b>الخطوة التالية:</b> اضغط «✏️ رسم عارضة على الصورة» وارسم مربعاً حول العارضة، حتى تبدأ المراقبة.</div>` : ''}
     ${!isDemo() ? `<div class="card" style="padding:10px 14px"><div class="row" style="justify-content:space-between"><div><b class="sm">وضع الاختبار السريع</b><div class="xs mut">${isTest() ? 'مفعّل: المهلة ' + fmtGrace() + '، والتحليل كل ثانية. أطفئه قبل التشغيل الفعلي.' : 'للتجربة فقط: مهلة قصيرة جداً وتحليل كل ثانية.'}</div></div>
       <div class="row">${isTest() ? `<select style="width:auto" onchange="S.cfg.testSec=+this.value;saveCfg();render()">${[5, 10, 15, 30].map(s => `<option value="${s}" ${+S.cfg.testSec === s ? 'selected' : ''}>${s} ثانية</option>`).join('')}</select>` : ''}<button class="sw ${isTest() ? 'on' : ''}" onclick="S.cfg.test=!S.cfg.test;saveCfg();render()"></button></div></div>
@@ -748,7 +767,7 @@ function mountMon(){
     if(S.drawMode && S.freeze){ if(cv.width !== S.freeze.width){ cv.width = S.freeze.width; cv.height = S.freeze.height; } cv.getContext('2d').drawImage(S.freeze, 0, 0); liveRaf = requestAnimationFrame(draw); return; }
     const src = isDemo() ? S.demo.cv : $('#vid');
     const w = isDemo() ? src.width : src.videoWidth, h = isDemo() ? src.height : src.videoHeight;
-    if(w){ const W = Math.min(1280, w); if(cv.width !== W){ cv.width = W; cv.height = Math.round(W * h / w); } cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height); }
+    if(w){ const W = Math.min(1280, w); if(cv.width !== W){ cv.width = W; cv.height = Math.round(W * h / w); const lv = $('#live'); if(lv) lv.style.setProperty('--ar', w / h); } cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height); }
     liveRaf = requestAnimationFrame(draw);
   };
   if(isDemo()){ const cv = $('#liveCv'); const id = setInterval(() => { if(S.tab !== 'mon' || !$('#liveCv')){ clearInterval(id); return; } const c = S.demo.cv; cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0); }, 500); }
@@ -778,7 +797,7 @@ function mountDraw(){
 }
 function updMon(){
   if(S.tab !== 'mon' || !$('#chips')) return;
-  const kp = $('.kpis'); if(kp){ const c = counts(); const vals = [c.pending, c.incident, c.today, c.returned, c.sold, c.inc]; kp.querySelectorAll('.v').forEach((el, i) => el.textContent = vals[i]); }
+  const kp = $('.kpis'); if(kp){ const c = counts(); const vals = [c.pending, c.incident, c.today, c.returned, c.sold, c.inc]; kp.querySelectorAll('.v').forEach((el, i) => el.textContent = vals[i]); const iv = kp.querySelectorAll('.v')[1]; if(iv) iv.style.color = c.incident ? 'var(--da)' : 'var(--ok)'; }
   const st = $('#mstat'); if(st) st.textContent = S.lastTick ? ` · آخر تحليل ${ago(S.lastTick)} (${S.lastMs} ms)` : ' · بانتظار أول صورة…';
   const cw = $('#camwarn'); if(cw) cw.innerHTML = (S.camState === 'touch' || S.camState === 'settle') ? '<div class="note" style="margin-top:8px">✋ لمست الشاشة: المراقبة متوقفة لحظات حتى يثبت الموبايل، ثم تُعاد معايرة الصورة تلقائياً.</div>' : S.camState === 'moving' ? '<div class="note da" style="margin-top:8px">⚠️ الكاميرا تتحرك أو تهتز. ثبّتها على حامل حتى يبدأ النظام بالحكم.</div>' : S.camState === 'bumped' ? '<div class="note wa" style="margin-top:8px">الصورة كلها اختلفت (انزاحت الكاميرا أو تغيّرت الإضاءة). جارٍ إعادة الضبط…</div>' : S.camState === 'blind' ? '<div class="note da" style="margin-top:8px">🚫 العدسة مغطاة أو الصورة مظلمة. المراقبة متوقفة، وإذا استمر ذلك يصدر تنبيه «عبث بالكاميرا». عند رجوع الرؤية تُقارن العارضات بالصورة قبل التغطية.</div>' : '';
   const ai = $('#aistat'); if(ai){ const m = { off: '', loading: ' · ⏳ تحميل الذكاء الاصطناعي…', ready: ` · 🤖 الذكاء الاصطناعي يعمل${MP.hand ? ' (أيادٍ + أشخاص + أجسام)' : ' (أشخاص + أجسام)'}`, error: ' · الذكاء الاصطناعي غير متاح (يحتاج إنترنت أول مرة)' };
@@ -792,12 +811,51 @@ function updMon(){
     + (S.cfg.debug ? S.zones.map(z => { const d = S.diag[z.id]; if(!d || !d.r || !d.r.st) return ''; const r = d.r, col = { rem: '#e53e3e', add: '#38a169', chg: '#f0a020' };
         return r.st.map((s, k) => s === 'same' ? '' : `<rect x="${(r.x0 + (k % r.nx) * r.cs) / r.W * 100}" y="${(r.y0 + ((k / r.nx) | 0) * r.cs) / r.H * 100}" width="${r.cs / r.W * 100}" height="${r.cs / r.H * 100}" fill="${col[s]}" fill-opacity=".45" stroke="none"/>`).join(''); }).join('') : '')
     + (S.cfg.ai && !isDemo() && MP.state === 'ready' && now() - S.lastTick < 3 ? MP.boxes.map(b => `<rect x="${b.x * 100}" y="${b.y * 100}" width="${b.w * 100}" height="${b.h * 100}" fill="none" stroke="#fff" stroke-dasharray="3 3" style="stroke-width:1.5px" vector-effect="non-scaling-stroke"/>`).join('') : '');
+  alertBar(); liveLabels(); liveFeed();
   $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
     const pe = ev.filter(e => e.status === 'pending').sort((a, b) => a.deadline - b.deadline)[0], left = pe ? Math.max(0, Math.ceil(pe.deadline - t)) : 0;
     const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>', blind: '<b style="color:var(--da)">الكاميرا مغطاة أو مظلمة</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
     return `<span class="chip ${inc ? 'i' : pen ? 'p' : cl ? 'c' : ''}">${esc(z.name)} · ${dtx}${inc ? ` · <b style="color:var(--da)">${inc} تنبيه</b>` : ''}${pen ? ` · ${pen} ضمن المهلة (${left < 120 ? left + ' ث' : Math.ceil(left / 60) + ' د'})` : ''}${cl ? ' · تنظيف جارٍ' : ''}${interToday(z.id) ? ' · ' + interToday(z.id) + ' تفاعل اليوم' : ''}
       <button class="btn sm" onclick="startCleaning('${z.id}');toast('لن تُعدّ «${esc(z.name)}» حالة اختفاء لمدة ${cleanMin()} دقيقة')">تنظيف/عرض</button></span>`; }).join('');
 }
+/* ----- التنبيهات على شاشة المراقبة نفسها ----- */
+const ALERT_T = e => e.kind === 'tamper' ? '🚫 عبث بالكاميرا' : e.kind === 'conceal' ? '👁 اشتباه إخفاء' : e.kind === 'night' ? '🌙 نقص بعد الدوام' : '⚠️ اختفاء بلا بيع';
+const evT = e => Math.max(e.t_start || 0, e.t_end || 0, e.t_resolved || 0);
+const evStatus = e => ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'];
+// شريط أحمر فوق الصورة: أحدث تنبيه لم يُطّلع عليه، ويبقى حتى «تم الاطلاع» أو المعالجة
+function alertBar(){
+  const el = $('#abar'); if(!el) return;
+  const L = S.events.filter(e => e.status === 'incident' && !e.ack).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id).join(',');
+  if(el.dataset.k === key){ const a = el.querySelector('.ago'); if(a && L[0]) a.textContent = ago(L[0].t_start); return; }
+  el.dataset.k = key; if(!L.length){ el.innerHTML = ''; return; }
+  const e = L[0], z = zoneOf(e.zone), img = e.img_p || e.img_c || e.img_a;
+  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div></div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button><button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
+}
+// ملصقات فوق أماكن الأحداث في الصورة: عدّ تنازلي للمعلّقة، «سرقة؟» للتنبيه، ونتيجة الأحداث الأخيرة لثوانٍ
+function liveLabels(){
+  const el = $('#lbl'); if(!el) return; const t = now();
+  el.innerHTML = S.events.filter(e => e.box && e.zone !== '_cam' && (e.status === 'pending' || e.status === 'incident' || t - evT(e) < 12)).slice(0, 30).map(e => {
+    let tx, bg;
+    if(e.status === 'pending'){ const l = Math.max(0, Math.ceil(e.deadline - t)); tx = '⏳ ' + (l < 120 ? l + ' ث' : Math.ceil(l / 60) + ' د'); bg = '#d97706'; }
+    else if(e.status === 'incident'){ tx = e.kind === 'conceal' ? '👁 اشتباه إخفاء' : '⚠ سرقة؟'; bg = '#c53030'; }
+    else { tx = { returned: 'رجعت ✓', sold: 'مُباعة ✓', moved: 'نُقلت ✓', resolved: 'عولجت' }[e.status] || { pick: 'التقاط', restock: 'تعبئة', moved: 'نُقلت ✓', added: 'إضافة', swap: 'تبديل', major: 'تغيّر' }[e.kind] || KIND[e.kind] || ''; bg = '#2f855a'; }
+    return `<span class="${e.box.y < 0.07 ? 'in' : ''}" style="left:${(e.box.x * 100).toFixed(2)}%;top:${(e.box.y * 100).toFixed(2)}%;background:${bg}">${esc(tx)}</span>`; }).join('');
+}
+// آخر الأحداث تحت الكاميرا (كل الأنواع)، يُعاد بناؤها فقط عند تغيّر الأحداث
+function liveFeed(){
+  const el = $('#feed'); if(!el) return;
+  const L = S.events.slice().sort((a, b) => evT(b) - evT(a)).slice(0, 6), key = L.map(e => e.id + e.status + (e.ack ? 1 : 0)).join(',');
+  if(el.dataset.k !== key){ el.dataset.k = key;
+    el.innerHTML = '<h3 style="margin:0 0 4px">آخر الأحداث</h3>' + (L.length ? L.map(e => { const st = evStatus(e);
+      return `<div class="it" onclick="openEv('${e.id}')">${e.img_a || e.img_c ? `<img src="${e.img_a || e.img_c}">` : '<img>'}<div style="flex:1;min-width:0"><div class="row" style="gap:6px"><b class="sm">${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''}</b><span class="tag ${st[1]}">${st[0]}</span></div><div class="xs mut">${esc(zoneOf(e.zone).name)} · <span data-t="${evT(e)}"></span></div></div></div>`; }).join('') : '<div class="xs mut">لا أحداث بعد. أي شيل أو نقل أو تنبيه يظهر هنا فوراً.</div>'); }
+  el.querySelectorAll('[data-t]').forEach(x => x.textContent = ago(+x.dataset.t));
+}
+function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
+function openEv(id){ const e = S.events.find(x => x.id === id); S.evf = e && e.status === 'incident' ? 'incident' : 'all'; go('ev');
+  setTimeout(() => { const c = document.getElementById('ev_' + id); if(c){ c.scrollIntoView({ block: 'center' }); c.classList.add('hl'); } }, 120); }
+function fullLive(){ const el = $('#live'); if(!el) return;
+  if(document.fullscreenElement) return document.exitFullscreen();
+  const f = el.requestFullscreen || el.webkitRequestFullscreen; if(f) f.call(el); else toast('ملء الشاشة غير مدعوم في هذا المتصفح'); }
 let facingNow = 'environment';
 function flipCam(){ facingNow = facingNow === 'environment' ? 'user' : 'environment'; startCamera(null, facingNow); }
 async function pickCamera(){
@@ -820,7 +878,7 @@ function vEv(){
 }
 function evCard(e){
   const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
-  return `<div class="card ev"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
+  return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
     <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
     <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
     ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
@@ -949,6 +1007,7 @@ function vSet(){
       <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">كشف حركة الإخفاء (تجريبي)</b><div class="xs mut">ينبّه إذا لمست يدٌ رفاً أو عارضة ثم ذهبت مباشرة إلى الجيب أو الخصر أو داخل الملابس. يصلح للقطع الصغيرة (شيبس، شوكولا). يحتاج كاميرا ترى جسم الزبون (من زاوية الممر)، ويستهلك المعالج أكثر أثناء وجود أشخاص. تجريبي: كل تنبيه «اشتباه» يحتاج مراجعة، وقد ينبّه لحركة عادية مثل إخراج الموبايل.</div></div>
       <button class="sw ${c.conceal ? 'on' : ''}" id="c_conceal" onclick="this.classList.toggle('on')"></button></div>${c.conceal ? `<div class="xs" style="margin-top:6px">نموذج وضعية الجسم: ${MP.pose ? 'يعمل ✓' : MP.poseLoading ? 'جارٍ التحميل…' : MP.poseErr ? 'تعذّر التحميل: ' + esc(MP.poseErr) : 'يُحمَّل عند تشغيل الكاميرا'}</div>` : ''}<div class="xs" style="margin-top:6px">الحالة: ${{ off: 'لم يُحمَّل بعد (يُحمَّل عند تشغيل الكاميرا)', loading: 'جارٍ التحميل…', ready: 'يعمل ✓', error: 'تعذّر التحميل: ' + esc(MP.err) }[MP.state]}</div></div>
     <div class="card"><h3>التنبيهات</h3>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">تكرار صوت التنبيه حتى الاطلاع</b><div class="xs mut">كل 30 ثانية ما دام هناك تنبيه لم يُضغط عليه «تم الاطلاع» في شاشة المراقبة.</div></div><button class="sw ${c.repeatBeep ? 'on' : ''}" id="c_repeatBeep" onclick="this.classList.toggle('on')"></button></div>
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">إشعارات الكمبيوتر</b><div class="xs mut">تظهر حتى لو كانت الصفحة خلف نوافذ أخرى.</div></div><button class="sw ${c.notify ? 'on' : ''}" id="c_notify" onclick="this.classList.toggle('on');if(this.classList.contains('on')&&'Notification' in window)Notification.requestPermission()"></button></div>
       <p class="sm mut">تيليجرام: أنشئ بوتاً عبر @BotFather وانسخ التوكن، وأضفه لمجموعة المشرفين، ثم ضع رقم المجموعة (chat_id).</p>
       <div class="f2">${f('tgToken', 'توكن البوت')}${f('tgChat', 'رقم المحادثة (chat_id)')}</div>
@@ -961,14 +1020,17 @@ function vSet(){
 }
 function readSet(){ const g = k => $('#c_' + k) ? $('#c_' + k).value.trim() : S.cfg[k];
   Object.assign(S.cfg, { site: g('site'), open: g('open'), close: g('close'), grace: Math.max(1, +g('grace') || 20), cleaning: Math.max(1, +g('cleaning') || 15), saleWin: Math.max(1, +g('saleWin') || 30),
-    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
+    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales, repeatBeep: $('#c_repeatBeep') ? $('#c_repeatBeep').classList.contains('on') : S.cfg.repeatBeep }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
 async function importSettings(f){ try{ const j = JSON.parse(await f.text()); if(j.cfg) S.cfg = Object.assign({}, DEF, j.cfg); if(Array.isArray(j.zones)) S.zones = j.zones; saveCfg(); saveZones(); toast('تم الاستيراد'); render(); }catch(e){ toast('ملف غير صالح'); } }
 
 /* =================== التشغيل =================== */
 document.addEventListener('touchstart', () => { if(S.src === 'camera') S.touchAt = now(); }, { passive: true, capture: true });
 window.addEventListener('beforeunload', e => { if(S.running && !isDemo()){ e.preventDefault(); e.returnValue = ''; } });
 window.addEventListener('resize', () => { if(S.tab === 'zones') drawEd(); });
-setInterval(() => { header(); if(S.tab === 'mon') updMon(); }, 1000);
+setInterval(() => { header(); if(S.tab === 'mon') updMon();
+  // تكرار صوت التنبيه كل 30 ثانية حتى يضغط أحد «تم الاطلاع» أو يعالج التنبيه
+  if(S.running && S.cfg.repeatBeep && now() - (S.beepAt || 0) >= 30 && S.events.some(e => e.status === 'incident' && !e.ack)){ beep(); S.beepAt = now(); }
+}, 1000);
 (async () => {
   await DB.open();
   S.events = (await DB.all('events')).sort((a, b) => b.t_start - a.t_start);
