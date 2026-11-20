@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>حارس العارضات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--line:#e2e7ee;--line2:#eef1f5;--tx:#16202c;--mut:#6a7686;--nav:#0f2742;--pri:#0e6f7a;--pril:#e3f2f3;
+--ok:#1a7f4b;--okl:#e6f4ec;--wa:#a86412;--wal:#fdf2e2;--da:#b42f2f;--dal:#fbeaea;--inf:#2d5bb5;--infl:#e8eefa;--r:12px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:'IBM Plex Sans Arabic',Tahoma,'Segoe UI',system-ui,sans-serif;font-size:14.5px;line-height:1.6}
+body{padding-bottom:78px}
+button{font-family:inherit;font-size:inherit;color:inherit;border:0;cursor:pointer;background:none}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--tx);background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 11px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--pri)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 14px}
+header{background:var(--nav);color:#fff;position:sticky;top:0;z-index:20}
+header .wrap{display:flex;align-items:center;gap:10px;min-height:56px;flex-wrap:wrap}
+header b{font-size:16px}header small{display:block;font-size:11.5px;opacity:.75;margin-top:-3px}
+.badge{font-size:11.5px;padding:3px 9px;border-radius:20px;background:#ffffff1f;white-space:nowrap}
+.badge.red{background:#c53030}.badge.amber{background:#b7791f}
+.sp{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:12px 0}
+.card h3{margin:0 0 10px;font-size:15px}
+h2{font-size:18px;margin:16px 0 6px}
+.mut{color:var(--mut)}.sm{font-size:12.5px}.xs{font-size:11.5px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 13px;border-radius:9px;font-weight:600;background:#fff;border:1px solid var(--line);white-space:nowrap}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}.btn.dan{color:var(--da);border-color:#e8bcbc}.btn.ok{color:var(--ok);border-color:#b9dcc8}
+.btn.sm{padding:5px 9px;font-size:12.5px}.btn.w{width:100%}.btn:disabled{opacity:.5}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grid{display:grid;gap:12px}.g-cams{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:11px 12px}.kpi .v{font-size:23px;font-weight:700}.kpi .l{font-size:12px;color:var(--mut)}
+.cam{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.cam .hd{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line2)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}.dot.off{background:var(--da)}
+.frame{position:relative;background:#111;aspect-ratio:16/9}
+.frame img{width:100%;height:100%;object-fit:fill;display:block}
+.frame svg{position:absolute;inset:0;width:100%;height:100%}
+.frame .err{position:absolute;inset:0;display:grid;place-items:center;color:#f3c4c4;font-size:13px;padding:20px;text-align:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;padding:3px 4px 3px 10px;font-size:12.5px;background:#fff}
+.chip.p{border-color:#e9c98e;background:var(--wal)}.chip.i{border-color:#e8b4b4;background:var(--dal)}.chip.c{border-color:#b9c9ec;background:var(--infl)}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.t-ok{background:var(--okl);color:var(--ok)}.t-wa{background:var(--wal);color:var(--wa)}.t-da{background:var(--dal);color:var(--da)}.t-inf{background:var(--infl);color:var(--inf)}.t-mut{background:#eef1f5;color:var(--mut)}
+.seg{display:flex;background:#e9edf2;border-radius:10px;padding:3px;gap:3px;overflow-x:auto;margin:8px 0}
+.seg button{flex:1;padding:7px 10px;border-radius:8px;font-weight:600;font-size:13px;color:var(--mut);white-space:nowrap}.seg button.on{background:#fff;color:var(--tx)}
+.ev{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:760px){.ev{grid-template-columns:260px 1fr}}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pics img{width:100%;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1px solid var(--line);padding:4px 4px calc(6px + env(safe-area-inset-bottom))}
+nav.tabs .in{max-width:900px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;font-size:11.5px;color:var(--mut);padding:5px 0;position:relative}
+nav.tabs button b{font-size:19px;line-height:1.3;font-weight:400}
+nav.tabs button.on{color:var(--pri);font-weight:700}
+nav.tabs .cnt{position:absolute;top:0;left:calc(50% - 22px);background:var(--da);color:#fff;border-radius:10px;font-size:10.5px;padding:0 6px;font-weight:700}
+.modal-bg{position:fixed;inset:0;background:#0b1520a6;z-index:50;display:flex;align-items:center;justify-content:center;padding:14px}
+.modal{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:18px}
+.modal.wide{max-width:1000px}
+.modal h2{margin:0 0 12px;font-size:17px}
+.fld{margin:9px 0}.fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:3px;font-weight:600}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:80;background:var(--nav);color:#fff;padding:9px 16px;border-radius:10px;font-size:13.5px;max-width:90vw;text-align:center}
+.note{background:var(--infl);border:1px solid #cbd8f2;border-radius:10px;padding:10px 12px;font-size:13px}.note.wa{background:var(--wal);border-color:#f0d6ad}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 6px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}th{color:var(--mut);font-weight:600;background:#f8fafc}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+.bar{height:8px;background:var(--line2);border-radius:6px;overflow:hidden;display:flex}.bar i{display:block;height:100%}
+.editor{position:relative;background:#111;border-radius:10px;overflow:hidden;touch-action:none;user-select:none}
+.editor img{width:100%;display:block}.editor canvas{position:absolute;inset:0;width:100%;height:100%}
+.empty{text-align:center;color:var(--mut);padding:24px}
+.sw{width:42px;height:24px;border-radius:20px;background:#cfd6df;position:relative;flex:none}.sw.on{background:var(--pri)}
+.sw::after{content:'';position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}.sw.on::after{right:21px}
+.list .li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2)}.list .li:last-child{border:0}
+</style>
+</head>
+<body>
+<header><div class="wrap" id="hdr"><div><b>حارس العارضات</b><small>جارٍ التحميل…</small></div></div></header>
+<main class="wrap" id="view"></main>
+<nav class="tabs"><div class="in" id="nav"></div></nav>
+<div id="modal"></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S = { tab: 'mon', st: null, evf: 'open', evs: null, pin: localStorage.getItem('haris_pin') || '', zcam: '', draw: null, cfg: null, seq: null, rep: null, sales: null, camsKey: '' };
+function toast(m, ms = 2800){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
+const tm = ts => ts ? new Date(ts * 1000).toLocaleString('ar-IQ', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' }) : '—';
+function ago(ts){ if(!ts) return '—'; const s = Math.round(Date.now() / 1000 - ts); if(s < 60) return 'منذ ' + s + ' ث'; const m = Math.round(s / 60); if(m < 60) return 'منذ ' + m + ' د'; const h = Math.round(m / 60); return h < 24 ? 'منذ ' + h + ' س' : 'منذ ' + Math.round(h / 24) + ' يوم'; }
+async function api(path, body){
+  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Pin': S.pin }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({ error: 'استجابة غير مفهومة' }));
+  if(r.status === 403 && j.pin){ askPin(); throw new Error(j.error); }
+  if(!r.ok || j.error) throw new Error(j.error || 'خطأ');
+  return j;
+}
+function openModal(h, wide){ $('#modal').innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal ${wide ? 'wide' : ''}">${h}</div></div>`; }
+function closeModal(){ $('#modal').innerHTML = ''; S.draw = null; }
+function askPin(){ openModal(`<h2>رمز الإدارة</h2><p class="sm mut">هذا الإجراء يتطلب رمز الإدارة المحدد في الإعدادات.</p><input id="pinIn" type="password" inputmode="numeric"><div style="height:10px"></div><button class="btn pri w" onclick="S.pin=$('#pinIn').value;localStorage.setItem('haris_pin',S.pin);closeModal();render()">متابعة</button>`); }
+let AC = null;
+function beep(){ try{ AC = AC || new (window.AudioContext || window.webkitAudioContext)(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
+const ZST = z => z.incident ? 'i' : z.pending ? 'p' : (z.cleaning_until > Date.now() / 1000 ? 'c' : '');
+const STAG = { pending: 't-wa', incident: 't-da', returned: 't-ok', sold: 't-ok', resolved: 't-mut', info: 't-inf' };
+const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير' };
+const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه' };
+
+/* ============ الهيكل ============ */
+function header(){
+  const st = S.st; if(!st) return;
+  $('#hdr').innerHTML = `<div><b>حارس العارضات</b><small>${esc(st.site)}</small></div><span class="sp"></span>
+    ${st.demo ? '<span class="badge amber">وضع تجريبي</span>' : ''}${st.night ? '<span class="badge">خارج ساعات العمل — مراقبة ليلية</span>' : ''}
+    ${st.counts.incident ? `<span class="badge red">${st.counts.incident} تنبيه مفتوح</span>` : '<span class="badge">لا تنبيهات مفتوحة</span>'}`;
+  const T = [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'المناطق'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
+  $('#nav').innerHTML = T.map(([k, i, n]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')"><b>${i}</b>${n}${k === 'ev' && st.counts.incident ? `<span class="cnt">${st.counts.incident}</span>` : ''}</button>`).join('');
+}
+function go(t){ S.tab = t; S.camsKey = ''; window.scrollTo(0, 0); render(); }
+async function render(){
+  header();
+  const v = $('#view');
+  if(!S.st){ v.innerHTML = '<div class="empty">جارٍ الاتصال بالنظام…</div>'; return; }
+  try{
+    if(S.tab === 'mon') return renderMon();
+    if(S.tab === 'ev') return renderEv();
+    if(S.tab === 'zones') return renderZones();
+    if(S.tab === 'sales') return renderSales();
+    if(S.tab === 'rep') return renderRep();
+    if(S.tab === 'set') return renderSet();
+  }catch(e){ v.innerHTML = `<div class="card note wa">${esc(e.message)}</div>`; }
+}
+
+/* ============ المراقبة ============ */
+function renderMon(){
+  const st = S.st, c = st.counts, v = $('#view');
+  const key = st.cameras.map(c => c.id).join(',');
+  if(S.camsKey !== key){
+    S.camsKey = key;
+    v.innerHTML = `<div class="kpis" id="kpis"></div>
+      ${st.demo ? `<div class="note" style="margin-top:12px"><b>الوضع التجريبي:</b> كاميرتان افتراضيتان تُحاكيان ما يحدث في المحل كل بضع دقائق: زبون يمر، منتج يُعرض ويرجع، بيع، تنظيف، واختفاء بدون بيع. راقب المربعات على الصور وقسم «التنبيهات».</div>` : ''}
+      ${st.cameras.length ? '' : `<div class="card empty">لا توجد كاميرات بعد.<div style="height:10px"></div><button class="btn pri" onclick="go('set')">ربط الكاميرات من الإعدادات</button></div>`}
+      <div class="grid g-cams" style="margin-top:12px">${st.cameras.map(cam => `<div class="cam" id="cam-${cam.id}"><div class="hd"><span class="dot" id="dot-${cam.id}"></span><b class="sm">${esc(cam.name)}</b><span class="sp"></span><span class="xs mut" id="ts-${cam.id}"></span></div>
+        <div class="frame"><img id="img-${cam.id}" alt=""><svg id="ov-${cam.id}" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="err" id="err-${cam.id}" style="display:none"></div></div>
+        <div class="chips" id="chips-${cam.id}"></div></div>`).join('')}</div>`;
+    st.cameras.forEach(cam => refreshImg(cam.id));
+  }
+  $('#kpis').innerHTML = [['نواقص ضمن المهلة', c.pending, 'var(--wa)'], ['تنبيهات مفتوحة', c.incident, c.incident ? 'var(--da)' : 'var(--ok)'], ['حالات شيل اليوم', c.today_removals], ['رجعت خلال المهلة', c.today_returned, 'var(--ok)'], ['مُباعة', c.today_sold, 'var(--ok)'], ['اختفاء غير مبرر اليوم', c.today_incidents, c.today_incidents ? 'var(--da)' : '']]
+    .map(([l, n, col]) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="${col ? 'color:' + col : ''}">${n}</div></div>`).join('');
+  for(const cam of st.cameras){
+    const dot = $('#dot-' + cam.id); if(!dot) continue;
+    dot.className = 'dot' + (cam.ok ? '' : ' off');
+    $('#ts-' + cam.id).textContent = cam.last_ts ? 'آخر لقطة ' + ago(cam.last_ts) : '';
+    const err = $('#err-' + cam.id); err.style.display = cam.error ? '' : 'none'; err.textContent = cam.error ? 'تعذّر جلب الصورة: ' + cam.error : '';
+    const zs = st.zones.filter(z => z.camera === cam.id);
+    $('#ov-' + cam.id).innerHTML = zs.map(z => { const s = ZST(z), col = s === 'i' ? '#e53e3e' : s === 'p' ? '#f0a020' : s === 'c' ? '#5b8def' : '#38d0c0', mv = cam.moving.includes(z.id);
+      return `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="${col}" fill-opacity="${s ? .22 : .06}" stroke="${col}" stroke-width="0.5" vector-effect="non-scaling-stroke" style="stroke-width:2px" ${mv ? 'stroke-dasharray="4 3"' : ''}/>`; }).join('');
+    $('#chips-' + cam.id).innerHTML = zs.map(z => { const s = ZST(z);
+      return `<span class="chip ${s}">${esc(z.name)}${z.incident ? ` · <b style="color:var(--da)">${z.incident} تنبيه</b>` : ''}${z.pending ? ` · ${z.pending} ضمن المهلة` : ''}${s === 'c' ? ' · تنظيف جارٍ' : ''}${cam.moving.includes(z.id) ? ' · حركة' : ''}
+        <button class="btn sm" title="إيقاف التنبيه مؤقتاً أثناء التنظيف أو العرض" onclick="cleaning('${z.id}')">تنظيف/عرض</button></span>`; }).join('') || `<span class="xs mut">لم تُحدَّد مناطق. <a href="#" onclick="S.zcam='${cam.id}';go('zones');return false">حدّد العارضات</a></span>`;
+  }
+}
+function refreshImg(id){
+  const img = $('#img-' + id); if(!img || S.tab !== 'mon') return;
+  const n = new Image();
+  n.onload = () => { img.src = n.src; setTimeout(() => refreshImg(id), Math.max(1500, 1000 * (S.st.demo ? 2 : 5))); };
+  n.onerror = () => setTimeout(() => refreshImg(id), 5000);
+  n.src = '/api/frame/' + id + '?t=' + Date.now();
+}
+async function cleaning(zid){
+  const m = S.st.cleaning_minutes;
+  try{ await api('/api/cleaning', { zone: zid, minutes: m, who: localStorage.getItem('haris_who') || '' }); toast('تم: لن تُعدّ هذه العارضة حالة اختفاء لمدة ' + m + ' دقيقة.'); poll(); }catch(e){ toast(e.message); }
+}
+
+/* ============ التنبيهات ============ */
+async function renderEv(force){
+  const v = $('#view');
+  if(!S.evs || force !== false){
+    if(!$('#evlist')) v.innerHTML = '<div class="empty">جارٍ التحميل…</div>';
+    try{ S.evs = await api('/api/events?status=' + S.evf + '&limit=150'); }catch(e){ v.innerHTML = `<div class="card note wa">${esc(e.message)}</div>`; return; }
+  }
+  if(S.tab !== 'ev') return;
+  const F = [['open', 'مفتوحة'], ['incident', 'تنبيهات'], ['pending', 'ضمن المهلة'], ['removals', 'كل حالات الشيل'], ['info', 'إضافات وتبديل'], ['all', 'الكل']];
+  const g = S.st.grace_minutes;
+  v.innerHTML = `<h2>التنبيهات والأحداث</h2><div class="seg">${F.map(([k, n]) => `<button class="${S.evf === k ? 'on' : ''}" onclick="S.evf='${k}';S.evs=null;renderEv()">${n}</button>`).join('')}</div>
+    <div class="note sm">عند شيل منتج تبدأ مهلة ${g} دقيقة: إذا رجع أو سُجّل بيعه تُغلق الحالة تلقائياً. بعد انتهاء المهلة بدون بيع أو رجوع تصبح «اختفاء غير مبرر» ويُرسل تنبيه.</div>
+    <div id="evlist">${S.evs.length ? S.evs.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}</div>`;
+}
+function evCard(e){
+  const left = e.status === 'pending' && e.deadline ? Math.max(0, Math.round((e.deadline - Date.now() / 1000) / 60)) : null;
+  return `<div class="card ev"><div>${e.img_c ? `<img src="/evidence/${esc(e.img_c)}" onclick="zoom(this.src)" style="width:100%;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;margin-bottom:6px">` : ''}<div class="pics">${e.img_b ? `<div><img src="/evidence/${esc(e.img_b)}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="/evidence/${esc(e.img_a)}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}</div></div>
+    <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)} — ${esc(e.zone_name)}</b><span class="tag ${STAG[e.status] || 't-mut'}">${esc(e.status_ar)}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
+    <div class="sm mut">${esc(e.section || '')} · ${esc(e.camera_name)} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + left + ' د' : ''}</div>
+    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
+    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="resolveEv('${e.id}','sold')">تم بيعه</button><button class="btn sm" onclick="resolveEv('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resolveEv('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resolveEv('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
+    ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="quickSale('${e.zone}')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="cleaning('${e.zone}')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
+}
+function zoom(src){ openModal(`<img src="${src}" style="width:100%;border-radius:10px"><div style="height:8px"></div><button class="btn w" onclick="closeModal()">إغلاق</button>`, true); }
+function resolveEv(id, res){
+  openModal(`<h2>معالجة الحالة: ${RES[res]}</h2><div class="fld"><label>ملاحظة (اختياري)</label><input id="rn"></div><div class="fld"><label>اسمك</label><input id="rw" value="${esc(localStorage.getItem('haris_who') || '')}"></div>
+    <button class="btn pri w" onclick="doResolve('${id}','${res}')">حفظ</button>`);
+}
+async function doResolve(id, res){ const who = $('#rw').value.trim(); localStorage.setItem('haris_who', who); try{ await api('/api/events/' + id + '/resolve', { resolution: res, note: $('#rn').value.trim(), who }); closeModal(); toast('تم الحفظ'); renderEv(); poll(); }catch(e){ toast(e.message); } }
+async function quickSale(zid){ try{ await api('/api/sale', { zone: zid, qty: 1, source: 'يدوي' }); toast('سُجّل البيع'); renderEv(); poll(); }catch(e){ toast(e.message); } }
+
+/* ============ المناطق ============ */
+function renderZones(){
+  const st = S.st, v = $('#view');
+  if(!st.cameras.length){ v.innerHTML = '<div class="card empty">أضف كاميرا من الإعدادات أولاً.</div>'; return; }
+  if(!st.cameras.some(c => c.id === S.zcam)) S.zcam = st.cameras[0].id;
+  const zs = st.zones.filter(z => z.camera === S.zcam);
+  v.innerHTML = `<h2>مناطق العارضات</h2><div class="note sm">اختر الكاميرا ثم اسحب بالماوس أو بإصبعك مربعاً حول كل عارضة (أو كل رف). لا حاجة لتحديد المنتجات؛ النظام يراقب أي شيل أو إضافة داخل المربع.</div>
+    <div class="row" style="margin:10px 0"><select style="max-width:320px" onchange="S.zcam=this.value;renderZones()">${st.cameras.map(c => `<option value="${c.id}" ${c.id === S.zcam ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><button class="btn sm" onclick="renderZones()">تحديث الصورة</button></div>
+    <div class="editor" id="ed"><img id="edimg" src="/api/frame/${S.zcam}?t=${Date.now()}" onload="drawZones()" onerror="this.alt='لا توجد صورة من هذه الكاميرا بعد'"><canvas id="edcv"></canvas></div>
+    <div class="card list">${zs.map(z => `<div class="li"><b class="sp">${esc(z.name)}</b><span class="sm mut">${esc(z.section || '')}</span><button class="btn sm" onclick="zoneForm('${z.id}')">تعديل</button><button class="btn sm dan" onclick="delZone('${z.id}')">حذف</button></div>`).join('') || '<div class="empty">لا توجد مناطق لهذه الكاميرا.</div>'}</div>`;
+  const cv = $('#edcv');
+  const pos = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+  cv.onpointerdown = e => { const [x, y] = pos(e); S.draw = { x0: x, y0: y, x1: x, y1: y }; cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => { if(!S.draw) return; const [x, y] = pos(e); S.draw.x1 = x; S.draw.y1 = y; drawZones(); };
+  cv.onpointerup = () => { if(!S.draw) return; const d = S.draw, r = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+    if(r.w > 0.03 && r.h > 0.03) zoneForm(null, r); else { const z = zs.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); S.draw = null; if(z) zoneForm(z.id); }
+    drawZones(); };
+}
+function drawZones(){
+  const cv = $('#edcv'), img = $('#edimg'); if(!cv || !img) return;
+  const W = cv.width = img.clientWidth * devicePixelRatio, H = cv.height = img.clientHeight * devicePixelRatio, x = cv.getContext('2d');
+  x.clearRect(0, 0, W, H); x.lineWidth = 2 * devicePixelRatio; x.font = `700 ${13 * devicePixelRatio}px sans-serif`;
+  S.st.zones.filter(z => z.camera === S.zcam).forEach(z => { x.strokeStyle = '#38d0c0'; x.fillStyle = '#38d0c022'; x.fillRect(z.x * W, z.y * H, z.w * W, z.h * H); x.strokeRect(z.x * W, z.y * H, z.w * W, z.h * H);
+    const t = z.name, tw = x.measureText(t).width + 12; x.fillStyle = '#0e6f7a'; x.fillRect(z.x * W, z.y * H, tw, 20 * devicePixelRatio); x.fillStyle = '#fff'; x.fillText(t, z.x * W + 6, z.y * H + 14 * devicePixelRatio); });
+  if(S.draw){ const d = S.draw; x.setLineDash([6, 4]); x.strokeStyle = '#fff'; x.strokeRect(Math.min(d.x0, d.x1) * W, Math.min(d.y0, d.y1) * H, Math.abs(d.x1 - d.x0) * W, Math.abs(d.y1 - d.y0) * H); x.setLineDash([]); }
+}
+function zoneForm(id, rect){
+  const z = id ? S.st.zones.find(z => z.id === id) : Object.assign({ name: '', section: '' }, rect);
+  S.pend = Object.assign({}, z, { camera: z.camera || S.zcam });
+  const secs = [...new Set(S.st.zones.map(z => z.section).filter(Boolean))];
+  openModal(`<h2>${id ? 'تعديل منطقة' : 'منطقة جديدة'}</h2><div class="fld"><label>اسم العارضة / الرف</label><input id="zn" value="${esc(z.name)}" placeholder="مثال: عارضة آيفون — الرف العلوي"></div>
+    <div class="fld"><label>القسم</label><input id="zs" list="secs" value="${esc(z.section || '')}"><datalist id="secs">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+    <div class="f2"><button class="btn pri" onclick="saveZone()">حفظ</button><button class="btn" onclick="closeModal();drawZones()">إلغاء</button></div>`);
+  setTimeout(() => $('#zn') && $('#zn').focus(), 50);
+}
+async function saveZone(){
+  const z = S.pend, name = $('#zn').value.trim(); if(!name) return toast('اكتب اسم المنطقة');
+  try{ await api('/api/zones', { id: z.id, camera: z.camera, name, section: $('#zs').value.trim(), x: z.x, y: z.y, w: z.w, h: z.h }); closeModal(); await poll(); renderZones(); toast('تم الحفظ'); }catch(e){ toast(e.message); }
+}
+async function delZone(id){ if(!confirmBox('حذف هذه المنطقة؟', () => delZone2(id))) return; }
+async function delZone2(id){ try{ await api('/api/zones/' + id + '/delete', {}); await poll(); renderZones(); }catch(e){ toast(e.message); } }
+function confirmBox(msg, fn){ window._cf = fn; openModal(`<h2>تأكيد</h2><p>${msg}</p><div class="f2"><button class="btn dan" onclick="closeModal();window._cf()">تأكيد</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`); return false; }
+
+/* ============ المبيعات ============ */
+async function renderSales(){
+  const v = $('#view'), zs = S.st.zones;
+  try{ S.sales = await api('/api/sales'); }catch(e){ S.sales = []; }
+  v.innerHTML = `<h2>المبيعات</h2><div class="note sm">كل بيع يُسجَّل لعارضة يبرّر شيل قطعة منها. يمكن تسجيله يدوياً هنا، أو استيراده من تقرير الكاشير، أو إرساله آلياً من نظام الكاشير إلى العنوان <code>POST /api/sale</code> بالشكل <code>{"zone": "معرّف المنطقة", "qty": 1}</code>.</div>
+    <div class="card"><h3>تسجيل بيع</h3><div class="f2"><div class="fld"><label>العارضة</label><select id="sz">${zs.map(z => `<option value="${z.id}">${esc(z.name)}${z.section ? ' — ' + esc(z.section) : ''}</option>`).join('')}</select></div>
+    <div class="fld"><label>عدد القطع</label><input id="sq" type="number" min="1" value="1"></div></div><div class="fld"><label>رقم الفاتورة (اختياري)</label><input id="sr"></div>
+    <button class="btn pri" onclick="addSale()" ${zs.length ? '' : 'disabled'}>تسجيل</button></div>
+    <div class="card"><h3>استيراد من الكاشير</h3><p class="sm mut" style="margin-top:0">الصق سطراً لكل بيع: <b>اسم العارضة أو معرّفها، العدد، رقم الفاتورة</b>.</p><textarea id="simp" rows="4" placeholder="عارضة آيفون — الرف العلوي, 1, INV-1022"></textarea><div style="height:8px"></div><button class="btn" onclick="importSales()">استيراد</button></div>
+    <div class="card"><h3>آخر المبيعات</h3><div class="tw"><table><tr><th>الوقت</th><th>العارضة</th><th>العدد</th><th>غير مستخدم</th><th>المصدر</th><th>الفاتورة</th></tr>${(S.sales || []).map(s => `<tr><td>${tm(s.t)}</td><td>${esc(s.zname || '—')}</td><td>${s.qty}</td><td>${s.remaining}</td><td>${esc(s.source)}</td><td>${esc(s.ref)}</td></tr>`).join('')}</table></div>
+    <div class="xs mut" style="margin-top:6px">معرّفات المناطق للربط الآلي: ${zs.map(z => esc(z.name) + ' = <code>' + z.id + '</code>').join(' · ')}</div></div>`;
+}
+async function addSale(){ try{ await api('/api/sale', { zone: $('#sz').value, qty: +$('#sq').value || 1, ref: $('#sr').value.trim() }); toast('سُجّل البيع'); poll(); renderSales(); }catch(e){ toast(e.message); } }
+async function importSales(){ try{ const r = await api('/api/sales/import', { text: $('#simp').value }); toast(`استُورد ${r.n} بيع${r.bad.length ? '، وتعذّر: ' + r.bad.join('، ') : ''}`); renderSales(); poll(); }catch(e){ toast(e.message); } }
+
+/* ============ التقارير ============ */
+async function renderRep(){
+  const v = $('#view'); v.innerHTML = '<div class="empty">جارٍ التحميل…</div>';
+  const r = await api('/api/report?days=14'); S.rep = r;
+  const T = r.days.reduce((a, d) => { for(const k in d) if(k !== 'day') a[k] = (a[k] || 0) + d[k]; return a; }, {});
+  v.innerHTML = `<h2>التقارير — آخر 14 يوماً</h2><div class="kpis">${[['حالات شيل', T.removals], ['رجعت خلال المهلة', T.returned], ['مُباعة', T.sold], ['تنبيهات', T.incidents], ['رجعت بعد التنبيه', T.late_return], ['سرقة مؤكدة', T.theft], ['خطأ في الكشف', T.false]].map(([l, n]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${n || 0}</div></div>`).join('')}</div>
+    <div class="card"><h3>يومياً</h3><div class="tw"><table><tr><th>اليوم</th><th>شيل</th><th>رجع</th><th>مُباع</th><th>تنبيه</th><th>سرقة مؤكدة</th><th style="width:40%">التوزيع</th></tr>${r.days.slice().reverse().map(d => { const t = Math.max(1, d.removals);
+      return `<tr><td>${d.day}</td><td>${d.removals}</td><td>${d.returned}</td><td>${d.sold}</td><td>${d.incidents}</td><td>${d.theft}</td><td><div class="bar"><i style="width:${100 * d.returned / t}%;background:#38a169"></i><i style="width:${100 * d.sold / t}%;background:#2d5bb5"></i><i style="width:${100 * d.incidents / t}%;background:#c53030"></i></div></td></tr>`; }).join('')}</table></div>
+    <div class="xs mut" style="margin-top:6px">أخضر: رجع · أزرق: مُباع · أحمر: تنبيه</div></div>
+    <div class="card"><h3>العارضات الأكثر تنبيهات</h3><div class="tw"><table><tr><th>العارضة</th><th>القسم</th><th>حالات الشيل</th><th>تنبيهات</th><th>سرقة مؤكدة</th></tr>${r.zones.map(z => `<tr><td>${esc(z.name)}</td><td>${esc(z.section || '')}</td><td>${z.total}</td><td>${z.incidents}</td><td>${z.theft}</td></tr>`).join('') || '<tr><td colspan="5" class="mut">لا توجد بيانات</td></tr>'}</table></div>
+    <div style="height:8px"></div><button class="btn" onclick="copyRep()">نسخ التقرير (CSV)</button></div>`;
+}
+function copyRep(){ const r = S.rep; const t = ['اليوم,شيل,رجع,مباع,تنبيه,سرقة مؤكدة,خطأ كشف'].concat(r.days.map(d => [d.day, d.removals, d.returned, d.sold, d.incidents, d.theft, d.false].join(','))).join('\n');
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('تم النسخ')).catch(() => openModal(`<textarea rows="12">${esc(t)}</textarea>`)); }
+
+/* ============ الإعدادات ============ */
+async function renderSet(){
+  const v = $('#view');
+  try{ const r = await api('/api/config'); S.cfg = r.cfg; S.cfgDemo = r.demo; }catch(e){ v.innerHTML = `<div class="card note wa">${esc(e.message)}<div style="height:8px"></div><button class="btn" onclick="askPin()">إدخال الرمز</button></div>`; return; }
+  const c = S.cfg, dis = S.cfgDemo ? 'disabled' : '';
+  const f = (k, l, t = 'text', extra = '') => `<div class="fld"><label>${l}</label><input id="c_${k}" type="${t}" value="${esc(c[k])}" ${dis} ${extra}></div>`;
+  v.innerHTML = `<h2>الإعدادات</h2>${S.cfgDemo ? '<div class="note wa">أنت في الوضع التجريبي؛ الإعدادات للعرض فقط. شغّل النظام بدون <code>--demo</code> لربط كاميراتك.</div>' : ''}
+    <div class="card"><h3>عام</h3>${f('site_name', 'اسم الفرع')}<div class="f2">${f('open_time', 'بداية الدوام', 'time')}${f('close_time', 'نهاية الدوام', 'time')}</div>
+      <div class="f2">${f('grace_minutes', 'مهلة رجوع المنتج (دقيقة)', 'number', 'min="1"')}${f('cleaning_minutes', 'مدة التنظيف/العرض (دقيقة)', 'number', 'min="1"')}</div>
+      <div class="f2">${f('sale_window_minutes', 'نافذة مطابقة البيع (دقيقة)', 'number')}${f('poll_seconds', 'فحص الكاميرا كل (ثانية)', 'number', 'min="2"')}</div>
+      <div class="row" style="justify-content:space-between;margin:10px 0"><div><b class="sm">التنبيه الفوري خارج ساعات العمل</b><div class="xs mut">أي شيل بعد الإغلاق يُرسل تنبيهاً مباشرة بدون مهلة.</div></div><button class="sw ${c.night_alarm ? 'on' : ''}" id="c_night" onclick="this.classList.toggle('on')" ${dis}></button></div>
+      ${f('pin', 'رمز الإدارة (لحماية الإعدادات ومعالجة التنبيهات؛ اتركه فارغاً لإلغائه)', 'password')}</div>
+    <div class="card"><h3>تنبيهات تيليجرام</h3><p class="sm mut" style="margin-top:0">أنشئ بوتاً عبر @BotFather وانسخ التوكن، وأضف البوت إلى مجموعة المشرفين، ثم ضع معرّف المجموعة.</p>
+      <div class="f2"><div class="fld"><label>توكن البوت</label><input id="c_tgt" value="${esc((c.telegram || {}).token || '')}" ${dis}></div><div class="fld"><label>معرّف المحادثة (chat_id)</label><input id="c_tgc" value="${esc((c.telegram || {}).chat_id || '')}" ${dis}></div></div>
+      <button class="btn sm" onclick="testTg()">إرسال رسالة اختبار</button></div>
+    <div class="card"><h3>أجهزة التسجيل (NVR) — هكفيجن</h3><div id="nvrs"></div><button class="btn sm" onclick="addNvr()" ${dis}>+ إضافة NVR</button></div>
+    <div class="card"><h3>الكاميرات المراقَبة</h3><div id="cams"></div><button class="btn sm" onclick="addFolderCam()" ${dis}>+ كاميرا من مجلد صور</button></div>
+    <button class="btn pri w" onclick="saveCfg()" ${dis}>حفظ الإعدادات وإعادة تشغيل المراقبة</button><div style="height:20px"></div>`;
+  drawNvrs(); drawCams();
+}
+function drawNvrs(){
+  const c = S.cfg, dis = S.cfgDemo ? 'disabled' : '';
+  $('#nvrs').innerHTML = (c.nvrs || []).map((n, i) => `<div class="card" style="background:#fafbfc"><div class="f2"><div class="fld"><label>الاسم</label><input value="${esc(n.name || '')}" onchange="S.cfg.nvrs[${i}].name=this.value" ${dis}></div><div class="fld"><label>عنوان IP</label><input value="${esc(n.host || '')}" placeholder="192.168.1.64" onchange="S.cfg.nvrs[${i}].host=this.value.trim()" ${dis}></div></div>
+    <div class="f2"><div class="fld"><label>المنفذ (HTTP)</label><input type="number" value="${esc(n.port || 80)}" onchange="S.cfg.nvrs[${i}].port=+this.value" ${dis}></div><div class="fld"><label>اسم المستخدم</label><input value="${esc(n.user || 'admin')}" onchange="S.cfg.nvrs[${i}].user=this.value" ${dis}></div></div>
+    <div class="f2"><div class="fld"><label>كلمة السر</label><input type="password" value="${esc(n.password || '')}" onchange="S.cfg.nvrs[${i}].password=this.value" ${dis}></div><div class="fld"><label>HTTPS</label><select onchange="S.cfg.nvrs[${i}].https=this.value==='1'" ${dis}><option value="0">لا</option><option value="1" ${n.https ? 'selected' : ''}>نعم</option></select></div></div>
+    <div class="row"><button class="btn sm pri" onclick="testNvr(${i})" ${dis}>اختبار الاتصال واكتشاف الكاميرات</button><button class="btn sm dan" onclick="S.cfg.nvrs.splice(${i},1);drawNvrs()" ${dis}>حذف</button></div><div id="nvrres${i}" style="margin-top:8px"></div></div>`).join('') || '<p class="sm mut">لم يُضف أي جهاز.</p>';
+}
+function drawCams(){
+  const c = S.cfg, dis = S.cfgDemo ? 'disabled' : '';
+  $('#cams').innerHTML = (c.cameras || []).map((k, i) => `<div class="li" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2);flex-wrap:wrap">
+    <button class="sw ${k.enabled !== false ? 'on' : ''}" onclick="S.cfg.cameras[${i}].enabled=!(S.cfg.cameras[${i}].enabled!==false);drawCams()" ${dis}></button>
+    <input style="flex:1;min-width:160px" value="${esc(k.name || '')}" onchange="S.cfg.cameras[${i}].name=this.value" ${dis}>
+    <span class="xs mut">${k.source === 'folder' ? 'مجلد: ' + esc(k.path || '') : k.source === 'demo' ? 'افتراضية' : 'NVR: ' + esc(((c.nvrs || []).find(n => n.id === k.nvr) || {}).name || k.nvr) + ' · قناة ' + k.channel}</span>
+    ${k.source === 'hikvision' || !k.source ? `<select style="width:auto" onchange="S.cfg.cameras[${i}].stream=+this.value" ${dis}><option value="1">جودة عالية</option><option value="2" ${k.stream == 2 ? 'selected' : ''}>جودة منخفضة (أسرع)</option></select>` : ''}
+    <button class="btn sm dan" onclick="S.cfg.cameras.splice(${i},1);drawCams()" ${dis}>حذف</button></div>`).join('') || '<p class="sm mut">لا توجد كاميرات. أضف NVR واكتشف كاميراته.</p>';
+}
+function addNvr(){ S.cfg.nvrs = S.cfg.nvrs || []; S.cfg.nvrs.push({ id: 'nvr' + Date.now().toString(36), name: 'NVR ' + (S.cfg.nvrs.length + 1), host: '', port: 80, user: 'admin', password: '', https: false }); drawNvrs(); }
+function addFolderCam(){ openModal(`<h2>كاميرا من مجلد صور</h2><p class="sm mut">لأي كاميرا ترفع لقطات إلى مجلد (FTP)، أو لتجربة صور تضعها يدوياً. النظام يقرأ أحدث صورة في المجلد.</p><div class="fld"><label>الاسم</label><input id="fn"></div><div class="fld"><label>مسار المجلد على هذا الكمبيوتر</label><input id="fp" placeholder="C:\\Snapshots\\cam1"></div><button class="btn pri w" onclick="S.cfg.cameras.push({id:'f'+Date.now().toString(36),name:$('#fn').value||'كاميرا مجلد',source:'folder',path:$('#fp').value.trim(),enabled:true});closeModal();drawCams()">إضافة</button>`); }
+async function testNvr(i){
+  const n = S.cfg.nvrs[i], out = $('#nvrres' + i); out.innerHTML = '<span class="sm mut">جارٍ الاتصال…</span>';
+  try{
+    const r = await api('/api/nvr/test', n);
+    out.innerHTML = `<div class="note"><b>تم الاتصال ✓</b> ${esc(r.device.model)} — ${esc(r.device.name)} (برنامج ${esc(r.device.firmware)})</div>
+      <div class="sm" style="margin:8px 0">الكاميرات المكتشفة (${r.channels.length}):</div>${r.channels.map(ch => { const has = S.cfg.cameras.some(c => c.nvr === n.id && +c.channel === ch.channel);
+        return `<label class="row sm" style="padding:3px 0"><input type="checkbox" style="width:auto" data-ch="${ch.channel}" data-nm="${esc(ch.name)}" ${has ? 'checked disabled' : ''}> قناة ${ch.channel}: ${esc(ch.name)}${has ? ' (مضافة)' : ''}</label>`; }).join('')}
+      <button class="btn sm pri" style="margin-top:6px" onclick="addChans(${i})">إضافة المحدد إلى المراقبة</button>`;
+  }catch(e){ out.innerHTML = `<div class="note wa">${esc(e.message)}<div class="xs" style="margin-top:4px">تأكد من: عنوان IP صحيح، الكمبيوتر على نفس شبكة الـ NVR، اسم المستخدم وكلمة السر، وتفعيل ISAPI في الجهاز (Network > Advanced > Integration Protocol).</div></div>`; }
+}
+function addChans(i){ const n = S.cfg.nvrs[i]; let k = 0; document.querySelectorAll(`#nvrres${i} input[data-ch]:checked:not(:disabled)`).forEach(cb => { S.cfg.cameras.push({ id: n.id + '-' + cb.dataset.ch, name: cb.dataset.nm || ('قناة ' + cb.dataset.ch), source: 'hikvision', nvr: n.id, channel: +cb.dataset.ch, stream: 1, enabled: true }); k++; }); drawCams(); toast(k ? `أُضيفت ${k} كاميرا. اضغط «حفظ الإعدادات».` : 'لم تحدد أي كاميرا'); }
+async function testTg(){ try{ const r = await api('/api/telegram/test', { token: $('#c_tgt').value.trim(), chat_id: $('#c_tgc').value.trim() }); toast(r.ok ? 'وصلت رسالة الاختبار ✓' : 'فشل الإرسال: ' + r.msg, 5000); }catch(e){ toast(e.message); } }
+async function saveCfg(){
+  const c = Object.assign({}, S.cfg), g = k => $('#c_' + k).value.trim();
+  Object.assign(c, { site_name: g('site_name'), open_time: g('open_time'), close_time: g('close_time'), grace_minutes: Math.max(1, +g('grace_minutes') || 20), cleaning_minutes: Math.max(1, +g('cleaning_minutes') || 15),
+    sale_window_minutes: Math.max(1, +g('sale_window_minutes') || 30), poll_seconds: Math.max(2, +g('poll_seconds') || 20), night_alarm: $('#c_night').classList.contains('on'), pin: g('pin'),
+    telegram: { token: $('#c_tgt').value.trim(), chat_id: $('#c_tgc').value.trim() } });
+  try{ await api('/api/config', c); if(c.pin){ S.pin = c.pin; localStorage.setItem('haris_pin', c.pin); } toast('تم الحفظ وإعادة تشغيل المراقبة'); S.camsKey = ''; await poll(); }catch(e){ toast(e.message); }
+}
+
+/* ============ التحديث الدوري ============ */
+async function poll(){
+  try{
+    const st = await (await fetch('/api/state', { cache: 'no-store' })).json();
+    const first = !S.st; S.st = st;
+    if(S.seq !== null && st.alert_seq > S.seq){ beep(); toast('⚠️ تنبيه جديد: اختفاء غير مبرر', 5000); if(S.tab === 'ev' && !$('#modal').innerHTML) renderEv(); }
+    S.seq = st.alert_seq;
+    if(first) render(); else { header(); if(S.tab === 'mon') renderMon(); }
+  }catch(e){ $('#hdr').innerHTML = '<div><b>حارس العارضات</b><small style="color:#f6b">انقطع الاتصال بالنظام — تأكد أن البرنامج يعمل على الكمبيوتر</small></div>'; }
+}
+setInterval(poll, 3000);
+setInterval(() => { if(S.tab === 'ev' && !$('#modal').innerHTML) renderEv(); }, 8000);
+window.addEventListener('resize', () => { if(S.tab === 'zones') drawZones(); });
+poll();
+</script>
+</body>
+</html>

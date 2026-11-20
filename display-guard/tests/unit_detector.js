@@ -1,0 +1,20 @@
+// اختبارات وحدة سريعة لمحرك الكشف بدون متصفح: node tests/unit_detector.js
+const D = require('../src/detector.js');
+let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+const W = 960, H = 540, zone = { x: 300 / W, y: 180 / H, w: 320 / W, h: 180 / H };
+function scene(fn, noise, bright){ const N = W * H, raw = new Float32Array(N), ca = new Float32Array(N), cb = new Float32Array(N);
+  for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){ let [R, G, B] = fn(x, y); const n = (rnd() - .5) * 2 * noise; R = R * bright + n; G = G * bright + n; B = B * bright + n;
+    const i = y * W + x; raw[i] = .299 * R + .587 * G + .114 * B; ca[i] = R - G; cb[i] = (R + G) / 2 - B; }
+  return D.build(raw, ca, cb, W, H); }
+const wood = gum => (x, y) => { let R = 150 + 18 * Math.sin(x / 9 + Math.sin(y / 40) * 2) + 8 * Math.sin(y / 3.1);
+  if(gum && x >= 430 && x < 476 && y >= 260 && y < 278){ const e = x - 430 < 2 || 476 - x <= 2 || y - 260 < 2 || 278 - y <= 2; return e ? [60, 60, 60] : [225, 230, 235]; } return [R, R * .72, R * .5]; };
+const light = gum => (x, y) => (gum && x >= 440 && x < 470 && y >= 270 && y < 282) ? ((x < 442 || x > 467 || y < 272 || y > 279) ? [170, 168, 160] : [238, 236, 230]) : [205, 200, 192];
+let fails = 0; const t = (name, cond) => { console.log((cond ? 'PASS ' : 'FAIL ') + name); if(!cond) fails++; };
+for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['white-on-light', light, 7]]){
+  const a = scene(f(true), nz, 1); let fp = 0;
+  for(let k = 0; k < 8; k++){ const b = scene(f(true), nz, .96 + .08 * rnd()); fp += D.compareZone(a, b, zone, [0, 0], { fine }).regions.length; }
+  const r = D.compareZone(a, scene(f(false), nz, 1), zone, [0, 0], { fine });
+  t(`${nm} ${fine ? 'fine' : 'normal'}: no false regions under noise/exposure`, fp === 0);
+  t(`${nm} ${fine ? 'fine' : 'normal'}: small item removal detected`, r.regions.some(g => g.type === 'rem'));
+}
+process.exit(fails ? 1 : 0);
