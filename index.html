@@ -31593,6 +31593,22 @@ window.neoStreakZero = async function(id,kind){
 })();
 </script>
 
+<style id="amCalStyle">
+#amSaOv .amCalHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+#amSaOv .amCalHead small{color:var(--ui-muted);font-size:12px}
+#amSaOv .amCalHead>span{color:var(--ui-title,#e3ebf4);font-weight:700;font-size:14px}
+#amSaOv .amCalGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px 2px;text-align:center}
+#amSaOv .amCalW{color:var(--ui-muted);font-size:12px;padding-bottom:8px}
+#amSaOv .amCalD{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0 6px;border-radius:14px}
+#amSaOv .amCalD b{font-size:17px;font-weight:700;line-height:1}
+#amSaOv .amCalD i{width:7px;height:7px;border-radius:50%}
+#amSaOv .amCalD small{font-size:10.5px;font-weight:700;line-height:1;min-height:11px}
+#amSaOv .amCalNow{background:var(--accent);}#amSaOv .amCalNow b,#amSaOv .amCalNow small{color:var(--on-accent,#0a1b24)!important}
+#amSaOv .amCalNow i{box-shadow:0 0 0 2px var(--on-accent,#0a1b24)}
+#amSaOv .amCalFut{opacity:.32}
+#amSaOv .amCalKey{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:12px;color:var(--ui-muted);font-size:11px}
+#amSaOv .amCalKey i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:4px}
+</style>
 <script id="amShiftAnalytics">
 /* «الاتجاه» و«التقرير» لمسؤول الشفت — قسمه فقط، قراءة فقط من النسب المثبَّتة */
 (function(){
@@ -31634,6 +31650,27 @@ window.neoStreakZero = async function(id,kind){
       o.innerHTML = head(name) + '<div class="card">تعذّر التحميل — تحقق من الاتصال وأعد المحاولة.</div>';
     }
   }
+  /* تقويم الدورة: أسبوع يبدأ بالسبت، رقم اليوم ونقطة ملوّنة ونسبته تحته، اليوم الحالي مميَّز والمستقبل باهت */
+  function amSaCal(c, by, today){
+    var s0 = new Date(c.from+'T12:00:00'), lead = (s0.getDay() + 1) % 7, cells = '';
+    for (var k=0;k<lead;k++) cells += '<div></div>';
+    for (var i=0;i<c.days;i++){
+      var d = new Date(s0); d.setDate(d.getDate()+i); var iso = f(d), v = (iso in by) ? by[iso] : null;
+      var fut = iso > today, now = iso === today, col = v===null ? 'transparent' : neoTrendColor(v);
+      cells += '<div class="amCalD' + (now?' amCalNow':'') + (fut?' amCalFut':'') + '" title="' + iso + '">'
+        + '<b>' + d.getDate() + '</b>'
+        + '<i style="background:' + (fut||v===null ? 'transparent' : col) + '"></i>'
+        + '<small style="color:' + (v===null ? 'var(--ui-muted)' : col) + '">' + (fut ? '' : v===null ? '—' : v + '٪') + '</small></div>';
+    }
+    var DW = ['سبت','أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة'];
+    var vals = Object.keys(by).filter(function(k){ return k>=c.from && k<=c.to; }).map(function(k){ return by[k]; });
+    var full = vals.filter(function(v){ return v>=100; }).length;
+    return '<div class="card amCal"><div class="amCalHead"><div><h3 style="margin:0;">أيام الدورة</h3>'
+      + '<small>' + full + ' يوماً مكتملاً من ' + vals.length + ' مثبّت</small></div><span>' + c.label + '</span></div>'
+      + '<div class="amCalGrid">' + DW.map(function(w){ return '<div class="amCalW">' + w + '</div>'; }).join('') + cells + '</div>'
+      + '<div class="amCalKey"><span><i style="background:' + neoTrendColor(100) + '"></i>ممتاز</span><span><i style="background:' + neoTrendColor(85) + '"></i>جيد</span>'
+      + '<span><i style="background:' + neoTrendColor(75) + '"></i>متوسط</span><span><i style="background:' + neoTrendColor(10) + '"></i>منخفض</span></div></div>';
+  }
   async function trend(dept){
     var c = neoBillingMonth(st.off), pc = neoBillingMonth(st.off + 1);
     var today = f(typeof iraqNow==='function' ? iraqNow() : new Date());
@@ -31663,9 +31700,7 @@ window.neoStreakZero = async function(id,kind){
       + '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>'
       + series.map(function(v,i){ return v===null?'':'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(v).toFixed(1)+'" r="1" fill="'+neoTrendColor(v)+'"/>'; }).join('')
       + '</svg></div>'
-      + '<div class="card"><h3 style="margin:0 0 8px;">أيام الدورة</h3><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">'
-      + days.map(function(d,i){ var v=series[i]; return '<div class="neoTrendHeat' + (v===null?' neoTrendHeatEmpty':'') + '" data-band="' + neoTrendBand(v) + '" title="' + d + '" style="text-align:center;padding:6px 0;border-radius:8px;font-size:11px;"><div style="opacity:.7;font-size:9px;">' + Number(d.slice(8)) + '</div><b>' + (v===null?'—':v) + '</b></div>'; }).join('')
-      + '</div></div>'
+      + amSaCal(c, by, today)
       + (dl.length>=3 ? '<div class="card"><h3 style="margin:0 0 8px;">أداء أيام الأسبوع</h3>' + dl.map(function(r){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;"><span style="min-width:58px;font-size:12px;">'+r.d+'</span><div style="flex:1;height:12px;border-radius:6px;background:rgba(122,167,255,.12);overflow:hidden;"><div class="neoTrendBar" data-band="'+neoTrendBand(r.v)+'" style="height:100%;width:'+r.v+'%;"></div></div><b style="min-width:34px;font-size:12px;">'+r.v+'٪</b></div>'; }).join('') + '</div>' : '');
   }
   async function report(dept, name){
