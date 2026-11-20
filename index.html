@@ -10600,10 +10600,6 @@ async function renderHallView(profile){
         <div class="tab active" id="hallTabAudit" onclick="switchHallTab('audit')">✅ التدقيق العشوائي</div>
         <div class="tab" id="hallTabOrder" onclick="switchHallTab('order')">↕️ ترتيب المواقع</div>
       </div>
-      <div style="color:#999; font-size:11px; margin-top:6px;">
-        <b style="color:#38d9b9;">نواقص تدقيقي</b>: ما لم تدقّقه أنت بعد ·
-        <b style="color:#8fb8d8;">مراقبة النواقص</b>: ما لم يُنجزه مسؤول الشفت
-      </div>
     </div>
     <div id="hallContentWrap"></div>`;
   await loadHallAudit();
@@ -11178,14 +11174,11 @@ function hallRefreshCurrentTab(){
 function hallDateBar(){
   const y = hallIsYesterday();
   const can = hallCanEditYesterday();
-  return '<div style="display:flex;gap:7px;align-items:center;justify-content:center;margin-bottom:10px;flex-wrap:wrap;">'
-    + '<button class="secondary" onclick="hallGoPrev()" title="' + (can ? 'متاح حتى الساعة ٣ فجراً' : 'انتهت المهلة') + '" style="font-size:12px;padding:8px 14px;'
-    + (!can ? 'opacity:0.45;' : y ? 'border-color:#d3a04f;color:#d3a04f;' : '') + '">◀ أمس' + (can ? '' : ' 🔒') + '</button>'
-    + '<span style="color:' + (y ? '#d3a04f' : '#8fb8d8') + ';font-size:12px;font-weight:600;">'
-    + (y ? hallDate() + ' (أمس)' : 'اليوم') + '</span>'
-    + '<button class="secondary" onclick="hallGoToday()" style="font-size:12px;padding:8px 14px;'
-    + (!y ? 'opacity:0.5;' : 'border-color:#38d9b9;color:#38d9b9;') + '">اليوم ▶</button>'
-    + (y && can ? '<div style="width:100%;text-align:center;color:#d3a04f;font-size:11px;margin-top:5px;">⏳ التعديل على الأمس متاح حتى الساعة ٣ فجراً</div>' : '')
+  const AR = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
+  const t = todayStr(), lbl = Number(t.slice(8)) + ' ' + AR[Number(t.slice(5,7)) - 1];
+  return '<div class="amHallDays" role="group" aria-label="اليوم">'
+    + '<button type="button" class="' + (y ? 'on' : '') + (can ? '' : ' lock') + '" onclick="hallGoPrev()" aria-pressed="' + y + '">أمس<small>' + (can ? 'متاح حتى 3 فجراً' : 'مغلق') + '</small></button>'
+    + '<button type="button" class="' + (y ? '' : 'on') + '" onclick="hallGoToday()" aria-pressed="' + (!y) + '">اليوم<small>' + lbl + '</small></button>'
     + '</div>';
 }
 window.hallGoPrev = hallGoPrev; window.hallGoToday = hallGoToday;
@@ -11938,6 +11931,8 @@ async function renderHallAuditList(existingPage){
     + '<button class="secondary" onclick="loadHallAudit()" style="width:100%;margin-bottom:12px;">↻ تحديث النسب</button>'
     + (cards || '<div class="card">لا توجد أقسام مسجلة</div>'));
   await neoPaintYield();
+  /* النسبة الإجمالية تبدأ مع الأقسام لا بعدها — كانت تظهر عنواناً بلا رقم حتى يكتمل آخر قسم */
+  const _amSumTask = amHallSummary(page);
   /* لا تنتظر بطاقات الأقسام حساب النسبة الإجمالية، وتبقى الجاهزة قابلة للفتح. */
   for (let index = 0; index < d.depts.length && page.current(); index++){
     const dept = d.depts[index];
@@ -11945,11 +11940,16 @@ async function renderHallAuditList(existingPage){
       const audit = await computeHallAuditCompletionForDept(dept, d);
       if (!page.current()) return;
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-        + '<h3 style="margin:0;">' + neoHtml(dept.name) + '</h3><span class="dept-summary-badge"'
+        + '<h3 style="margin:0;">' + neoHtml(dept.name) + '</h3>'
+        + '<i class="amHallMini"><span style="width:' + (audit.total ? Math.round(audit.verified / audit.total * 100) : 0) + '%"></span></i>'
+        + '<span class="dept-summary-badge"'
         + (audit.isComplete ? ' style="background:#17402a;color:#3ecf6b;"' : '') + '>'
         + (audit.isComplete ? '✅ ' : '') + audit.verified + '/' + audit.total + '</span></div>';
     }, dept.name);
   }
+  await _amSumTask;
+}
+async function amHallSummary(page){
   if (!page.current()) return;
   await page.load('hallAuditSummary', async () => {
   /* صندوق نسبتي الإجمالية + زر التثبيت */
@@ -11965,18 +11965,13 @@ async function renderHallAuditList(existingPage){
     const sv = uid ? neoHallSaved(_d, uid) : null;
     const c = r.pct >= 100 ? '#3ecf6b' : r.pct >= 60 ? '#d3a04f' : '#e15b64';
     myBox =
-        '<div class="card" style="border-color:rgba(56,217,185,0.35);">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
-      + '<span style="color:#8fa3b8;font-size:12px;">نسبة تدقيقك اليوم</span>'
-      + '<span style="color:' + c + ';font-size:24px;font-weight:800;">' + r.pct + '٪</span></div>'
-      + '<div style="color:#7487a0;font-size:11px;margin-top:3px;">' + r.verified + ' من ' + r.total + ' خانة في عيّنتك</div>'
-      + '<div style="height:7px;border-radius:4px;background:rgba(122,167,255,0.15);overflow:hidden;margin-top:8px;">'
-      + '<div style="height:100%;width:' + r.pct + '%;background:' + c + ';transition:width .3s;"></div></div>'
-      + '<button onclick="neoSaveHallPct()" style="width:100%;margin-top:10px;font-size:13px;padding:11px;background:#14705f;">💾 حفظ وتثبيت نسبتي</button>'
-      + '<div style="color:#7487a0;font-size:11px;margin-top:6px;text-align:center;">'
-      + (sv ? '✅ المثبّت: <b style="color:#38d9b9;">' + sv.pct + '٪</b> · ' + String(sv.updated_at||'').slice(11,16)
-            : '⚠️ لم تُثبّت بعد — لن تظهر للإدارة')
-      + '</div></div>';
+        '<div class="amHallSum">'
+      + '<div class="amHallRing" style="--v:' + r.pct + '"><div><b>' + r.pct + '٪</b></div></div>'
+      + '<div class="amHallTxt"><b>نسبة تدقيقك ' + (hallIsYesterday() ? 'أمس' : 'اليوم') + '</b>'
+      + '<small>' + r.verified + ' من ' + r.total + ' خانة · تُحفظ تلقائياً</small>'
+      + '<small>' + (sv ? 'المثبَّت للإدارة: <b>' + sv.pct + '٪</b> · ' + String(sv.updated_at||'').slice(11,16) : 'لم تُحفظ بعد') + '</small></div>'
+      + '<button type="button" class="secondary" onclick="neoSaveHallPct()">حفظ الآن</button>'
+      + '</div>';
     page.set('hallAuditSummary', myBox + '<div id="hallSummaryStreak"></div>');
     try{
       const _st = await neoGetStreak(uid, 'hall');
@@ -31770,6 +31765,24 @@ html body .amChips:empty{display:none}
 html body .amChips>span{display:inline-flex!important;align-items:center;justify-content:center;min-height:32px;padding:0 14px!important;margin:0!important;
   border-radius:999px;border:1px solid currentColor;background:rgba(255,255,255,.04);font-size:12.5px!important;font-weight:700;white-space:nowrap;line-height:1}
 html body .amChips>span:active{transform:scale(.96)}
+</style>
+<style id="amHallStyle">
+html body #hallContentWrap > .amHallDays:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:grid!important;grid-template-columns:1fr 1fr!important;gap:4px!important;background:rgba(0,0,0,.22)!important;border:0!important;border-radius:14px!important;padding:4px!important;margin:0 0 12px!important}
+html body #hallContentWrap > .amHallDays > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:block!important;margin:0!important;width:100%!important;min-height:0!important;padding:9px 0!important;border:0!important;border-radius:11px!important;background:transparent!important;box-shadow:none!important;color:var(--ui-muted)!important;font-size:14px!important;font-weight:800!important;opacity:1!important;line-height:1.3!important}
+html body #hallContentWrap > .amHallDays > button.on:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){background:var(--ui-panel,rgba(22,38,58,.9))!important;color:var(--accent)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)!important}
+html body #hallContentWrap > .amHallDays > button.lock:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){opacity:.5!important}
+html body #hallContentWrap > .amHallDays > button small:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:block;font-size:10.5px;font-weight:500;color:var(--ui-muted);margin-top:2px}
+html body #hallContentWrap > .amHallDays > button::before,html body #hallContentWrap > .amHallDays > button::after{display:none!important}
+html body #hallAuditSummary > .amHallSum:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:grid;grid-template-columns:92px 1fr;grid-template-rows:auto auto;gap:4px 14px;align-items:center;background:var(--ui-panel,rgba(22,38,58,.62));border:1px solid var(--line-strong,rgba(120,190,180,.16));border-radius:22px;padding:16px;margin-bottom:12px}
+html body #hallAuditSummary .amHallRing{grid-row:1/3;width:92px;height:92px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--v)*1%),rgba(255,255,255,.08) 0)}
+html body #hallAuditSummary .amHallRing>div{width:74px;height:74px;border-radius:50%;background:var(--ui-panel,#13243a);display:grid;place-content:center}
+html body #hallAuditSummary .amHallRing b{font-size:22px;color:var(--accent)}
+html body #hallAuditSummary .amHallTxt b{display:block;font-size:16px}
+html body #hallAuditSummary .amHallTxt small{display:block;color:var(--ui-muted);font-size:12px;margin-top:3px}
+html body #hallAuditSummary .amHallTxt small b{display:inline;font-size:12px;color:var(--accent)}
+html body #hallAuditSummary .amHallSum > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){grid-column:2;justify-self:start;width:auto!important;margin:4px 0 0!important;padding:7px 14px!important;min-height:0!important;font-size:12.5px!important}
+html body #hallContentWrap .dept-card .amHallMini{display:block;flex:0 0 56px;width:56px;height:5px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;margin-inline-start:auto}
+html body #hallContentWrap .dept-card .amHallMini span{display:block;height:100%;background:var(--accent);border-radius:9px}
 </style>
 <style id="amCalStyle">
 #amSaOv .amCalHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
