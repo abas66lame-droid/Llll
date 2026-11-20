@@ -116,6 +116,44 @@ const DET = (() => {
     if(ar < 0.4 || ar > 2.5 || tr < 0.6 || tr > 1.67) return 0;
     let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
   }
+  // «تراجع الصف» لرفوف البضاعة المتكررة (شيبس، شوكولا، علب): القطع متطابقة خلف بعضها، فأخذ القطعة الأمامية لا يُحدث
+  // «فراغاً» بل يُرجع واجهة الصف للخلف، فتظهر القطعة التالية أعلى قليلاً في الكاميرا المائلة من الأعلى.
+  // نقيس الإزاحة الرأسية لكل كتلة صغيرة: مجموعة كتل ارتفعت معاً = «التقاط» (pick)، ونزلت معاً = «تعبئة» (restock).
+  // الإضاءة والضجيج لا يُزيحان شيئاً، والأنماط المتكررة لا تخدعنا لأننا نشترط أن تكون المطابقة المُزاحة أفضل بوضوح من مكانها.
+  function recess(ref, cur, z, shift){
+    shift = zoneShift(ref, cur, z, shift);
+    const W = ref.w, H = ref.h, bs = Math.max(12, Math.min(28, Math.round(z.w * W / 26))), M = 40 + Math.max(Math.abs(shift[0]), Math.abs(shift[1])); // نبتعد عن حافة الصورة بمسافة البحث
+    const zx0 = Math.max(M, Math.floor(z.x * W)), zy0 = Math.max(M, Math.floor(z.y * H)), zx1 = Math.min(W - M, Math.ceil((z.x + z.w) * W)), zy1 = Math.min(H - M, Math.ceil((z.y + z.h) * H));
+    if(zx1 - zx0 < bs * 2 || zy1 - zy0 < bs * 2) return [];
+    const R = Math.max(10, Math.min(36, Math.round(bs * 1.3)));
+    const nx = Math.floor((zx1 - zx0) / bs), ny = Math.floor((zy1 - zy0) / bs), dyMap = new Float32Array(nx * ny);
+    const ncc = (x0, y0, dx, dy) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y0 + bs; y += 2){ const yy = y + dy; if(yy < 1 || yy >= H - 1) return -1; for(let x = x0; x < x0 + bs; x += 2){ const xx = x + dx; if(xx < 1 || xx >= W - 1) return -1;
+        const a = ref.G[y * W + x], b = cur.G[yy * W + xx]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return va > n * 20 && vb > n * 4 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+      const x0 = zx0 + i * bs, y0 = zy0 + j * bs;
+      let s0 = -1; for(const dx of [-2, 0, 2]) for(let dy = -2; dy <= 2; dy++){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > s0) s0 = v; }
+      if(s0 > 0.85) continue; // الكتلة في مكانها: لا شيء تغيّر
+      let best = -1, bd = 0;
+      for(let dy = -R; dy <= R; dy += 2){ if(Math.abs(dy) < 5) continue; for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } } }
+      for(const dy of [bd - 1, bd + 1]) for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } }
+      if(best > 0.7 && best - s0 > 0.15) dyMap[j * nx + i] = bd;
+    }
+    // تجميع الكتل المتجاورة بنفس الاتجاه وإزاحة متقاربة
+    const seen = new Uint8Array(nx * ny), out = [];
+    for(let k = 0; k < nx * ny; k++){
+      if(!dyMap[k] || seen[k]) continue;
+      const sg = Math.sign(dyMap[k]), q = [k], g = []; seen[k] = 1;
+      while(q.length){ const c = q.pop(); g.push(c); const ci = c % nx, cj = (c / nx) | 0;
+        for(const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){ const ii = ci + di, jj = cj + dj; if(ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; const n2 = jj * nx + ii;
+          if(!seen[n2] && dyMap[n2] && Math.sign(dyMap[n2]) === sg && Math.abs(dyMap[n2] - dyMap[c]) <= 6){ seen[n2] = 1; q.push(n2); } } }
+      if(g.length < 4) continue;
+      let i0 = 1e9, j0 = 1e9, i1 = -1, j1 = -1, sdy = 0; for(const c of g){ const ci = c % nx, cj = (c / nx) | 0; i0 = Math.min(i0, ci); i1 = Math.max(i1, ci); j0 = Math.min(j0, cj); j1 = Math.max(j1, cj); sdy += dyMap[c]; }
+      out.push({ type: sg < 0 ? 'pick' : 'restock', cells: g.length, dy: Math.round(sdy / g.length), x: (zx0 + i0 * bs) / W, y: (zy0 + j0 * bs) / H, w: (i1 - i0 + 1) * bs / W, h: (j1 - j0 + 1) * bs / H });
+    }
+    return out;
+  }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -266,7 +304,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, recess, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;

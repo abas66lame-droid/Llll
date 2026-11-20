@@ -193,6 +193,44 @@ const DET = (() => {
     if(ar < 0.4 || ar > 2.5 || tr < 0.6 || tr > 1.67) return 0;
     let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
   }
+  // «تراجع الصف» لرفوف البضاعة المتكررة (شيبس، شوكولا، علب): القطع متطابقة خلف بعضها، فأخذ القطعة الأمامية لا يُحدث
+  // «فراغاً» بل يُرجع واجهة الصف للخلف، فتظهر القطعة التالية أعلى قليلاً في الكاميرا المائلة من الأعلى.
+  // نقيس الإزاحة الرأسية لكل كتلة صغيرة: مجموعة كتل ارتفعت معاً = «التقاط» (pick)، ونزلت معاً = «تعبئة» (restock).
+  // الإضاءة والضجيج لا يُزيحان شيئاً، والأنماط المتكررة لا تخدعنا لأننا نشترط أن تكون المطابقة المُزاحة أفضل بوضوح من مكانها.
+  function recess(ref, cur, z, shift){
+    shift = zoneShift(ref, cur, z, shift);
+    const W = ref.w, H = ref.h, bs = Math.max(12, Math.min(28, Math.round(z.w * W / 26))), M = 40 + Math.max(Math.abs(shift[0]), Math.abs(shift[1])); // نبتعد عن حافة الصورة بمسافة البحث
+    const zx0 = Math.max(M, Math.floor(z.x * W)), zy0 = Math.max(M, Math.floor(z.y * H)), zx1 = Math.min(W - M, Math.ceil((z.x + z.w) * W)), zy1 = Math.min(H - M, Math.ceil((z.y + z.h) * H));
+    if(zx1 - zx0 < bs * 2 || zy1 - zy0 < bs * 2) return [];
+    const R = Math.max(10, Math.min(36, Math.round(bs * 1.3)));
+    const nx = Math.floor((zx1 - zx0) / bs), ny = Math.floor((zy1 - zy0) / bs), dyMap = new Float32Array(nx * ny);
+    const ncc = (x0, y0, dx, dy) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y0 + bs; y += 2){ const yy = y + dy; if(yy < 1 || yy >= H - 1) return -1; for(let x = x0; x < x0 + bs; x += 2){ const xx = x + dx; if(xx < 1 || xx >= W - 1) return -1;
+        const a = ref.G[y * W + x], b = cur.G[yy * W + xx]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return va > n * 20 && vb > n * 4 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+      const x0 = zx0 + i * bs, y0 = zy0 + j * bs;
+      let s0 = -1; for(const dx of [-2, 0, 2]) for(let dy = -2; dy <= 2; dy++){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > s0) s0 = v; }
+      if(s0 > 0.85) continue; // الكتلة في مكانها: لا شيء تغيّر
+      let best = -1, bd = 0;
+      for(let dy = -R; dy <= R; dy += 2){ if(Math.abs(dy) < 5) continue; for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } } }
+      for(const dy of [bd - 1, bd + 1]) for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } }
+      if(best > 0.7 && best - s0 > 0.15) dyMap[j * nx + i] = bd;
+    }
+    // تجميع الكتل المتجاورة بنفس الاتجاه وإزاحة متقاربة
+    const seen = new Uint8Array(nx * ny), out = [];
+    for(let k = 0; k < nx * ny; k++){
+      if(!dyMap[k] || seen[k]) continue;
+      const sg = Math.sign(dyMap[k]), q = [k], g = []; seen[k] = 1;
+      while(q.length){ const c = q.pop(); g.push(c); const ci = c % nx, cj = (c / nx) | 0;
+        for(const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){ const ii = ci + di, jj = cj + dj; if(ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; const n2 = jj * nx + ii;
+          if(!seen[n2] && dyMap[n2] && Math.sign(dyMap[n2]) === sg && Math.abs(dyMap[n2] - dyMap[c]) <= 6){ seen[n2] = 1; q.push(n2); } } }
+      if(g.length < 4) continue;
+      let i0 = 1e9, j0 = 1e9, i1 = -1, j1 = -1, sdy = 0; for(const c of g){ const ci = c % nx, cj = (c / nx) | 0; i0 = Math.min(i0, ci); i1 = Math.max(i1, ci); j0 = Math.min(j0, cj); j1 = Math.max(j1, cj); sdy += dyMap[c]; }
+      out.push({ type: sg < 0 ? 'pick' : 'restock', cells: g.length, dy: Math.round(sdy / g.length), x: (zx0 + i0 * bs) / W, y: (zy0 + j0 * bs) / H, w: (i1 - i0 + 1) * bs / W, h: (j1 - j0 + 1) * bs / H });
+    }
+    return out;
+  }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -343,7 +381,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, recess, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 /* =================== أدوات =================== */
@@ -372,7 +410,7 @@ const DB = {
   del(st, id){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).delete(id); }catch(e){} },
   clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
 };
-const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false };
+const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false };
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -414,14 +452,25 @@ async function loadMP(){
   try{
     const mp = await to(import(MP_URL), 30000);
     const fs = await to(mp.FilesetResolver.forVisionTasks(MP_WASM), 30000);
-    const make = async (Cls, opts) => { let last; for(const delegate of ['GPU', 'CPU']){ try{ return await to(Cls.createFromOptions(fs, Object.assign({}, opts, { baseOptions: Object.assign({}, opts.baseOptions, { delegate }) })), 45000); }catch(e){ last = e; } } throw last; };
+    MP.mp = mp; MP.fs = fs;
+    const make = MP.make = async (Cls, opts) => { let last; for(const delegate of ['GPU', 'CPU']){ try{ return await to(Cls.createFromOptions(fs, Object.assign({}, opts, { baseOptions: Object.assign({}, opts.baseOptions, { delegate }) })), 45000); }catch(e){ last = e; } } throw last; };
     MP.obj = await make(mp.ObjectDetector, { baseOptions: { modelAssetPath: MP_MODELS + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite' }, runningMode: 'IMAGE', scoreThreshold: 0.35, maxResults: 25 });
     try{ MP.hand = await make(mp.GestureRecognizer, { baseOptions: { modelAssetPath: MP_MODELS + 'gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task' }, runningMode: 'IMAGE', numHands: 4, minHandDetectionConfidence: 0.45, minHandPresenceConfidence: 0.45 }); }catch(e){ MP.hand = null; }
     MP.state = 'ready';
     // تسخين: أول استدعاء للنماذج بطيء جداً (ثوانٍ). نستهلكه الآن حتى لا يتأخر الحكم لحظة أول حركة عند العارضة
     try{ const w = document.createElement('canvas'); w.width = 320; w.height = 240; const x = w.getContext('2d'); x.fillStyle = '#888'; x.fillRect(0, 0, 320, 240); mpPeople(w); }catch(e){}
+    loadPose();
   }catch(e){ MP.state = 'error'; MP.err = (e && e.message) || String(e); }
   refreshSoon();
+}
+// نموذج وضعية الجسم (للكشف التجريبي عن حركة الإخفاء): يُحمَّل فقط إذا فُعّل الخيار
+async function loadPose(){
+  if(!S.cfg.conceal || MP.pose || MP.poseLoading || MP.state !== 'ready' || !MP.make) return;
+  MP.poseLoading = true;
+  try{ MP.pose = await MP.make(MP.mp.PoseLandmarker, { baseOptions: { modelAssetPath: MP_MODELS + 'pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task' }, runningMode: 'IMAGE', numPoses: 2 });
+    try{ const w = document.createElement('canvas'); w.width = 256; w.height = 256; MP.pose.detect(w); }catch(e){} }
+  catch(e){ MP.pose = null; MP.poseErr = (e && e.message) || String(e); }
+  MP.poseLoading = false; refreshSoon();
 }
 // يرجع مربعات الأيادي والأشخاص (نسب 0..1) في الصورة
 function mpPeople(c){
@@ -520,6 +569,10 @@ let busy = false;
 function loop(){
   ENG.deadlines();
   if(!S.running || busy) return;
+  // كشف الإخفاء يحتاج قراءات سريعة (الحركة تستغرق ثانية أو ثانيتين): كل 0.4ث أثناء وجود أشخاص أو حركة، وكل 2ث في الهدوء
+  if(S.cfg.conceal && MP.pose && !isDemo() && now() - (S.poseAt || 0) >= (now() - (S.activeAt || 0) < 8 ? 0.4 : 2)){
+    busy = true; S.poseAt = now(); try{ const c = grabFrame(); if(c) CONCEAL.tick(c); }catch(e){ console.error(e); } busy = false;
+  }
   if(now() - S.lastTick < pollSec() - 0.05) return;
   busy = true;
   try{
@@ -620,6 +673,7 @@ const ENG = {
         S.moving[z.id] = true; continue;
       }
       zs.busy = false;
+      if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
       if(frac > 0.01 || cnt >= 3){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
       S.moving[z.id] = false;
       const r = DET.compareZone(this.base, F, z, sh, { fine: fineOf(z) });
@@ -637,6 +691,13 @@ const ENG = {
       // إذا كان شخص أو يد يلامس مكان التغيّر نؤجّل الحكم (قد يكون ذراعاً تغطي القطعة لا شيلاً)
       const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
       if(r.regions.length && P().length && r.regions.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
+      if(z.mode === 'stock'){ // رف بضاعة متكررة: أحداث «التقاط/تعبئة» للعدّ والمطابقة مع المبيعات، بلا مهلة ولا إنذار (إلا ليلاً)
+        const regs = stockRegions(r, DET.recess(this.base, F, z, sh));
+        if(regs.length && P().length && regs.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
+        S.diag[z.id].stock = regs;
+        for(const reg of regs){ if(night && reg.type === 'pick') this.newRemoval(z, reg, c, true); else this.newStock(z, reg, c); }
+        toRebase.push(z); continue;
+      }
       const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
       const handled = new Set();
       for(const reg of mergeNear(r.regions, 0.04)){
@@ -699,6 +760,14 @@ const ENG = {
     addEvent(e);
     if(!night) trySale(e);
     if(night) alertEv(e);
+  },
+  // رف بضاعة: «التقاط» (أُخذت قطعة من مقدمة الصف) أو «تعبئة» — معلوماتي، يُعدّ في التقارير ويُقارن بالمبيعات
+  newStock(z, reg, c){
+    const kind = reg.type === 'restock' ? 'restock' : 'pick';
+    const e = { id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
+      img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, kind === 'pick' ? '#e0a020' : '#38a169'), img_c: this.crop(this.baseCv, c, reg),
+      note: kind === 'pick' ? (reg.gap ? 'أُخذت آخر قطعة في الصف.' : 'أُخذت قطعة من مقدمة الصف.') : 'أُضيفت قطع للصف.' };
+    this.extras(z, e); addEvent(e); S.lastPick = kind === 'pick' ? { zone: z.id, t: now(), id: e.id } : S.lastPick;
   },
   // قطعة نُقلت في نفس القراءة: حدث معلوماتي فيه صورة المكان القديم والجديد، بلا مهلة ولا تنبيه
   newMoved(rm, ad, c, sim){
@@ -776,6 +845,47 @@ function resolveEv(id, res, note, who){
   e.status = 'resolved'; e.resolution = res; e.resolved_by = who || ''; e.t_resolved = now(); if(note) e.note = ((e.note || '') + ' ' + note).trim();
   putEvent(e);
 }
+/* =================== كشف حركة الإخفاء (تجريبي) ===================
+   يد (معصم من MediaPipe Pose) تلمس عارضة أو رفاً، ثم تذهب مباشرة إلى منطقة الجيب/الخصر/داخل الملابس وتبقى لحظة
+   = «اشتباه إخفاء» يحتاج مراجعة المشرف. إذا ذهبت اليد أولاً لمكان آخر (السلة، العربة) يُلغى الاشتباه.
+   لا يعرف المنتج: يكشف الحركة نفسها، فيصلح للشيبس والشوكولا وأي قطعة صغيرة. */
+const CONCEAL = { st: {}, last: {},
+  tick(c){
+    let r; try{ r = MP.pose.detect(c); }catch(e){ return; }
+    const L = (r && r.landmarks) || [], t = now(); if(L.length) S.activeAt = t;
+    L.forEach((lm, p) => {
+      const v = i => lm[i] && (lm[i].visibility === undefined || lm[i].visibility > 0.5) ? lm[i] : null;
+      const a = v(11), b = v(12), h1 = v(23), h2 = v(24); if(!a || !b || !h1 || !h2) return;
+      const sw = Math.abs(a.x - b.x), sy = (a.y + b.y) / 2, hy = (h1.y + h2.y) / 2, th = hy - sy; if(th <= 0.02) return;
+      // منطقة الجسم: من أسفل الصدر حتى الجيوب تحت الورك، بعرض الجسم وهامش
+      const body = { x: Math.min(a.x, b.x, h1.x, h2.x) - 0.25 * sw, y: sy + 0.15 * th }; body.w = Math.max(a.x, b.x, h1.x, h2.x) + 0.25 * sw - body.x; body.h = hy + 0.35 * th - body.y;
+      for(const wi of [15, 16]){
+        const w = v(wi), key = p + '_' + wi, s = this.st[key] = this.st[key] || { n: 0, out: 0 }; if(!w) continue;
+        const inZone = S.zones.find(z => w.x >= z.x - 0.02 && w.x <= z.x + z.w + 0.02 && w.y >= z.y - 0.02 && w.y <= z.y + z.h + 0.02);
+        const inBody = !inZone && w.x >= body.x && w.x <= body.x + body.w && w.y >= body.y && w.y <= body.y + body.h;
+        if(inZone){ if(!s.zone || s.zone.id !== inZone.id || t - s.tTouch > 3) s.img = ENG.shot(c, inZone, '#e0a020'); s.zone = inZone; s.tTouch = t; s.n = 0; s.out = 0; }
+        else if(inBody && s.zone && t - s.tTouch <= 6){ s.out = 0; if(++s.n >= 2){ this.raise(c, s, body, t); s.zone = null; s.n = 0; } }
+        else if(!inBody){ s.n = 0; if(++s.out >= 2) s.zone = null; } // ذهبت اليد لمكان آخر أولاً (السلة/العربة): لا اشتباه
+      }
+    });
+  },
+  raise(c, s, body, t){
+    const z = s.zone; if(t - (this.last[z.id] || 0) < 20) return; this.last[z.id] = t;
+    const pk = S.lastPick && S.lastPick.zone === z.id && t - S.lastPick.t < 15, bx = { x: Math.max(0, body.x), y: Math.max(0, body.y) }; bx.w = Math.min(1, body.x + body.w) - bx.x; bx.h = Math.min(1, body.y + body.h) - bx.y;
+    const e = { id: rid(), zone: z.id, kind: 'conceal', status: 'incident', t_start: t, deadline: t, box: { x: z.x, y: z.y, w: z.w, h: z.h }, img_b: s.img, img_a: ENG.shot(c, bx, '#e53e3e'),
+      note: 'يد لمست «' + z.name + '» ثم ذهبت مباشرة إلى منطقة الجيب أو الخصر خلال ' + Math.max(1, Math.round(t - s.tTouch)) + ' ثانية' + (pk ? '، وتزامن ذلك مع التقاط قطعة من الرف' : '') + '. راجع الصور: قد تكون حركة عادية (إخراج الموبايل مثلاً).' };
+    addEvent(e); alertEv(e);
+  }
+};
+// مناطق رف البضاعة: تراجع/تقدّم الصف (recess) + فراغ واضح (آخر قطعة: rem) أو قطع جديدة في مكان فارغ (add).
+// إذا تعارض «التقاط» و«تعبئة» في نفس الصف (أثر جانبي لتغيّر الحجم بالمنظور) يفوز الأكبر
+function stockRegions(r, rc){
+  const regs = rc.map(g => ({ type: g.type, cells: g.cells, x: g.x, y: g.y, w: g.w, h: g.h }));
+  for(const g of r.regions) if((g.type === 'rem' || g.type === 'add') && !regs.some(q => DET.overlap(g, q) > 0.2)) regs.push({ type: g.type === 'rem' ? 'pick' : 'restock', gap: g.type === 'rem', cells: g.cells, x: g.x, y: g.y, w: g.w, h: g.h });
+  const colOv = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5 * Math.min(a.w, b.w);
+  const keep = regs.filter(a => !regs.some(b => b !== a && b.type !== a.type && colOv(a, b) && b.cells > a.cells));
+  return mergeNear(keep, 0.01);
+}
 // دمج مناطق النقص المتقاربة في نفس اللحظة (قطعة واحدة قد تظهر كجزأين)
 function mergeNear(regs, g){
   const out = regs.map(r => Object.assign({}, r));
@@ -795,8 +905,8 @@ const zoneOf = id => id === '_cam' ? { name: 'الكاميرا', section: '' } :
 function alertEv(e){
   S.alertSeq++; beep();
   const z = zoneOf(e.zone);
-  const txt = `${e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
-  toast(e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
+  const txt = `${e.kind === 'conceal' ? '👁 اشتباه إخفاء: ' + e.note : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'conceal' ? 'راجع الصور وتسجيل الكاميرات.' : e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
+  toast(e.kind === 'conceal' ? '👁 اشتباه إخفاء عند ' + z.name : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
   notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : ''), e.img_p || e.img_c);
 }
 function notifyAll(text, img){
@@ -871,7 +981,7 @@ class DemoSource {
 }
 
 /* =================== الواجهة =================== */
-const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل' };
+const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
 const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], moved: ['نُقل لمكان آخر', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
 const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه', moved: 'نُقل لمكان آخر' };
 let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
@@ -1010,12 +1120,12 @@ function vEv(){
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
 }
 function evCard(e){
-  const z = zoneOf(e.zone), s = (e.kind === 'tamper' && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
+  const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
   return `<div class="card ev"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
     <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
     <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
     ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
-    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
+    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' || e.kind === 'conceal' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
     ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="addSale('${e.zone}',1,'','يدوي');toast('سُجّل البيع')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="startCleaning('${e.zone}');toast('مُدّدت المهلة')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
 }
 function zoom(src){ openModal(`<img src="${src}" style="width:100%;border-radius:10px"><div style="height:8px"></div><button class="btn w" onclick="closeModal()">إغلاق</button>`, true); }
@@ -1059,13 +1169,14 @@ function zoneForm(id, rect){
   const secs = [...new Set(S.zones.map(z => z.section).filter(Boolean))];
   openModal(`<h2>${id ? 'تعديل منطقة' : 'منطقة جديدة'}</h2><div class="fld"><label>اسم العارضة / الرف</label><input id="zn" value="${esc(z.name)}" placeholder="مثال: عارضة آيفون — الرف العلوي"></div>
     <div class="fld"><label>القسم</label><input id="zs" list="secs" value="${esc(z.section || '')}"><datalist id="secs">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+    <div class="fld"><label>نوع المنطقة</label><select id="zm"><option value="">عارضة: أجهزة وقطع منفردة (الشيل يُنذر بعد المهلة)</option><option value="stock" ${z.mode === 'stock' ? 'selected' : ''}>رف بضاعة متكررة: شيبس، شوكولا، علب (يعدّ الالتقاطات ويقارنها بالمبيعات)</option></select><div class="xs mut" style="margin-top:4px">لرف البضاعة: ثبّت الكاميرا مائلة من الأعلى لترى مقدمة الصفوف وحافة الرف.</div></div>
     <div class="fld"><label>الحساسية</label><select id="zf"><option value="">تلقائي (حسب الإعداد العام)</option><option value="normal" ${z.sens === 'normal' ? 'selected' : ''}>عادي: قطع متوسطة وكبيرة</option><option value="fine" ${z.sens === 'fine' ? 'selected' : ''}>دقيق: قطع صغيرة (علكة، شاحن، سماعة)</option></select></div>
     <div class="f2"><button class="btn pri" onclick="saveZone()">حفظ</button><button class="btn" onclick="closeModal();window._afterZone=null;drawEd()">إلغاء</button></div>`);
   setTimeout(() => $('#zn') && $('#zn').focus(), 50);
 }
 function saveZone(){
   const z = window._pz, name = $('#zn').value.trim(); if(!name) return toast('اكتب اسم المنطقة');
-  z.name = name; z.section = $('#zs').value.trim(); z.sens = $('#zf').value || undefined;
+  z.name = name; z.section = $('#zs').value.trim(); z.sens = $('#zf').value || undefined; z.mode = $('#zm').value || undefined;
   if(z.id){ const i = S.zones.findIndex(x => x.id === z.id); S.zones[i] = z; } else { z.id = rid(); S.zones.push(z); }
   saveZones(); closeModal(); if(window._afterZone){ const f = window._afterZone; window._afterZone = null; f(); } else render(); toast('تم حفظ العارضة؛ المراقبة تعمل عليها الآن');
 }
@@ -1106,7 +1217,15 @@ function vRep(){
       return `<tr><td>${d.day}</td><td>${d.removals}</td><td>${d.returned}</td><td>${d.sold}</td><td>${d.incidents}</td><td>${d.theft}</td><td><div class="bar"><i style="width:${100 * d.returned / t}%;background:#38a169"></i><i style="width:${100 * d.sold / t}%;background:#2d5bb5"></i><i style="width:${100 * d.incidents / t}%;background:#c53030"></i></div></td></tr>`; }).join('')}</table></div>
     <div class="xs mut" style="margin-top:6px">أخضر: رجع · أزرق: مُباع · أحمر: تنبيه</div></div>
     <div class="card"><h3>العارضات الأكثر تنبيهات</h3><div class="tw"><table><tr><th>العارضة</th><th>القسم</th><th>تفاعلات (14 يوم)</th><th>حالات الشيل</th><th>تنبيهات</th><th>سرقة مؤكدة</th></tr>${Z.map(([id, o]) => { const z = zoneOf(id), I = LS.get('haris_inter', {}), it = Object.values(I).reduce((a, d) => a + (d[id] || 0), 0); return `<tr><td>${esc(z.name)}</td><td>${esc(z.section || '')}</td><td>${it}</td><td>${o.total}</td><td>${o.inc}</td><td>${o.theft}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">لا توجد بيانات</td></tr>'}</table></div>
-    <div class="row" style="margin-top:10px"><button class="btn" onclick="exportCsv()">تنزيل سجل الأحداث (CSV)</button></div></div>`;
+    <div class="row" style="margin-top:10px"><button class="btn" onclick="exportCsv()">تنزيل سجل الأحداث (CSV)</button></div></div>${vStockRep(since)}`;
+}
+// رفوف البضاعة المتكررة: الالتقاطات مقابل المبيعات المسجّلة لنفس الرف. الفرق الكبير المستمر = بضاعة تخرج بلا بيع
+function vStockRep(since){
+  const Z = S.zones.filter(z => z.mode === 'stock'); if(!Z.length) return '';
+  const rows = Z.map(z => { const E = S.events.filter(e => e.zone === z.id && e.t_start >= since), pk = E.filter(e => e.kind === 'pick').length, rs = E.filter(e => e.kind === 'restock').length, cn = E.filter(e => e.kind === 'conceal').length;
+    const sl = S.sales.filter(x => x.zone === z.id && x.t >= since).reduce((a, x) => a + x.qty, 0); return { z, pk, rs, cn, sl, gap: Math.max(0, pk - sl) }; }).sort((a, b) => b.gap - a.gap || b.cn - a.cn);
+  return `<div class="card"><h3>رفوف البضاعة: الالتقاطات مقابل المبيعات</h3><p class="sm mut" style="margin-top:0">كل «التقاط» قطعة أُخذت من مقدمة صف. إذا كانت الالتقاطات أكثر من المبيعات المسجّلة لنفس الرف بفرق كبير ومستمر، فهناك بضاعة تخرج بلا بيع. سجّل مبيعات كل رف (أو استوردها من الكاشير) لتكون المقارنة دقيقة.</p>
+    <div class="tw"><table><tr><th>الرف</th><th>القسم</th><th>التقاطات</th><th>تعبئة</th><th>مبيعات مسجّلة</th><th>التقاطات بلا بيع</th><th>اشتباه إخفاء</th></tr>${rows.map(o => `<tr><td>${esc(o.z.name)}</td><td>${esc(o.z.section || '')}</td><td>${o.pk}</td><td>${o.rs}</td><td>${o.sl}</td><td style="${o.gap ? 'color:var(--da);font-weight:700' : ''}">${o.gap}</td><td>${o.cn}</td></tr>`).join('')}</table></div></div>`;
 }
 function download(name, text, type){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
 function exportCsv(){
@@ -1126,7 +1245,9 @@ function vSet(){
       ${f('pin', 'رمز الإدارة (لحماية الإعدادات ومعالجة التنبيهات؛ اتركه فارغاً لإلغائه)', 'password')}</div>
     <div class="card"><h3>الذكاء الاصطناعي المحلي</h3><div class="row" style="justify-content:space-between"><div><b class="sm">كشف الأيادي والأشخاص وتسمية القطع (MediaPipe)</b>
       <div class="xs mut">يعمل داخل الجهاز بدون توكنات. يحتاج إنترنت أول مرة لتنزيل النماذج (حوالي 10 ميغابايت). يمنع الحكم أثناء وجود يد في العارضة، ويحفظ صورة لحظة الشيل، ويسمّي القطعة (موبايل، لابتوب، تلفزيون...).</div></div>
-      <button class="sw ${c.ai ? 'on' : ''}" id="c_ai" onclick="this.classList.toggle('on')"></button></div><div class="xs" style="margin-top:6px">الحالة: ${{ off: 'لم يُحمَّل بعد (يُحمَّل عند تشغيل الكاميرا)', loading: 'جارٍ التحميل…', ready: 'يعمل ✓', error: 'تعذّر التحميل: ' + esc(MP.err) }[MP.state]}</div></div>
+      <button class="sw ${c.ai ? 'on' : ''}" id="c_ai" onclick="this.classList.toggle('on')"></button></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">كشف حركة الإخفاء (تجريبي)</b><div class="xs mut">ينبّه إذا لمست يدٌ رفاً أو عارضة ثم ذهبت مباشرة إلى الجيب أو الخصر أو داخل الملابس. يصلح للقطع الصغيرة (شيبس، شوكولا). يحتاج كاميرا ترى جسم الزبون (من زاوية الممر)، ويستهلك المعالج أكثر أثناء وجود أشخاص. تجريبي: كل تنبيه «اشتباه» يحتاج مراجعة، وقد ينبّه لحركة عادية مثل إخراج الموبايل.</div></div>
+      <button class="sw ${c.conceal ? 'on' : ''}" id="c_conceal" onclick="this.classList.toggle('on')"></button></div>${c.conceal ? `<div class="xs" style="margin-top:6px">نموذج وضعية الجسم: ${MP.pose ? 'يعمل ✓' : MP.poseLoading ? 'جارٍ التحميل…' : MP.poseErr ? 'تعذّر التحميل: ' + esc(MP.poseErr) : 'يُحمَّل عند تشغيل الكاميرا'}</div>` : ''}<div class="xs" style="margin-top:6px">الحالة: ${{ off: 'لم يُحمَّل بعد (يُحمَّل عند تشغيل الكاميرا)', loading: 'جارٍ التحميل…', ready: 'يعمل ✓', error: 'تعذّر التحميل: ' + esc(MP.err) }[MP.state]}</div></div>
     <div class="card"><h3>التنبيهات</h3>
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">إشعارات الكمبيوتر</b><div class="xs mut">تظهر حتى لو كانت الصفحة خلف نوافذ أخرى.</div></div><button class="sw ${c.notify ? 'on' : ''}" id="c_notify" onclick="this.classList.toggle('on');if(this.classList.contains('on')&&'Notification' in window)Notification.requestPermission()"></button></div>
       <p class="sm mut">تيليجرام: أنشئ بوتاً عبر @BotFather وانسخ التوكن، وأضفه لمجموعة المشرفين، ثم ضع رقم المجموعة (chat_id).</p>
@@ -1140,7 +1261,7 @@ function vSet(){
 }
 function readSet(){ const g = k => $('#c_' + k) ? $('#c_' + k).value.trim() : S.cfg[k];
   Object.assign(S.cfg, { site: g('site'), open: g('open'), close: g('close'), grace: Math.max(1, +g('grace') || 20), cleaning: Math.max(1, +g('cleaning') || 15), saleWin: Math.max(1, +g('saleWin') || 30),
-    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai }); if(S.cfg.ai && S.running && !isDemo()) loadMP(); }
+    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
 async function importSettings(f){ try{ const j = JSON.parse(await f.text()); if(j.cfg) S.cfg = Object.assign({}, DEF, j.cfg); if(Array.isArray(j.zones)) S.zones = j.zones; saveCfg(); saveZones(); toast('تم الاستيراد'); render(); }catch(e){ toast('ملف غير صالح'); } }
 
 /* =================== التشغيل =================== */

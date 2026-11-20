@@ -179,5 +179,64 @@ def relocate():
     write_y4m('stealadd.y4m', seq)
 
 
+# ===================== رف بضاعة متكررة (شيبس، رافايلو) بكاميرا مائلة من الأعلى =====================
+# كل صف فيه عدة قطع متطابقة خلف بعضها. عند أخذ القطعة الأمامية تظهر التي خلفها أعلى قليلاً وأصغر، ويظهر جزء من سطح الرف.
+SW, SH = 640, 480
+CHIPS = [(200, 30, 40), (30, 90, 190), (40, 150, 60), (230, 190, 30), (150, 40, 150)]
+def shelf_img(counts, body=None, wrist=None, hand=None):
+    rng = np.random.default_rng(99)  # خلفية ثابتة
+    a = np.full((SH, SW, 3), (215, 205, 185), np.float32) + rng.normal(0, 6, (SH, SW, 1)); im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)); d = ImageDraw.Draw(im)
+    for tier, (lip, fh, fw) in enumerate([(220, 72, 58), (420, 118, 60)]):
+        d.polygon([(10, lip - 70), (400, lip - 70), (410, lip), (0, lip)], fill=(170, 165, 160))  # سطح الرف
+        for r in range(5):
+            cx = 45 + r * 78; k = counts.get((tier, r), 4)
+            for i in reversed(range(4 - k, 4)):  # من الخلف للأمام؛ الصف الناقص يبدأ من الخلف (القطع الأمامية أُخذت)
+                sc = 1 - 0.05 * i; w, h = fw * sc, fh * sc; y1 = lip - 4 - i * 13; x0 = cx - w / 2
+                if tier == 0:  # علب رافايلو: أبيض مع شريط ذهبي
+                    d.rectangle([x0, y1 - h - 9 * sc, x0 + w, y1 - h], fill=(235, 235, 230)); d.rectangle([x0, y1 - h, x0 + w, y1], fill=(245, 245, 240), outline=(120, 110, 90))
+                    d.rectangle([x0, y1 - h * .55, x0 + w, y1 - h * .4], fill=(200, 160, 40)); d.ellipse([cx - 9 * sc, y1 - h * .3, cx + 9 * sc, y1 - h * .1], fill=(190, 30, 40))
+                else:  # أكياس شيبس ملونة مع شعار وتجعدات
+                    col = CHIPS[r]; d.rounded_rectangle([x0, y1 - h, x0 + w, y1], radius=8 * sc, fill=col, outline=tuple(int(c * .6) for c in col))
+                    d.ellipse([cx - 20 * sc, y1 - h * .7, cx + 20 * sc, y1 - h * .45], fill=(250, 245, 230)); d.rectangle([cx - 14 * sc, y1 - h * .3, cx + 14 * sc, y1 - h * .2], fill=(250, 220, 60))
+                    for t in range(3): d.line([x0 + 6, y1 - h + 10 + t * 9 * sc, x0 + w - 6, y1 - h + 14 + t * 9 * sc], fill=tuple(min(255, int(c * 1.3) + 20) for c in col), width=2)
+            d.rectangle([cx - 22, lip + 2, cx + 22, lip + 16], fill=(250, 250, 250)); d.line([cx - 16, lip + 9, cx + 12, lip + 9], fill=(40, 40, 40), width=2)  # بطاقة السعر
+        d.rectangle([0, lip, 410, lip + 18], outline=(120, 115, 110))
+    if body:  # علامات نقاط الجسم (للمحاكاة بدل MediaPipe Pose): أكتاف صفراء، ورك أزرق، معصم سماوي
+        d.rectangle([450, 120, 610, 380], fill=(110, 110, 120))
+        for p in [(470, 150), (590, 150)]: d.ellipse([p[0] - 8, p[1] - 8, p[0] + 8, p[1] + 8], fill=(255, 220, 0))
+        for p in [(480, 300), (580, 300)]: d.ellipse([p[0] - 8, p[1] - 8, p[0] + 8, p[1] + 8], fill=(0, 80, 255))
+    if hand: d.ellipse([hand[0] - 40, hand[1] - 35, hand[0] + 40, hand[1] + 35], fill=(205, 160, 135))
+    if wrist: d.ellipse([wrist[0] - 9, wrist[1] - 9, wrist[0] + 9, wrist[1] + 9], fill=(0, 255, 255))
+    return im
+
+def stock():
+    rng = np.random.default_rng(41); B = shelf_img({})
+    # 1) سحب قطعة أمامية من صف شيبس، ثم علبة رافايلو — يُفترض: حدثا «التقاط»، بلا إنذار
+    c1 = {(1, 1): 3}; c2 = {(1, 1): 3, (0, 3): 3}
+    seq = [noisy(rng, B) for _ in range(24)] + [noisy(rng, shelf_img({}, hand=(123, 340))), noisy(rng, shelf_img(c1, hand=(123, 330))), noisy(rng, shelf_img(c1, hand=(150, 250)))]
+    seq += [noisy(rng, shelf_img(c1)) for _ in range(28)] + [noisy(rng, shelf_img(c1, hand=(279, 170))), noisy(rng, shelf_img(c2, hand=(279, 160))), noisy(rng, shelf_img(c2, hand=(300, 90)))]
+    seq += [noisy(rng, shelf_img(c2)) for _ in range(100)]
+    write_y4m('stockpick.y4m', seq)
+    # 2) تعبئة صف ناقص (الموظف يضيف قطعاً للأمام) — يُفترض: «تعبئة»، لا «التقاط»
+    rng = np.random.default_rng(42); R = {(1, 2): 2}
+    seq = [noisy(rng, shelf_img(R)) for _ in range(24)] + [noisy(rng, shelf_img(R, hand=(201, 340))), noisy(rng, shelf_img({}, hand=(201, 330))), noisy(rng, shelf_img({}, hand=(230, 250)))]
+    seq += [noisy(rng, shelf_img({})) for _ in range(100)]
+    write_y4m('restock.y4m', seq)
+    # 3) رف ثابت مع تذبذب التعريض والضجيج — يُفترض: صفر أحداث
+    rng = np.random.default_rng(43)
+    write_y4m('stockidle.y4m', [noisy(rng, B, 4, 1 + 0.03 * np.sin(i / 5)) for i in range(140)])
+
+def conceal():
+    """إخفاء قطعة: اليد تلمس الرف ثم تذهب إلى منطقة الجيب/الخصر — يُفترض: «اشتباه إخفاء». والمقارنة: وضعها في السلة بعيداً عن الجسم."""
+    for name, dest, seed in [('conceal', (485, 330), 51), ('basket', (430, 455), 52)]:
+        rng = np.random.default_rng(seed); c = {(1, 3): 3}; idle = (600, 330)
+        path = [idle] * 48 + [(520, 330), (400, 340), (279, 350)] + [(279, 345)] * 2 + [(400, 340), (dest[0] + 30, dest[1])] + [dest] * 10 + [idle] * 140
+        seq = []
+        for k, w in enumerate(path):
+            taken = 51 <= k
+            seq.append(noisy(rng, shelf_img(c if taken else {}, body=True, wrist=w, hand=(w[0] - 25, w[1] - 10) if 49 <= k < 53 else None)))
+        write_y4m(name + '.y4m', seq)
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal(); tamper(); relocate()
+    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal()

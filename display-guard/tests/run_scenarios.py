@@ -16,12 +16,24 @@ OUT = os.path.join(HERE, 'out')
 CHROME = os.environ.get('CHROME')  # مثال: /usr/bin/google-chrome
 
 GUM = {'id': 'gum', 'name': 'العلكة', 'section': '', 'x': 0.1672, 'y': 0.1796, 'w': 0.4554, 'h': 0.2764}
+SHELF = {'id': 'sh', 'name': 'رف الشيبس والشوكولا', 'section': 'مواد غذائية', 'mode': 'stock', 'x': 0.0, 'y': 0.17, 'w': 0.66, 'h': 0.75}
 MOUSE = {'id': 'mouse', 'name': 'الماوس', 'section': '', 'x': 0.7166, 'y': 0.2577, 'w': 0.2492, 'h': 0.2233}
 # كاشف أشخاص وهمي (يحاكي MediaPipe): يعتبر البكسلات الخضراء (كمّ الذراع) شخصاً
 MOCK_PERSON = r"""(()=>{MP.state='ready';MP.hand=null;
  MP.obj={detect:c=>{const x=c.getContext('2d').getImageData(0,0,c.width,c.height).data,W=c.width,H=c.height;let l=1e9,t=1e9,r=-1,b=-1,n=0;
   for(let y=0;y<H;y+=3)for(let xx=0;xx<W;xx+=3){const i=(y*W+xx)*4;if(x[i+1]>110&&x[i+1]-x[i]>60&&x[i+1]-x[i+2]>35){n++;l=Math.min(l,xx);r=Math.max(r,xx);t=Math.min(t,y);b=Math.max(b,y);}}
   return {detections:n>30?[{boundingBox:{originX:l,originY:t,width:r-l,height:b-t},categories:[{categoryName:'person',score:.9}]}]:[]};}};})();"""
+
+# كاشف وضعية الجسم وهمي (يحاكي MediaPipe Pose): يقرأ علامات ملونة (الأكتاف والورك يميناً بجانب الرف) — أكتاف صفراء، ورك أزرق، معصم سماوي
+MOCK_POSE = r"""(()=>{MP.state='ready';MP.hand=null;MP.obj={detect:()=>({detections:[]})};S.cfg.conceal=true;
+ const find=(c,f,x0=0)=>{const x=c.getContext('2d').getImageData(0,0,c.width,c.height).data,W=c.width,H=c.height,P=[];
+  for(let y=0;y<H;y+=2)for(let xx=Math.floor(x0*W);xx<W;xx+=2){const i=(y*W+xx)*4;if(f(x[i],x[i+1],x[i+2]))P.push([xx/W,y/H]);}
+  if(!P.length)return [];P.sort((a,b)=>a[0]-b[0]);const g=[[P[0]]];for(const p of P.slice(1)){const L=g[g.length-1],q=L[L.length-1];if(p[0]-q[0]>0.03)g.push([p]);else L.push(p);}
+  return g.filter(a=>a.length>3).map(a=>({x:a.reduce((s,p)=>s+p[0],0)/a.length,y:a.reduce((s,p)=>s+p[1],0)/a.length}));};
+ MP.pose={detect:c=>{const Y=find(c,(r,g,b)=>r>200&&g>180&&b<90,0.68),B=find(c,(r,g,b)=>b>200&&r<70&&g<130,0.68),R=find(c,(r,g,b)=>r<70&&g>200&&b>200);
+  if(Y.length<2||B.length<2)return {landmarks:[]};const lm=Array.from({length:33},()=>({x:0,y:0,visibility:0}));
+  lm[11]=Object.assign(Y[0],{visibility:1});lm[12]=Object.assign(Y[1],{visibility:1});lm[23]=Object.assign(B[0],{visibility:1});lm[24]=Object.assign(B[1],{visibility:1});
+  if(R.length)lm[15]=Object.assign(R[0],{visibility:1});return {landmarks:[lm]};}};})();"""
 
 # لا حالة نقص مفتوحة أو منبَّه عليها (النقل أو التدوير ليس شيلاً)
 NO_ALARM = lambda ev: not [1 for _, k, st in ev if k in ('removal', 'night') and st in ('pending', 'incident')]
@@ -52,6 +64,13 @@ SCENARIOS = {
     'movelate': ('movelate.y4m', [{'id': 'up', 'name': 'الرف العلوي', 'section': '', 'x': .1, 'y': .2, 'w': .45, 'h': .33}, {'id': 'dn', 'name': 'الرف السفلي', 'section': '', 'x': .1, 'y': .56, 'w': .55, 'h': .3}], 36, NO_ALARM, None),
     # النقل لا يُخفي السرقة: أُخذت العلكة ووُضعت قطعة مختلفة في الأسفل — يجب أن يبقى الإنذار
     'stealadd': ('stealadd.y4m', [{'id': 'all', 'name': 'الستاند', 'section': '', 'x': .08, 'y': .2, 'w': .62, 'h': .65}], 32, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident'] and not [1 for _, k, _ in ev if k == 'moved'], None),
+    # رف بضاعة متكررة (شيبس، رافايلو): سحب القطعة الأمامية = «التقاط»، والتعبئة = «تعبئة»، والثبات = لا شيء
+    'stockpick': ('stockpick.y4m', [SHELF], 34, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['pick', 'pick'] and NO_ALARM(ev), None),
+    'restock': ('restock.y4m', [SHELF], 26, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['restock'] and NO_ALARM(ev), None),
+    'stockidle': ('stockidle.y4m', [SHELF], 30, lambda ev: not ev, None),
+    # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
+    'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE),
+    'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
