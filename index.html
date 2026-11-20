@@ -4657,6 +4657,7 @@ function neoPaintYield(){
   });
 }
 function neoPageBegin(root, html){
+  window.__amDay = window.__amDayNext || ''; window.__amDayNext = '';   /* يوم الشاشة الجديدة فقط */
   if (typeof root === 'string') root = document.getElementById(root);
   if (!root) return null;
   const session = window.__neoPageSession || 0;
@@ -5480,6 +5481,17 @@ window.neoLeaveLabel = neoLeaveLabel;
 window.neoSetLeave = neoSetLeave;
 window.neoLoadLeave = neoLoadLeave;
 function neoIsOff(id){ return !!(_neoOffSet && _neoOffSet.has(String(id))); }
+/* معطَّل في يوم معيّن؟ بلا يوم = الحالة الآن. التعطيل والحذف يسريان من تاريخهما فقط */
+function neoOffOn(id, day){
+  if (!day) return neoIsOff(id);
+  const f = _neoOffFrom ? _neoOffFrom[String(id)] : undefined;
+  if (f === undefined) return false;
+  if (!f) return true;
+  return day >= f;
+}
+window.neoOffOn = neoOffOn;
+/* اليوم الذي تعرضه الشاشة الآن (شاشة الشفت، نواقص الصالة وتدقيقها) */
+function neoViewDay(){ return window.__amDay || ''; }
 window.neoIsOff = neoIsOff;
 
 /* تعطيل عنصر أو إرجاعه. label للرسالة فقط. */
@@ -5655,7 +5667,7 @@ window.neoToggleOff = async function(kind, itemId, deptId, name){
 };
 
 /* حارس مشترك: يمنع محو تاريخ عنصر بالخطأ ويقترح التعطيل بدلاً منه */
-async function neoGuardDelete(kind, itemId, name, logTable, fk){
+async function neoGuardDelete(kind, itemId, name, logTable, fk, deptId, offKind){
   const tables = Array.isArray(logTable) ? logTable : [logTable];
   let n = 0;
   for (const table of tables){
@@ -5664,6 +5676,18 @@ async function neoGuardDelete(kind, itemId, name, logTable, fk){
     n += count;
   }
   if (!n) return true;
+  /* له سجلات سابقة: «الحذف» يسري من اليوم فقط — يختفي من اليوم فصاعداً
+     وتبقى الأيام السابقة ونِسبها ونواقصها كما كانت تماماً */
+  if (deptId){
+    const go = await neoConfirm('حذف «' + (name || '') + '» من اليوم؟',
+      'يُحذف من اليوم والأيام القادمة فقط، وتبقى الأيام السابقة (' + n + ' سجلاً) ونسبها كما هي.'
+      + '<br><br>يمكن إرجاعه لاحقاً من زر التشغيل بجانبه.');
+    if (!go) return false;
+    if (await neoSetOff(deptId, itemId, true, name)){
+      try{ const fn = window[(window.NEO_OFF_RENDER || {})[offKind] || '']; if (typeof fn === 'function') await fn(deptId); }catch(e){}
+    }
+    return false;
+  }
   return await neoConfirm(
     '⚠️ «' + (name || '') + '» له ' + n + ' سجلاً سابقاً',
     'الحذف النهائي يمسح كل سجلات الأيام الماضية لهذا ' + kind + ' — <b>ولا يمكن استرجاعها</b>.'
@@ -5863,7 +5887,9 @@ function neoCellDisabled(item, fieldKey){
   if (item.on_leave === true) return true;
   /* المعطَّل مؤقتاً = كل خاناته معطّلة: يظهر اسمه للمسؤولين بلا مربعات،
      ولا يمنع اكتمال بقية الصفوف، ولا يدخل في حساب النسبة. */
-  if (typeof neoIsOff === 'function' && neoIsOff(item.id)) return true;
+  const _vd = neoViewDay();
+  if (_vd && item.created_at && String(item.created_at).slice(0,10) > _vd) return true;   /* أُضيف بعد ذلك اليوم */
+  if (neoOffOn(item.id, _vd)) return true;
   const d = item.disabled_fields;
   if (!d) return false;
   const arr = Array.isArray(d) ? d : (typeof d === 'string' ? (function(){ try{ return JSON.parse(d); }catch(e){ return []; } })() : []);
@@ -5874,7 +5900,8 @@ window.neoCellDisabled = neoCellDisabled;
 /* عدد الخانات المعطّلة في عنصر — لخصمها من المتوقّع */
 function neoDisabledCount(item, fieldKeys){
   if (!item) return 0;
-  if (typeof neoIsOff === 'function' && neoIsOff(item.id)) return (fieldKeys || []).length;
+  const _vd = neoViewDay();
+  if ((_vd && item.created_at && String(item.created_at).slice(0,10) > _vd) || neoOffOn(item.id, _vd)) return (fieldKeys || []).length;
   if (!item.disabled_fields) return 0;
   const d = item.disabled_fields;
   const arr = Array.isArray(d) ? d : (typeof d === 'string' ? (function(){ try{ return JSON.parse(d); }catch(e){ return []; } })() : []);
@@ -6572,7 +6599,7 @@ async function addLocation(deptId){
 async function deleteLocation(locationId, deptId){
   const all = await getLocations(deptId);
   const nm = (all.find(l => String(l.id) === String(locationId)) || {}).code || '';
-  if (!await neoGuardDelete('الموقع', locationId, nm, 'daily_logs', 'location_id')) return false;
+  if (!await neoGuardDelete('الموقع', locationId, nm, 'daily_logs', 'location_id', deptId, 'locations')) return false;
   const result = await neoCrudRun(supabaseClient.from('locations').delete()
     .eq('id', locationId).eq('department_id', deptId).select('id'), 'حذف الموقع', { minRows: 1 });
   if (!result) return false;
@@ -6710,7 +6737,7 @@ async function deleteIpad(ipadId, deptId){
     'قراءة جهاز الآيباد قبل الحذف', { minRows: 1 });
   if (!current) return false;
   const name = current.data[0].code || '';
-  if (!await neoGuardDelete('جهاز الآيباد', ipadId, name, 'ipad_logs', 'ipad_id')) return false;
+  if (!await neoGuardDelete('جهاز الآيباد', ipadId, name, 'ipad_logs', 'ipad_id', deptId, 'ipads')) return false;
   const result = await neoCrudRun(
     supabaseClient.from('ipads').delete().eq('id', ipadId).select('id'),
     'حذف جهاز الآيباد', { minRows: 1 });
@@ -6824,7 +6851,7 @@ async function deleteReader(readerId, deptId){
     'قراءة قارئ السيريال قبل الحذف', { minRows: 1 });
   if (!current) return false;
   const name = current.data[0].code || '';
-  if (!await neoGuardDelete('قارئ السيريال', readerId, name, 'serial_reader_logs', 'reader_id')) return false;
+  if (!await neoGuardDelete('قارئ السيريال', readerId, name, 'serial_reader_logs', 'reader_id', deptId, 'serial_readers')) return false;
   const result = await neoCrudRun(
     supabaseClient.from('serial_readers').delete().eq('id', readerId).select('id'),
     'حذف قارئ السيريال', { minRows: 1 });
@@ -6938,7 +6965,7 @@ async function deleteLaptop(laptopId, deptId){
     'قراءة اللابتوب قبل الحذف', { minRows: 1 });
   if (!current) return false;
   const name = current.data[0].code || '';
-  if (!await neoGuardDelete('اللابتوب', laptopId, name, 'laptop_logs', 'laptop_id')) return false;
+  if (!await neoGuardDelete('اللابتوب', laptopId, name, 'laptop_logs', 'laptop_id', deptId, 'laptops')) return false;
   const result = await neoCrudRun(
     supabaseClient.from('laptops').delete().eq('id', laptopId).select('id'),
     'حذف اللابتوب', { minRows: 1 });
@@ -7052,7 +7079,7 @@ async function deleteIpadReaderDevice(deviceId, deptId){
     'قراءة الجهاز المدمج قبل الحذف', { minRows: 1 });
   if (!current) return false;
   const name = current.data[0].code || '';
-  if (!await neoGuardDelete('الجهاز المدمج', deviceId, name, 'ipad_reader_device_logs', 'device_id')) return false;
+  if (!await neoGuardDelete('الجهاز المدمج', deviceId, name, 'ipad_reader_device_logs', 'device_id', deptId, 'ipad_reader_devices')) return false;
   const result = await neoCrudRun(
     supabaseClient.from('ipad_reader_devices').delete().eq('id', deviceId).select('id'),
     'حذف الجهاز المدمج', { minRows: 1 });
@@ -7166,7 +7193,7 @@ async function deletePosDevice(posDeviceId, deptId){
     'قراءة جهاز POS قبل الحذف', { minRows: 1 });
   if (!current) return false;
   const name = current.data[0].code || '';
-  if (!await neoGuardDelete('جهاز POS', posDeviceId, name, 'pos_device_logs', 'pos_device_id')) return false;
+  if (!await neoGuardDelete('جهاز POS', posDeviceId, name, 'pos_device_logs', 'pos_device_id', deptId, 'pos_devices')) return false;
   const result = await neoCrudRun(
     supabaseClient.from('pos_devices').delete().eq('id', posDeviceId).select('id'),
     'حذف جهاز POS', { minRows: 1 });
@@ -7384,7 +7411,7 @@ async function addDailyTask(deptId){
 async function deleteDailyTask(taskId, deptId){
   const all = await getDailyTasks(deptId);
   const nm = (all.find(t => String(t.id) === String(taskId)) || {}).name || '';
-  if (!await neoGuardDelete('المهمة', taskId, nm, 'daily_task_logs', 'task_id')) return false;
+  if (!await neoGuardDelete('المهمة', taskId, nm, 'daily_task_logs', 'task_id', deptId, 'daily_tasks')) return false;
   const result = await neoCrudRun(supabaseClient.from('daily_tasks').delete()
     .eq('id', taskId).eq('department_id', deptId).select('id'), 'حذف المهمة', { minRows: 1 });
   if (!result) return false;
@@ -8103,7 +8130,7 @@ async function addStaffMember(deptId){
 async function deleteStaffMember(staffId, deptId){
   const all = await getStaffList(deptId);
   const nm = (all.find(s => String(s.id) === String(staffId)) || {}).name || '';
-  if (!await neoGuardDelete('الموظف', staffId, nm, ['staff_evaluations','staff_points'], 'staff_id')) return false;
+  if (!await neoGuardDelete('الموظف', staffId, nm, ['staff_evaluations','staff_points'], 'staff_id', deptId, 'staff')) return false;
   const result = await neoCrudRun(supabaseClient.from('staff').delete()
     .eq('id', staffId).eq('department_id', deptId).select('id'), 'حذف الموظف', { minRows: 1 });
   if (!result) return false;
@@ -8648,7 +8675,7 @@ function neoComputeShiftPct(){
     const st = shiftRowsState;
     if (st && st.locations){
       st.locations.forEach(loc => {
-        if (typeof neoIsOff === 'function' && neoIsOff(loc.id)) return;  /* معطَّل — خارج النسبة بأعمدته المخصّصة أيضاً */
+        if (neoOffOn(loc.id, neoViewDay())) return;  /* معطَّل — خارج النسبة بأعمدته المخصّصة أيضاً */
         const log = st.logsMap[loc.id] || {};
         const fn = log?.field_notes || {};
         (st.defs || []).forEach(def => {
@@ -8704,6 +8731,13 @@ window.neoSaveShiftPct = async function(deptId, date, silent){
   /* لا يثبّت نسبة القسم إلا مسؤول شفته نفسه، في يومه الحقيقي — المشاهدة من حساب آخر لا تكتب شيئاً */
   const _pf = window.__fleetProfile || {};
   let _ov = null; try{ _ov = localStorage.getItem('devDateOverride'); }catch(e){}
+  /* المبرمج: يحدّث نسبة أي قسم يدوياً بزر الحفظ وبتأكيد — والحفظ التلقائي من حسابه ممنوع دائماً */
+  if (_pf.role === 'owner' && !window.__neoViewer && !_ov){
+    if (silent){ neoDirty = false; clearTimeout(neoAutoSaveT); document.getElementById('neoSaveBar')?.remove(); return false; }
+    const _r0 = neoComputeShiftPct();
+    if (typeof neoConfirm === 'function' && !(await neoConfirm('تحديث نسبة القسم؟',
+        'ستُثبَّت ' + _r0.pct + '٪ (' + _r0.done + ' من ' + _r0.total + ') ليوم ' + date + ' باسمك بدل المثبَّت حالياً.'))) return false;
+  } else
   if (window.__neoViewer || _pf.role !== 'shift' || !(_pf.department_ids || []).map(String).includes(String(deptId)) || _ov){
     neoDirty = false; clearTimeout(neoAutoSaveT); document.getElementById('neoSaveBar')?.remove();
     if (!silent && typeof neoToast === 'function') neoToast('تثبيت النسبة لمسؤول شفت القسم فقط — العرض هنا للاطلاع');
@@ -8718,7 +8752,7 @@ window.neoSaveShiftPct = async function(deptId, date, silent){
     if (_sv && Number(_sv.pct) > r.pct){
       /* تخفيض بعد تأشير المسؤول نفسه الآن مسموح؛ غير ذلك لا يُنزل الحفظ التلقائي شيئاً */
       if (silent && !(window.__amEditAt && (Date.now() - window.__amEditAt) < 15000)) return false;
-      if (!silent && typeof neoConfirm === 'function' && !(await neoConfirm('تخفيض النسبة المثبَّتة؟',
+      if (!silent && _pf.role !== 'owner' && typeof neoConfirm === 'function' && !(await neoConfirm('تخفيض النسبة المثبَّتة؟',
           'المثبَّت الآن ' + _sv.pct + '٪ والحالي ' + r.pct + '٪. هل تريد تثبيت الأقل؟'))) return false;
     }
   }catch(e){}
@@ -9304,6 +9338,7 @@ async function renderShiftView(profile){
     return;
   }
   const date = todayStr();
+  window.__amDayNext = date;
   try{ document.getElementById('amSaOv')?.remove(); el.style.display = ''; }catch(e){}
   const page = neoPageBegin(el, `${typeof amSaTabs === 'function' ? amSaTabs('shift') : ''}
     <div class="card">
@@ -10247,7 +10282,7 @@ function progBuildRows(cfg){
 function progSetup(cfg){
   /* المعطَّل مؤقتاً يختفي تماماً عن مسؤول الشفت — يبقى ظاهراً (باهتاً) في خانة التعديل وحدها */
   if (!(typeof currentManageMode !== 'undefined' && currentManageMode) && typeof neoIsOff === 'function')
-    cfg.items = (cfg.items || []).filter(it => !neoIsOff(it.id));
+    cfg.items = (cfg.items || []).filter(it => !neoOffOn(it.id, neoViewDay()));
   progSections[cfg.key] = cfg;
   return progBuildRows(cfg);
 }
@@ -10545,6 +10580,7 @@ async function computeHallAuditCompletionForDept(dept, dataSource){
   finally{ window.neoSilentCols = __wasSilent; }   /* تُستعاد دائماً، حتى لو رُمي استثناء */
 }
 async function __computeHallAuditCompletionForDeptInner(dept, d){
+  if (d) window.__amDay = d;
   let total = 0, verified = 0;
   const count = (log, defs, item) => {
     const vf = log?.hall_verified_fields || {}; const fnn = log?.hall_field_notes || {};
@@ -10714,7 +10750,7 @@ function buildStatusTable(items, fieldDefs, rowLabelFn, logsById, hallView){
     items = (items || []).filter(x => !neoHallOutItem(x && x.id));
   /* والمعطَّل مؤقتاً لا يُدقَّق في الصالة */
   if (hallView && typeof neoIsOff === 'function')
-    items = (items || []).filter(x => !neoIsOff(x && x.id));
+    items = (items || []).filter(x => !neoOffOn(x && x.id, neoViewDay()));
   if (!items.length) return { html: '', missing: 0 };
   let missing = 0;
   const labelByKey = {}; fieldDefs.forEach(f => labelByKey[f.key] = f.label);
@@ -11135,7 +11171,7 @@ async function loadHallMissing(){
   const page = neoPageBegin(wrap, neoHallLoadShell('missing'));
   await page.load('hallDataLoading', async () => {
     try{ if (!neoPOLoaded && typeof neoPOLoadAll === 'function') await neoPOLoadAll(); }catch(e){}
-    const date = hallDate();
+    const date = hallDate(); window.__amDay = date;
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!page.current()) return;
     const seed = user.id;
@@ -11774,7 +11810,7 @@ async function loadHallAudit(){
   const page = neoPageBegin(wrap, neoHallLoadShell('audit'));
   await page.load('hallDataLoading', async () => {
     try{ if (!neoPOLoaded && typeof neoPOLoadAll === 'function') await neoPOLoadAll(); }catch(e){}
-    const date = hallDate();
+    const date = hallDate(); window.__amDay = date;
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!page.current()) return;
     const seed = user.id;
@@ -15435,6 +15471,7 @@ async function neoRenderSalesDetailProgressively(deptId, profileId, auditMode, d
   const date = (typeof dateArg === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateArg))
     ? dateArg : (salesSelectedDate || todayStr());
   const detailShift = currentShiftChoice || 'morning';
+  window.__amDayNext = date;   /* العناصر المضافة بعد هذا اليوم أو المحذوفة قبله لا تُعدّ نقصاً */
   const back = auditMode || profileId
     ? `renderSalesManagerHallDetail(${neoJsArg(profileId)})`
     : `renderSalesDeptChooser(${neoJsArg(deptId)})`;
