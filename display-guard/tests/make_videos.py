@@ -228,6 +228,19 @@ def stock():
     seq += [noisy(rng, shelf_img(c1)) for _ in range(20)] + [noisy(rng, shelf_img(c1, hand=(123, 340))), noisy(rng, shelf_img({}, hand=(123, 330))), noisy(rng, shelf_img({}, hand=(150, 250)))]
     seq += [noisy(rng, B) for _ in range(100)]
     write_y4m('stockret.y4m', seq)
+    # 2ج) تدوير كيس الشيبس الأمامي في مكانه (~12°) أو دفعه جانباً قليلاً (ترتيب الرف) — في وضع «لا بيع»: لا إنذار
+    back = np.asarray(shelf_img({(1, 2): 3})).astype(np.int16)
+    X0, Y0, X1, Y1 = 171, 298, 232, 417  # الكيس الأمامي للصف الثالث (cx=201، عرض 60، ارتفاع 118)
+    bm = Image.new('L', (X1 - X0, Y1 - Y0), 0); ImageDraw.Draw(bm).rounded_rectangle([0, 0, X1 - X0 - 1, Y1 - Y0 - 1], radius=8, fill=255); bag = B.crop((X0, Y0, X1, Y1))
+    def tweak(rot, dx):
+        out = Image.fromarray(back.astype(np.uint8)); b2, m2 = bag.rotate(rot, resample=Image.BICUBIC, expand=True), bm.rotate(rot, resample=Image.BICUBIC, expand=True)
+        out.paste(b2, ((X0 + X1) // 2 - b2.size[0] // 2 + dx, (Y0 + Y1) // 2 - b2.size[1] // 2), m2); return out
+    for name, rot, dx, seed in [('stockturn', 12, 0, 45), ('stocknudge', 0, 10, 46)]:
+        rng = np.random.default_rng(seed); T = tweak(rot, dx)
+        handT = T.copy(); ImageDraw.Draw(handT).ellipse([161, 295, 241, 365], fill=(205, 160, 135))  # اليد فوق الكيس بعد تعديله
+        seq = [noisy(rng, B) for _ in range(24)] + [noisy(rng, shelf_img({}, hand=(201, 340))), noisy(rng, handT), noisy(rng, T)]
+        seq += [noisy(rng, T) for _ in range(120)]
+        write_y4m(name + '.y4m', seq)
     # 3) رف ثابت مع تذبذب التعريض والضجيج — يُفترض: صفر أحداث
     rng = np.random.default_rng(43)
     write_y4m('stockidle.y4m', [noisy(rng, B, 4, 1 + 0.03 * np.sin(i / 5)) for i in range(140)])

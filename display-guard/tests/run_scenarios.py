@@ -70,6 +70,9 @@ SCENARIOS = {
     'stockidle': ('stockidle.y4m', [SHELF], 30, lambda ev: not ev, None, {'noSales': False}),
     # وضع «لا يوجد بيع حالياً»: كل التقاط = حالة شيل بمهلة؛ لم ترجع = تنبيه سرقة، رجعت لنفس الصف = تُغلق بلا إنذار
     'stocksteal': ('stockpick.y4m', [SHELF], 34, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident', 'incident'], None, {'noSales': True}),
+    # تدوير كيس في مكانه أو دفعه جانباً قليلاً (ترتيب الرف) في وضع «لا بيع»: لا حالة شيل ولا إنذار
+    'stockturn': ('stockturn.y4m', [SHELF], 30, NO_ALARM, None, {'noSales': True}),
+    'stocknudge': ('stocknudge.y4m', [SHELF], 30, NO_ALARM, None, {'noSales': True}),
     'stockret': ('stockret.y4m', [SHELF], 30, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['returned'], None, {'noSales': True}),
     # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
     'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE, {'noSales': False}),
