@@ -222,6 +222,12 @@ def stock():
     seq = [noisy(rng, shelf_img(R)) for _ in range(24)] + [noisy(rng, shelf_img(R, hand=(201, 340))), noisy(rng, shelf_img({}, hand=(201, 330))), noisy(rng, shelf_img({}, hand=(230, 250)))]
     seq += [noisy(rng, shelf_img({})) for _ in range(100)]
     write_y4m('restock.y4m', seq)
+    # 2ب) سحب قطعة ثم إرجاعها لنفس الصف بعد ~5 ث (ترتيب أو فحص) — في وضع «لا بيع»: حالة تُغلق «رجعت» بلا إنذار
+    rng = np.random.default_rng(44); c1 = {(1, 1): 3}
+    seq = [noisy(rng, B) for _ in range(24)] + [noisy(rng, shelf_img({}, hand=(123, 340))), noisy(rng, shelf_img(c1, hand=(123, 330))), noisy(rng, shelf_img(c1, hand=(150, 250)))]
+    seq += [noisy(rng, shelf_img(c1)) for _ in range(20)] + [noisy(rng, shelf_img(c1, hand=(123, 340))), noisy(rng, shelf_img({}, hand=(123, 330))), noisy(rng, shelf_img({}, hand=(150, 250)))]
+    seq += [noisy(rng, B) for _ in range(100)]
+    write_y4m('stockret.y4m', seq)
     # 3) رف ثابت مع تذبذب التعريض والضجيج — يُفترض: صفر أحداث
     rng = np.random.default_rng(43)
     write_y4m('stockidle.y4m', [noisy(rng, B, 4, 1 + 0.03 * np.sin(i / 5)) for i in range(140)])

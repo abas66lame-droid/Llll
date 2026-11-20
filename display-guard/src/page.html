@@ -102,7 +102,7 @@ const DB = {
   del(st, id){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).delete(id); }catch(e){} },
   clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
 };
-const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false };
+const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true };
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -387,7 +387,14 @@ const ENG = {
         const regs = stockRegions(r, DET.recess(this.base, F, z, sh));
         if(regs.length && P().length && regs.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
         S.diag[z.id].stock = regs;
-        for(const reg of regs){ if(night && reg.type === 'pick') this.newRemoval(z, reg, c, true); else this.newStock(z, reg, c); }
+        // «لا يوجد بيع حالياً»: كل التقاط = حالة شيل عادية (مهلة ثم تنبيه)، والقطعة التي ترجع لنفس الصف تُغلقها
+        const strict = night || S.cfg.noSales, opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+        for(const reg of regs){
+          if(strict && reg.type === 'pick'){ if(!opened.some(e => DET.overlap(reg, e.box) > 0.5)) this.newRemoval(z, reg, c, night); continue; }
+          if(strict && reg.type === 'restock'){ const col = e => Math.min(reg.x + reg.w, e.box.x + e.box.w) - Math.max(reg.x, e.box.x) > 0.5 * Math.min(reg.w, e.box.w);
+            const m = opened.filter(col).sort((a, b) => b.t_start - a.t_start)[0]; if(m){ this.returned(m, c); opened.splice(opened.indexOf(m), 1); continue; } }
+          this.newStock(z, reg, c);
+        }
         toRebase.push(z); continue;
       }
       const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
@@ -914,7 +921,7 @@ function vRep(){
 // رفوف البضاعة المتكررة: الالتقاطات مقابل المبيعات المسجّلة لنفس الرف. الفرق الكبير المستمر = بضاعة تخرج بلا بيع
 function vStockRep(since){
   const Z = S.zones.filter(z => z.mode === 'stock'); if(!Z.length) return '';
-  const rows = Z.map(z => { const E = S.events.filter(e => e.zone === z.id && e.t_start >= since), pk = E.filter(e => e.kind === 'pick').length, rs = E.filter(e => e.kind === 'restock').length, cn = E.filter(e => e.kind === 'conceal').length;
+  const rows = Z.map(z => { const E = S.events.filter(e => e.zone === z.id && e.t_start >= since), pk = E.filter(e => e.kind === 'pick' || e.kind === 'removal' || e.kind === 'night').length, rs = E.filter(e => e.kind === 'restock').length, cn = E.filter(e => e.kind === 'conceal').length;
     const sl = S.sales.filter(x => x.zone === z.id && x.t >= since).reduce((a, x) => a + x.qty, 0); return { z, pk, rs, cn, sl, gap: Math.max(0, pk - sl) }; }).sort((a, b) => (b.sl ? b.gap : 0) - (a.sl ? a.gap : 0) || b.cn - a.cn || b.pk - a.pk);
   return `<div class="card"><h3>رفوف البضاعة: الالتقاطات مقابل المبيعات</h3><p class="sm mut" style="margin-top:0">«التقاط» يعني أن قطعة أُخذت من مقدمة صف، <b>وليس سرقة</b>: أغلب الالتقاطات زبائن يشترون. المقارنة تصبح مفيدة فقط إذا سُجّلت مبيعات الرف (مجموع اليوم من تقرير الكاشير يكفي، من تبويب «المبيعات»). بدون مبيعات، مؤشر السرقة الوحيد هو «اشتباه إخفاء».</p>
     <div class="tw"><table><tr><th>الرف</th><th>القسم</th><th>التقاطات</th><th>تعبئة</th><th>مبيعات مسجّلة</th><th>التقاطات بلا بيع</th><th>اشتباه إخفاء</th></tr>${rows.map(o => `<tr><td>${esc(o.z.name)}</td><td>${esc(o.z.section || '')}</td><td>${o.pk}</td><td>${o.rs}</td><td>${o.sl}</td><td style="${o.sl && o.gap ? 'color:var(--da);font-weight:700' : ''}">${o.sl ? o.gap : '<span class="mut">لا مبيعات مسجّلة</span>'}</td><td>${o.cn}</td></tr>`).join('')}</table></div></div>`;
@@ -934,6 +941,7 @@ function vSet(){
       <div class="f2">${f('grace', 'مهلة رجوع المنتج (دقيقة)', 'number', 'min="1"')}${f('cleaning', 'مدة التنظيف/العرض (دقيقة)', 'number', 'min="1"')}</div>
       <div class="f2">${f('saleWin', 'نافذة مطابقة البيع (دقيقة)', 'number')}${f('poll', 'تحليل الصورة كل (ثانية)', 'number', 'min="2"')}</div>
       <div class="row" style="justify-content:space-between;margin:10px 0"><div><b class="sm">التنبيه الفوري خارج ساعات العمل</b><div class="xs mut">أي شيل بعد الإغلاق يُنبَّه عنه مباشرة بدون مهلة.</div></div><button class="sw ${c.night ? 'on' : ''}" id="c_night" onclick="this.classList.toggle('on')"></button></div>
+      <div class="row" style="justify-content:space-between;margin:10px 0"><div><b class="sm">لا يوجد بيع حالياً (كل التقاط باليد = سرقة)</b><div class="xs mut">في رفوف البضاعة أيضاً: كل قطعة تُؤخذ تفتح حالة شيل بمهلة؛ إذا رجعت لنفس الصف تُغلق، وإلا يصدر تنبيه. أطفئه عند بدء البيع.</div></div><button class="sw ${c.noSales ? 'on' : ''}" id="c_noSales" onclick="this.classList.toggle('on')"></button></div>
       ${f('pin', 'رمز الإدارة (لحماية الإعدادات ومعالجة التنبيهات؛ اتركه فارغاً لإلغائه)', 'password')}</div>
     <div class="card"><h3>الذكاء الاصطناعي المحلي</h3><div class="row" style="justify-content:space-between"><div><b class="sm">كشف الأيادي والأشخاص وتسمية القطع (MediaPipe)</b>
       <div class="xs mut">يعمل داخل الجهاز بدون توكنات. يحتاج إنترنت أول مرة لتنزيل النماذج (حوالي 10 ميغابايت). يمنع الحكم أثناء وجود يد في العارضة، ويحفظ صورة لحظة الشيل، ويسمّي القطعة (موبايل، لابتوب، تلفزيون...).</div></div>
@@ -953,7 +961,7 @@ function vSet(){
 }
 function readSet(){ const g = k => $('#c_' + k) ? $('#c_' + k).value.trim() : S.cfg[k];
   Object.assign(S.cfg, { site: g('site'), open: g('open'), close: g('close'), grace: Math.max(1, +g('grace') || 20), cleaning: Math.max(1, +g('cleaning') || 15), saleWin: Math.max(1, +g('saleWin') || 30),
-    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
+    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
 async function importSettings(f){ try{ const j = JSON.parse(await f.text()); if(j.cfg) S.cfg = Object.assign({}, DEF, j.cfg); if(Array.isArray(j.zones)) S.zones = j.zones; saveCfg(); saveZones(); toast('تم الاستيراد'); render(); }catch(e){ toast('ملف غير صالح'); } }
 
 /* =================== التشغيل =================== */

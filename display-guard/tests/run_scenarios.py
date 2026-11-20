@@ -68,6 +68,9 @@ SCENARIOS = {
     'stockpick': ('stockpick.y4m', [SHELF], 34, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['pick', 'pick'] and NO_ALARM(ev), None),
     'restock': ('restock.y4m', [SHELF], 26, lambda ev: [k for _, k, _ in ev if k in ('pick', 'restock')] == ['restock'] and NO_ALARM(ev), None),
     'stockidle': ('stockidle.y4m', [SHELF], 30, lambda ev: not ev, None),
+    # وضع «لا يوجد بيع حالياً»: كل التقاط = حالة شيل بمهلة؛ لم ترجع = تنبيه سرقة، رجعت لنفس الصف = تُغلق بلا إنذار
+    'stocksteal': ('stockpick.y4m', [SHELF], 34, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident', 'incident'], None, {'noSales': True}),
+    'stockret': ('stockret.y4m', [SHELF], 30, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['returned'], None, {'noSales': True}),
     # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
     'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE),
     'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE),
@@ -76,14 +79,14 @@ SCENARIOS = {
 
 
 async def run_one(p, name):
-    vid, zones, secs, check, mock = SCENARIOS[name]
+    vid, zones, secs, check, mock, *rest = SCENARIOS[name]; cfg = rest[0] if rest else {}
     args = ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-video-capture=' + os.path.join(OUT, vid)]
     b = await p.chromium.launch(executable_path=CHROME, args=args) if CHROME else await p.chromium.launch(args=args)
     pg = await (await b.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)).new_page()
     errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     await pg.goto(HTML); await pg.wait_for_timeout(600)
     import json
-    await pg.evaluate("z => { S.zones = z; S.cfg.test = true; S.cfg.testSec = 10; saveZones(); saveCfg(); }", zones)
+    await pg.evaluate("([z, c]) => { S.zones = z; S.cfg.test = true; S.cfg.testSec = 10; Object.assign(S.cfg, c); saveZones(); saveCfg(); }", [zones, cfg])
     await pg.click('text=تشغيل الكاميرا')
     if mock:
         for _ in range(20):
