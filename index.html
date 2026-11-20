@@ -14548,8 +14548,10 @@ async function computeAllDeptsOverallPct(date){
   }catch(e){}
   const isHid = (deptId, sc) => !!(hiddenMap[deptId] && hiddenMap[deptId].has(sc));
   _neoWrongByDept = {};
+  const _amScopes = {};
   const bump = (deptId, total, done, scope, wrong) => {
     if (scope && isHid(deptId, scope)) return;   /* جدول مخفي لا يدخل الحساب */
+    if (scope){ const sc = (_amScopes[deptId] = _amScopes[deptId] || {}); const x = (sc[scope] = sc[scope] || { total:0, done:0 }); x.total += total; x.done += done; }
     if (!totals[deptId]) totals[deptId] = { total: 0, done: 0 };
     totals[deptId].total += total;
     totals[deptId].done += done;
@@ -14697,7 +14699,7 @@ async function computeAllDeptsOverallPct(date){
     pctByDept[deptId] = t.total ? Math.min(100, Math.round((t.done / t.total) * 100)) : 0;
   });
   /* المجاميع الخام — يحتاجها تثبيت النسب المتأخّرة ليكتب total/done كما يكتبهما المسؤول */
-  try{ _neoTotalsByDept = { date, totals: JSON.parse(JSON.stringify(totals)) }; }catch(e){}
+  try{ _neoTotalsByDept = { date, totals: JSON.parse(JSON.stringify(totals)), scopes: _amScopes, wrong: Object.assign({}, _neoWrongByDept) }; }catch(e){}
 
   /* ── المصدر الواحد: النسبة التي حفظها مسؤول الشفت تتقدّم على الحساب القديم ──
      كان هذا يُطبَّق في شاشة واحدة فقط؛ نقلناه داخل الدالة ليشمل كل من يستدعيها.
@@ -31650,6 +31652,42 @@ window.neoStreakZero = async function(id,kind){
 #amSaOv .amCalFut{opacity:.32}
 #amSaOv .amCalKey{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:12px;color:var(--ui-muted);font-size:11px}
 #amSaOv .amCalKey i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:4px}
+#amSaOv .c{background:var(--ui-panel,rgba(22,38,58,.62));border:1px solid var(--line-strong,rgba(120,190,180,.16));border-radius:22px;padding:16px;margin-bottom:12px}
+#amSaOv .c h3{margin:0 0 10px;font-size:15px;color:var(--accent2,var(--accent))}
+#amSaOv .amRpMu{color:var(--ui-muted);font-size:12px}
+#amSaOv .amRpPer{display:flex;gap:4px;background:rgba(0,0,0,.18);border-radius:13px;padding:4px;margin-bottom:12px}
+#amSaOv .amRpPer button{flex:1;margin:0;padding:8px 0;border:0;border-radius:10px;background:transparent;color:var(--ui-muted);font:700 12.5px inherit;box-shadow:none}
+#amSaOv .amRpPer button.on{background:var(--ui-panel,rgba(22,38,58,.9));color:var(--accent)}
+#amSaOv .amRpTop{display:flex;align-items:center;gap:16px}
+#amSaOv .amRpRing{width:104px;height:104px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--v)*1%),rgba(255,255,255,.08) 0)}
+#amSaOv .amRpRing>div{width:84px;height:84px;border-radius:50%;background:var(--ui-panel,#13243a);display:grid;place-content:center;text-align:center}
+#amSaOv .amRpRing b{font-size:25px;color:var(--accent);line-height:1.1}#amSaOv .amRpRing small{font-size:10.5px;color:var(--ui-muted)}
+#amSaOv .amRpName{font-size:17px;font-weight:800}#amSaOv .amRpDiff{margin-top:8px;font-size:12.5px;font-weight:700}
+#amSaOv .amRpStats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:14px}
+#amSaOv .amRpStats>div{background:rgba(0,0,0,.16);border-radius:14px;padding:9px 4px;text-align:center}
+#amSaOv .amRpStats b{display:block;font-size:17px}#amSaOv .amRpStats small{font-size:10.5px;color:var(--ui-muted)}
+#amSaOv .amRpDays{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
+#amSaOv .amRpD{margin:0;padding:4px 0;border:0;background:transparent;box-shadow:none;border-radius:12px;color:inherit;min-width:0}
+#amSaOv .amRpD.on{background:rgba(56,217,185,.10)}#amSaOv .amRpD.fut{opacity:.35}
+#amSaOv .amRpD small{display:block;font-size:10.5px;color:var(--ui-muted);margin-bottom:5px}
+#amSaOv .amRpD span{width:38px;height:38px;margin:auto;border-radius:50%;border:2px solid;display:grid;place-items:center;font-size:12px;font-weight:800}
+#amSaOv .amRpD em{display:block;font-style:normal;font-size:9.5px;color:#ffcc78;margin-top:3px;min-height:11px}
+#amSaOv .amRpDet{margin-top:10px;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.18);font-size:13px;line-height:1.8}
+#amSaOv .amRpDet span{color:var(--ui-muted);font-size:12px}
+#amSaOv .amRpGap{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line-strong,rgba(120,190,180,.12))}
+#amSaOv .amRpGap:first-of-type{border-top:0}#amSaOv .amRpGap b{flex:1;font-size:13.5px;font-weight:500}
+#amSaOv .amRpGap i{font-style:normal;font-size:12px;color:#ffcc78;font-weight:700;min-width:54px;text-align:left}
+#amSaOv .amRpMini{width:70px;height:6px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden}
+#amSaOv .amRpMini span{display:block;height:100%;background:#ffcc78;border-radius:9px}
+#amSaOv .amRpBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#amSaOv .amRpBtns button{margin:0;width:100%}
+#amSaOv .amRpPrimary{background:rgba(56,217,185,.16)!important;color:var(--accent)!important;border:1px solid rgba(56,217,185,.4)!important}
+html body #amSaOv .amRpD:not(#_a):not(#_b):not(#_c):not(#_d){background:transparent!important;border:0!important;box-shadow:none!important;outline:0!important;min-height:0!important;height:auto!important;padding:4px 0!important;margin:0!important;width:auto!important;transform:none!important}
+html body #amSaOv .amRpD.on:not(#_a):not(#_b):not(#_c):not(#_d){background:rgba(56,217,185,.10)!important}
+html body #amSaOv .amRpD:not(#_a):not(#_b):not(#_c):not(#_d)::before,html body #amSaOv .amRpD:not(#_a):not(#_b):not(#_c):not(#_d)::after,html body #amSaOv .amRpPer button:not(#_a):not(#_b):not(#_c):not(#_d)::before,html body #amSaOv .amRpPer button:not(#_a):not(#_b):not(#_c):not(#_d)::after{display:none!important}
+html body #amSaOv .amRpPer:not(#_a):not(#_b):not(#_c):not(#_d){display:flex!important;gap:4px!important;background:rgba(0,0,0,.2)!important;border-radius:13px!important;padding:4px!important}
+html body #amSaOv .amRpPer button:not(#_a):not(#_b):not(#_c):not(#_d){flex:1!important;background:transparent!important;border:0!important;box-shadow:none!important;min-height:0!important;height:auto!important;padding:8px 0!important;margin:0!important;color:var(--ui-muted)!important;font-size:12.5px!important;border-radius:10px!important;width:auto!important}
+html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){background:var(--ui-panel,rgba(22,38,58,.9))!important;color:var(--accent)!important}
 </style>
 <script id="amShiftAnalytics">
 /* «الاتجاه» و«التقرير» لمسؤول الشفت — قسمه فقط، قراءة فقط من النسب المثبَّتة */
@@ -31659,7 +31697,7 @@ window.neoStreakZero = async function(id,kind){
   function f(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function avg(a){ return a.length ? Math.round(a.reduce(function(s,v){return s+v;},0)/a.length) : null; }
   async function rows(dept, from, to){
-    var r = await supabaseClient.from('daily_stats').select('log_date,pct,done,total,saved_by_name')
+    var r = await supabaseClient.from('daily_stats').select('log_date,pct,done,total,saved_by_name,updated_at')
       .eq('department_id', dept).gte('log_date', from).lte('log_date', to).order('log_date');
     if (r.error) throw r.error; return r.data || [];
   }
@@ -31679,7 +31717,7 @@ window.neoStreakZero = async function(id,kind){
   window.amSaCopy = function(){ var t = document.getElementById('amSaTxt'); if (!t) return;
     try{ navigator.clipboard.writeText(t.value); }catch(e){} if (typeof neoToast==='function') neoToast('نُسخ التقرير', true); };
   function head(name){
-    return amSaTabs(st.tab) + '<h2 style="margin:4px 4px 10px;font-size:17px;">' + neoHtml(name) + '</h2>';
+    return amSaTabs(st.tab) + (st.tab === 'report' ? '' : '<h2 style="margin:4px 4px 10px;font-size:17px;">' + neoHtml(name) + '</h2>');
   }
   async function render(){
     var dept = myDept(); if (!dept) return;
@@ -31745,23 +31783,117 @@ window.neoStreakZero = async function(id,kind){
       + amSaCal(c, by, today)
       + (dl.length>=3 ? '<div class="card"><h3 style="margin:0 0 8px;">أداء أيام الأسبوع</h3>' + dl.map(function(r){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;"><span style="min-width:58px;font-size:12px;">'+r.d+'</span><div style="flex:1;height:12px;border-radius:6px;background:rgba(122,167,255,.12);overflow:hidden;"><div class="neoTrendBar" data-band="'+neoTrendBand(r.v)+'" style="height:100%;width:'+r.v+'%;"></div></div><b style="min-width:34px;font-size:12px;">'+r.v+'٪</b></div>'; }).join('') + '</div>' : '');
   }
+  var rp = { per:'week', day:null };
+  window.amSaPer = function(p){ rp.per = p; rp.day = null; render(); };
+  window.amSaDay = function(d){ rp.day = (rp.day === d ? null : d); render(); };
+  function iqTime(ts){ try{ var d = new Date(new Date(ts).getTime() + 3*3600000); return String(d.getUTCHours()).padStart(2,'0') + ':' + String(d.getUTCMinutes()).padStart(2,'0'); }catch(e){ return ''; } }
+  function addD(iso, n){ var d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return f(d); }
+  var SCOPE_AR = { loc:'المواقع', staff:'تقييم الموظفين', tasks:'المهام اليومية', ipad:'جرد الآيباد', reader:'قارئ السيريال', ipadreader:'الآيباد وقارئ السيريال', laptop:'اللابتوب', pos:'أجهزة POS', clean:'نظافة القسم', customsec:'الجداول المضافة' };
+  var gapCache = {};
+  /* النواقص تُحسب فقط للأيام التي ثُبّتت دون ١٠٠٪ — اليوم المكتمل لا نقص فيه */
+  async function gaps(dept, from, to, days){
+    var key = dept + from + to + days.join(','); if (gapCache[key]) return gapCache[key];
+    var sum = {}, wrong = 0, n = 0;
+    for (var j = 0; j < days.length; j++){ var d = days[j];
+      try{
+        await computeAllDeptsOverallPct(d);
+        var t = _neoTotalsByDept || {}; if (t.date !== d) continue; n++;
+        var sc = (t.scopes || {})[dept] || {};
+        Object.keys(sc).forEach(function(k){ sum[k] = (sum[k] || 0) + Math.max(0, sc[k].total - sc[k].done); });
+        wrong += ((t.wrong || {})[dept] || 0);
+      }catch(e){}
+    }
+    var list = Object.keys(sum).filter(function(k){ return sum[k] > 0; }).map(function(k){ return { k:k, n:sum[k] }; }).sort(function(a,b){ return b.n - a.n; }).slice(0, 4);
+    return (gapCache[key] = { list:list, wrong:wrong, days:n });
+  }
   async function report(dept, name){
-    var cur = neoWeekRange(0), prev = neoWeekRange(1);
-    var a = await rows(dept, cur.from, cur.to), b = await rows(dept, prev.from, prev.to);
+    var today = f(typeof iraqNow==='function' ? iraqNow() : new Date());
+    var R = rp.per === 'cycle' ? neoBillingMonth(0) : neoWeekRange(rp.per === 'prev' ? 1 : 0);
+    var P = rp.per === 'cycle' ? neoBillingMonth(1) : neoWeekRange(rp.per === 'prev' ? 2 : 1);
+    var a = await rows(dept, R.from, R.to), b = await rows(dept, P.from, P.to);
+    var by = {}; a.forEach(function(r){ by[r.log_date] = r; });
     var ca = avg(a.map(function(r){ return Number(r.pct)||0; })), pa = avg(b.map(function(r){ return Number(r.pct)||0; }));
     var diff = (ca!==null && pa!==null) ? ca - pa : null;
-    var col = function(v){ return v>=85?'#3ecf6b':v>=60?'#d3a04f':'#e15b64'; };
-    var txt = 'تقرير ' + name + ' — ' + cur.from + ' إلى ' + cur.to + '\nالمتوسط: ' + (ca===null?'—':ca+'٪')
-      + (diff===null?'':' (الأسبوع السابق '+pa+'٪)') + '\nثبّت ' + a.length + ' من ٧ أيام\n\n'
+    var full = a.filter(function(r){ return Number(r.pct) >= 100; }).length;
+    var span = 0; for (var d0 = R.from; d0 <= R.to && d0 <= today; d0 = addD(d0, 1)) span++;
+    /* الترتيب بين الأقسام — رقم فقط بلا أسماء ولا نسب الآخرين */
+    var rank = null, of = 0;
+    try{
+      var all = await supabaseClient.from('daily_stats').select('department_id,pct,log_date').gte('log_date', R.from).lte('log_date', R.to);
+      var m = {}; (all.data||[]).forEach(function(r){ if (typeof neoDeptOut === 'function' && neoDeptOut(r.department_id, r.log_date)) return; (m[r.department_id] = m[r.department_id] || []).push(Number(r.pct)||0); });
+      var avs = Object.keys(m).map(function(k){ return { k:k, v:avg(m[k]) }; }).sort(function(x,y){ return y.v - x.v; });
+      of = avs.length; var i = avs.findIndex(function(x){ return String(x.k) === String(dept); }); rank = i < 0 ? null : (avs.filter(function(x){ return x.v > avs[i].v; }).length + 1);
+    }catch(e){}
+    /* الأيام المتتالية بنسبة ١٠٠٪ حتى آخر يوم مثبَّت */
+    var streak = 0;
+    try{
+      var h = await rows(dept, addD(today, -120), today), hm = {}; h.forEach(function(r){ hm[r.log_date] = Number(r.pct)||0; });
+      var d1 = (hm[today] >= 100) ? today : addD(today, -1);
+      while (hm[d1] >= 100){ streak++; d1 = addD(d1, -1); }
+    }catch(e){}
+    var gFrom = rp.per === 'cycle' ? (addD(today, -6) > R.from ? addD(today, -6) : R.from) : R.from, gTo = R.to;
+    var lbl = (rp.per === 'cycle' ? 'الدورة ' + R.label : R.from.slice(5).replace('-', '/') + ' – ' + R.to.slice(5).replace('-', '/'));
+    var ringV = ca === null ? 0 : ca;
+    var hero = '<div class="c amRpHero"><div class="amRpTop"><div class="amRpRing" style="--v:' + ringV + '"><div><b>' + (ca===null?'—':ca+'٪') + '</b><small>' + neoTrendBandLabel(ca) + '</small></div></div>'
+      + '<div><div class="amRpName">' + neoHtml(name) + '</div><div class="amRpMu">' + lbl + '</div>'
+      + '<div class="amRpDiff" style="color:' + (diff===null?'var(--ui-muted)':diff>2?'#65edb1':diff<-2?'#ff879c':'#ffcc78') + '">' + (diff===null?'لا مقارنة سابقة':diff>2?'▲ '+diff+' عن السابق':diff<-2?'▼ '+Math.abs(diff)+' عن السابق':'ثابت عن السابق') + '</div></div></div>'
+      + '<div class="amRpStats"><div><b style="color:#65edb1">' + full + ' / ' + span + '</b><small>أيام مكتملة</small></div>'
+      + '<div><b>' + (rank ? rank + ' من ' + of : '—') + '</b><small>ترتيب القسم</small></div>'
+      + '<div><b style="color:#ffcc78">' + streak + '</b><small>أيام متتالية 100٪</small></div></div></div>';
+    var DW = ['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'];
+    var daysHtml;
+    if (rp.per === 'cycle'){
+      var bm = {}; a.forEach(function(r){ bm[r.log_date] = Number(r.pct)||0; });
+      daysHtml = amSaCal(R, bm, today).replace('<div class="card amCal">', '<div class="c amCal">');
+    } else {
+      var dots = ''; for (var d2 = R.from; d2 <= R.to; d2 = addD(d2, 1)){
+        var r = by[d2], v = r ? Number(r.pct)||0 : null, fut = d2 > today, col = v===null ? 'rgba(143,163,184,.35)' : neoTrendColor(v);
+        var tag = d2 === today ? '<em style="color:var(--accent)">اليوم</em>' : (r && /تحديث/.test(r.saved_by_name||'') ? '<em>تحديث</em>' : '<em></em>');
+        dots += '<button type="button" class="amRpD' + (rp.day===d2?' on':'') + (fut?' fut':'') + '" onclick="amSaDay(\'' + d2 + '\')"><small>' + DW[new Date(d2+'T12:00:00').getDay()] + '</small>'
+          + '<span style="border-color:' + col + ';color:' + col + '">' + (fut ? Number(d2.slice(8)) : v===null ? '—' : v) + '</span>' + tag + '</button>';
+      }
+      var det = '';
+      if (rp.day){
+        var x = by[rp.day];
+        det = '<div class="amRpDet">' + (x ? '<b>' + rp.day + '</b> · ' + x.pct + '٪ (' + (x.done||0) + ' من ' + (x.total||0) + ')<br><span>ثُبّتت الساعة ' + iqTime(x.updated_at) + ' · ' + neoHtml(x.saved_by_name || '') + '</span>' : '<b>' + rp.day + '</b> · لم تُثبَّت نسبة لهذا اليوم') + '</div>';
+      }
+      daysHtml = '<div class="c"><h3>أيام الأسبوع</h3><div class="amRpDays">' + dots + '</div>' + (det || '<div class="amRpMu" style="text-align:center;margin-top:10px">اضغط يوماً لتفاصيله ووقت تثبيته</div>') + '</div>';
+    }
+    var gapHtml = '<div class="c" id="amRpGaps"><h3>أين الخلل' + (rp.per === 'cycle' ? ' — آخر 7 أيام' : '') + '</h3><div class="amRpMu">جاري حساب النواقص من السجلات…</div></div>';
+    var gapTicket = (window.__amRpTicket = (window.__amRpTicket || 0) + 1);
+    setTimeout(async function(){
+      var gDays = a.filter(function(r){ return r.log_date >= gFrom && r.log_date <= gTo && Number(r.pct) < 100; }).map(function(r){ return r.log_date; });
+      var g = await gaps(dept, gFrom, gTo, gDays);
+      var box = document.getElementById('amRpGaps'); if (!box || gapTicket !== window.__amRpTicket) return;
+      var mx = g.list.length ? g.list[0].n : 1;
+      box.innerHTML = '<h3>أين الخلل' + (rp.per === 'cycle' ? ' — آخر 7 أيام' : '') + '</h3>'
+        + (g.list.length ? g.list.map(function(it){ return '<div class="amRpGap"><b>' + (SCOPE_AR[it.k] || it.k) + '</b><div class="amRpMini"><span style="width:' + Math.max(6, Math.round(it.n/mx*100)) + '%"></span></div><i>' + it.n + ' خانة</i></div>'; }).join('')
+          : '<div class="amRpMu">لا نواقص في هذه الفترة — كل الأيام المثبّتة مكتملة.</div>')
+        + (gDays.length ? '<div class="amRpMu" style="margin-top:8px">من أيام: ' + gDays.map(function(d){ return Number(d.slice(8)); }).join('، ') + (g.wrong ? ' · ملاحظات ✗: ' + g.wrong : '') + '</div>' : '');
+      var ta = document.getElementById('amSaTxt');
+      if (ta && g.list.length) ta.value += '\n\nأين الخلل:\n' + g.list.map(function(it){ return '- ' + (SCOPE_AR[it.k]||it.k) + ': ' + it.n + ' خانة'; }).join('\n');
+    }, 50);
+    var txt = 'تقرير ' + name + ' — ' + lbl + '\nالمتوسط: ' + (ca===null?'—':ca+'٪') + (diff===null?'':' (السابق '+pa+'٪)')
+      + '\nأيام مكتملة: ' + full + ' من ' + span + (rank ? '\nالترتيب: ' + rank + ' من ' + of : '') + '\nأيام متتالية 100٪: ' + streak + '\n\n'
       + a.map(function(r){ return r.log_date + ': ' + r.pct + '٪'; }).join('\n');
-    return '<div class="card" style="text-align:center;"><div style="color:var(--ui-muted);font-size:12px;">التقرير الأسبوعي · ' + cur.from + ' إلى ' + cur.to + '</div>'
-      + '<div style="font-size:42px;font-weight:800;color:' + (ca===null?'#7487a0':col(ca)) + ';">' + (ca===null?'—':ca+'٪') + '</div>'
-      + '<div style="color:var(--ui-muted);font-size:12px;">' + (diff===null?'لا مقارنة':diff>2?'▲ '+diff+' عن الأسبوع السابق':diff<-2?'▼ '+Math.abs(diff)+' عن الأسبوع السابق':'ثابت عن الأسبوع السابق') + ' · ثبّت ' + a.length + ' من ٧ أيام</div></div>'
-      + '<div class="card"><h3 style="margin:0 0 8px;">أيام الأسبوع</h3>'
-      + (a.length ? a.map(function(r){ var v=Number(r.pct)||0; return '<div style="padding:8px 2px;border-bottom:1px solid var(--line-strong,rgba(122,167,255,.12));"><div style="display:flex;justify-content:space-between;"><span>' + r.log_date + (/تحديث/.test(r.saved_by_name||'')?' <small style="color:#d3a04f;">تحديث</small>':'') + '</span><b style="color:'+col(v)+';">'+v+'٪</b></div><div style="height:6px;border-radius:4px;background:rgba(122,167,255,.15);overflow:hidden;margin-top:5px;"><div style="height:100%;width:'+v+'%;background:'+col(v)+';"></div></div></div>'; }).join('') : '<div style="color:var(--ui-muted);">لا توجد نسب مثبّتة هذا الأسبوع.</div>')
-      + '</div><div class="card"><button onclick="amSaCopy()" style="width:100%;">نسخ التقرير كنص</button>'
-      + '<textarea id="amSaTxt" readonly style="position:absolute;left:-9999px;">' + neoHtml(txt) + '</textarea></div>';
+    return '<div class="amRpPer">' + [['week','هذا الأسبوع'],['prev','الأسبوع السابق'],['cycle','الدورة']].map(function(p){ return '<button type="button" class="' + (rp.per===p[0]?'on':'') + '" onclick="amSaPer(\'' + p[0] + '\')">' + p[1] + '</button>'; }).join('') + '</div>'
+      + '<div id="amRpShot">' + hero + daysHtml + gapHtml + '</div>'
+      + '<div class="amRpBtns"><button type="button" class="amRpPrimary" onclick="amSaImage(this)">حفظ كصورة</button><button type="button" class="secondary" onclick="amSaCopy()">نسخ كنص</button></div>'
+      + '<textarea id="amSaTxt" readonly style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;">' + neoHtml(txt) + '</textarea>';
   }
+  window.amSaImage = async function(btn){
+    var el = document.getElementById('amRpShot'); if (!el) return;
+    var old = btn.textContent; btn.textContent = 'جاري التجهيز…'; btn.disabled = true;
+    try{
+      if (!window.html2canvas) await new Promise(function(ok, no){ var sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+      var cv = await html2canvas(el, { scale:2, backgroundColor: getComputedStyle(document.body).backgroundColor || '#0b1422' });
+      var blob = await new Promise(function(r){ cv.toBlob(r, 'image/png'); });
+      var file = new File([blob], 'تقرير.png', { type:'image/png' });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) await navigator.share({ files:[file] });
+      else { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'تقرير.png'; a.click(); }
+    }catch(e){ if (e && e.name !== 'AbortError' && typeof neoToast === 'function') neoToast('تعذّر حفظ الصورة — تحقق من الاتصال'); }
+    btn.textContent = old; btn.disabled = false;
+  };
   window.amSaTabs = function(active){
     var b = function(id, label, fn){ return '<button type="button" class="secondary' + (active===id?' neoSelected':'') + '" aria-pressed="' + (active===id) + '" onclick="' + fn + '">' + label + '</button>'; };
     return '<div class="amSaBtns neoAnalyticsSwitch" role="tablist" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px;">'
@@ -31771,7 +31903,7 @@ window.neoStreakZero = async function(id,kind){
   ['click','change'].forEach(function(ev){ document.addEventListener(ev, function(e){
     try{ if ((window.__fleetProfile||{}).role === 'shift' && e.target.closest && e.target.closest('#shiftView [onclick], #shiftView input, #shiftView textarea, #shiftView select')) window.__amEditAt = Date.now(); }catch(x){}
   }, true); });
-  window.amShiftAnalytics = function(tab){ if (!myDept()) return; st.tab = tab || 'trend'; st.off = 0; render(); };
+  window.amShiftAnalytics = function(tab){ if (!myDept()) return; st.tab = tab || 'trend'; st.off = 0; rp.per = 'week'; rp.day = null; render(); };
 })();
 </script>
 <script id="amCleanScript">
