@@ -9299,7 +9299,8 @@ async function renderShiftView(profile){
     return;
   }
   const date = todayStr();
-  const page = neoPageBegin(el, `
+  try{ document.getElementById('amSaOv')?.remove(); el.style.display = ''; }catch(e){}
+  const page = neoPageBegin(el, `${typeof amSaTabs === 'function' ? amSaTabs('shift') : ''}
     <div class="card">
       <h2>📋 <span id="shiftDeptName">${neoHtml(deptId)}</span> — ${date}</h2>
       <details class="neoShiftHelp"><summary aria-label="طريقة استخدام التدقيق" title="طريقة استخدام التدقيق">ⓘ</summary><div class="neoShiftHelpText">اضغط الخانة للتأشير ✓ أو ✗. عند ✗ لازم تكتب ملاحظة، وما يظهر الصف التالي إلا بعد إكمال الصف الحالي.</div></details>
@@ -9336,10 +9337,6 @@ async function renderShiftView(profile){
             <button type="button" id="neoShiftFocusNext" onclick="neoShiftMoveSection(1)" aria-label="القسم التالي">التالي</button>
           </div>
         </div>
-      </div>
-      <div class="amSaBtns" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;">
-        <button type="button" class="secondary" onclick="amShiftAnalytics('trend')">الاتجاه</button>
-        <button type="button" class="secondary" onclick="amShiftAnalytics('report')">التقرير</button>
       </div>
       <div id="streakBox"></div><div id="shiftLoadState" role="status">${neoLoadPlaceholder('استكمال بنود القسم')}</div>
       <div id="shiftLocationData">${neoLoadPlaceholder('المواقع')}</div>
@@ -31609,26 +31606,22 @@ window.neoStreakZero = async function(id,kind){
     if (r.error) throw r.error; return r.data || [];
   }
   function shell(){
-    var o = document.getElementById('amSaOv');
+    var sv = document.getElementById('shiftView'), o = document.getElementById('amSaOv');
     if (!o){
-      o = document.createElement('div'); o.id = 'amSaOv';
-      o.style.cssText = 'position:fixed;inset:0;z-index:999990;overflow:auto;background:var(--bg,#0a1220);padding:14px 14px 90px;';
-      document.body.appendChild(o); document.body.style.overflow = 'hidden';
+      o = document.createElement('div'); o.id = 'amSaOv'; o.style.paddingBottom = '80px';
+      sv.parentNode.insertBefore(o, sv.nextSibling);
     }
+    sv.style.display = 'none'; window.scrollTo(0, 0);
     return o;
   }
-  window.amSaClose = function(){ var o = document.getElementById('amSaOv'); if (o) o.remove(); document.body.style.overflow = ''; };
+  window.amSaClose = function(){ var o = document.getElementById('amSaOv'); if (o) o.remove();
+    var sv = document.getElementById('shiftView'); if (sv) sv.style.display = ''; window.scrollTo(0, 0); };
   window.amSaTab = function(t){ st.tab = t; render(); };
   window.amSaCycle = function(d){ st.off = Math.max(0, st.off + d); render(); };
   window.amSaCopy = function(){ var t = document.getElementById('amSaTxt'); if (!t) return;
     try{ navigator.clipboard.writeText(t.value); }catch(e){} if (typeof neoToast==='function') neoToast('نُسخ التقرير', true); };
   function head(name){
-    return '<div class="card" style="display:flex;align-items:center;gap:8px;justify-content:space-between;">'
-      + '<h2 style="margin:0;font-size:17px;">' + neoHtml(name) + '</h2>'
-      + '<button class="secondary" onclick="amSaClose()" style="width:auto;padding:8px 14px;">رجوع</button></div>'
-      + '<div class="neoAnalyticsSwitch" role="group" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">'
-      + '<button type="button" class="secondary ' + (st.tab==='report'?'neoSelected':'') + '" onclick="amSaTab(\'report\')">التقرير</button>'
-      + '<button type="button" class="secondary ' + (st.tab==='trend'?'neoSelected':'') + '" onclick="amSaTab(\'trend\')">الاتجاه</button></div>';
+    return amSaTabs(st.tab) + '<h2 style="margin:4px 4px 10px;font-size:17px;">' + neoHtml(name) + '</h2>';
   }
   async function render(){
     var dept = myDept(); if (!dept) return;
@@ -31692,6 +31685,11 @@ window.neoStreakZero = async function(id,kind){
       + '</div><div class="card"><button onclick="amSaCopy()" style="width:100%;">نسخ التقرير كنص</button>'
       + '<textarea id="amSaTxt" readonly style="position:absolute;left:-9999px;">' + neoHtml(txt) + '</textarea></div>';
   }
+  window.amSaTabs = function(active){
+    var b = function(id, label, fn){ return '<button type="button" class="secondary' + (active===id?' neoSelected':'') + '" aria-pressed="' + (active===id) + '" onclick="' + fn + '">' + label + '</button>'; };
+    return '<div class="amSaBtns neoAnalyticsSwitch" role="tablist" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px;">'
+      + b('shift', 'الشفت', 'amSaClose()') + b('trend', 'الاتجاه', 'amShiftAnalytics(\'trend\')') + b('report', 'التقرير', 'amShiftAnalytics(\'report\')') + '</div>';
+  };
   window.amShiftAnalytics = function(tab){ if (!myDept()) return; st.tab = tab || 'trend'; st.off = 0; render(); };
 })();
 </script>
