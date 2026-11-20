@@ -8699,8 +8699,26 @@ window.neoSaveShiftPct = async function(deptId, date, silent){
     if (!silent && typeof neoToast === 'function') neoToast('انتظر اكتمال بنود القسم أو أعد تحميل الجزء المتعثر قبل تثبيت النسبة');
     return false;
   }
+  /* لا يثبّت نسبة القسم إلا مسؤول شفته نفسه، في يومه الحقيقي — المشاهدة من حساب آخر لا تكتب شيئاً */
+  const _pf = window.__fleetProfile || {};
+  let _ov = null; try{ _ov = localStorage.getItem('devDateOverride'); }catch(e){}
+  if (window.__neoViewer || _pf.role !== 'shift' || !(_pf.department_ids || []).map(String).includes(String(deptId)) || _ov){
+    neoDirty = false; clearTimeout(neoAutoSaveT); document.getElementById('neoSaveBar')?.remove();
+    if (!silent && typeof neoToast === 'function') neoToast('تثبيت النسبة لمسؤول شفت القسم فقط — العرض هنا للاطلاع');
+    return false;
+  }
   const r = neoComputeShiftPct();
   if (!r.total){ if (typeof neoToast === 'function') neoToast('لا توجد بيانات لحفظها'); return; }
+  /* الحفظ التلقائي لا يُنزل نسبة مثبَّتة أبداً — التخفيض بقرار المسؤول فقط */
+  try{
+    if (!neoStatsCache[date]) await neoLoadSavedStats(date);
+    const _sv = neoSavedPct(date, deptId);
+    if (_sv && Number(_sv.pct) > r.pct){
+      if (silent) return false;
+      if (typeof neoConfirm === 'function' && !(await neoConfirm('تخفيض النسبة المثبَّتة؟',
+          'المثبَّت الآن ' + _sv.pct + '٪ والحالي ' + r.pct + '٪. هل تريد تثبيت الأقل؟'))) return false;
+    }
+  }catch(e){}
   const name = (document.getElementById('userNameLabel')?.textContent || '').trim();
   let uid = null;
   try{ const { data: { user } } = await supabaseClient.auth.getUser(); uid = user ? user.id : null; }catch(e){}
@@ -17896,14 +17914,14 @@ window.neoFixLatePct = async function(btn){
   if (window.__neoViewer){ neoViewerDenied(); return; }
   const days = [];
   const t0 = (typeof todayStr === 'function') ? todayStr() : new Date().toISOString().slice(0,10);
-  for (let i = 0; i < 3; i++){
+  for (let i = 1; i <= 14; i++){   /* الأيام الماضية فقط — اليوم الجاري بيد مسؤول الشفت */
     const d = new Date(t0 + 'T12:00:00'); d.setDate(d.getDate() - i);
     days.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'));
   }
   const go = (typeof neoConfirm === 'function')
-    ? await neoConfirm('تثبيت النسب لآخر ٣ أيام؟',
-        'يُعاد حساب النسبة الحقيقية من السجلات لكل قسم في ' + days[2] + ' إلى ' + days[0]
-        + ' وتُثبَّت لمن لم يُثبّتها.<br><br>لا يُعدَّل أي تأشير — الحساب من السجلات كما هي.')
+    ? await neoConfirm('استرجاع النسب الحقيقية لآخر ١٤ يوماً؟',
+        'تُحسب النسبة من السجلات لكل قسم من ' + days[days.length-1] + ' إلى ' + days[0]
+        + '، وتُرفع كل نسبة مثبَّتة أقلّ من الحقيقية.<br><br>لا تُنزَل أي نسبة ولا يُعدَّل أي تأشير.')
     : true;
   if (!go) return;
 
@@ -17925,14 +17943,14 @@ window.neoFixLatePct = async function(btn){
       }catch(e){}
       for (const deptId of Object.keys(totals)){
         const t = totals[deptId] || {};
-        if (!t.total) continue;                       /* لا بيانات ذلك اليوم — لا نخترع رقماً */
+        if (!t.total || !t.done) continue;            /* لا سجلات ذلك اليوم — لا نخترع رقماً */
         const pct = Math.min(100, Math.round((t.done / t.total) * 100));
         const prev = saved[String(deptId)];
-        if (prev && Math.round(Number(prev.pct)||0) === pct){ already++; continue; }
+        if (prev && Math.round(Number(prev.pct)||0) >= pct){ already++; continue; }   /* لا نُنزل نسبة أبداً */
         const ok = await neoSafeUpsert('daily_stats', {
           department_id: deptId, log_date: day,
           pct: pct, total: t.total, done: t.done,
-          saved_by: uid, saved_by_name: name + ' (تثبيت متأخّر)',
+          saved_by: uid, saved_by_name: name + ' (استرجاع من السجلات)',
           updated_at: new Date().toISOString()
         }, 'department_id,log_date');
         if (ok) fixed++; else failed++;
@@ -17943,7 +17961,7 @@ window.neoFixLatePct = async function(btn){
   if (btn){ btn.textContent = old; btn.disabled = false; }
   try{
     neoToast(fixed
-      ? ('✅ ثُبّتت ' + fixed + ' نسبة' + (already ? ' · ' + already + ' كانت مطابقة' : ''))
+      ? ('✅ استُرجعت ' + fixed + ' نسبة' + (already ? ' · ' + already + ' كانت مطابقة' : ''))
       : (failed ? '⚠️ تعذّر التثبيت — أعد المحاولة' : 'كل النسب مثبّتة ومطابقة'), !failed);
   }catch(e){}
   try{ if (currentSalesTab === 'overview') await renderSalesView(); }catch(e){}
@@ -17954,10 +17972,10 @@ function neoLatePctBarHtml(){
   if (window.__neoViewer) return '';
   return '<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
     + '<div style="min-width:0;">'
-    + '<div style="color:#c8d4e2;font-size:13px;font-weight:700;">تثبيت النسب المتأخّرة</div>'
+    + '<div style="color:#c8d4e2;font-size:13px;font-weight:700;">استرجاع النسب الحقيقية</div>'
     + '<div style="color:#8fa3b8;font-size:11.5px;margin-top:3px;line-height:1.7;">'
-    + 'لمن نسي الحفظ — يُعيد حساب آخر ٣ أيام ويثبّتها</div></div>'
-    + '<button onclick="neoFixLatePct(this)" title="تثبيت النسب لآخر ٣ أيام" '
+    + 'يحسب آخر ١٤ يوماً من السجلات ويرفع كل نسبة ناقصة — لا يُنزل أي نسبة</div></div>'
+    + '<button onclick="neoFixLatePct(this)" title="استرجاع النسب الحقيقية" '
     + 'style="width:50px;height:50px;min-width:50px;padding:0;font-size:20px;border-radius:12px;'
     + 'display:flex;align-items:center;justify-content:center;">💾</button></div>';
 }
@@ -19921,8 +19939,8 @@ const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).c
     try{
       const from = new Date(now); from.setDate(from.getDate() - days);
       const { data: sv } = await supabaseClient.from('daily_stats')
-        .select('department_id,log_date').gte('log_date', f(from));
-      (sv||[]).forEach(r => { already[r.log_date + '|' + r.department_id] = true; });
+        .select('department_id,log_date,pct').gte('log_date', f(from));
+      (sv||[]).forEach(r => { already[r.log_date + '|' + r.department_id] = String(Number(r.pct) || 0); });
     }catch(e){}
 
     let added = 0, skipped = 0, empty = 0, failed = 0;
@@ -19939,7 +19957,7 @@ const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).c
         const k = String(dep.id);
         const v = pct[k];
         if (v === undefined || v === 0){ empty++; continue; }        /* لا سجلات ذلك اليوم */
-        if (!over && already[day + '|' + k]){ skipped++; continue; }  /* مثبَّت يدوياً — لا نلمسه */
+        if (already[day + '|' + k] && (!over || Number(already[day + '|' + k]) >= v)){ skipped++; continue; }  /* لا نُنزل نسبة مثبَّتة */  /* مثبَّت يدوياً — لا نلمسه */
         rows.push({ department_id: k, log_date: day, pct: v,
                     total: 0, done: 0, saved_by_name: '⏪ استرجاع تلقائي',
                     updated_at: new Date().toISOString() });
