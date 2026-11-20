@@ -203,11 +203,23 @@ const DET = (() => {
     if(n) for(let k = 0; k < 64; k++) h[k] /= n;
     return { h: Array.from(h), n, tex: n ? tex / n : 0 };
   }
+  // توزيع ألوان «الحلقة» المحيطة بالمربع (السطح حول القطعة) بنفس تكميم البصمة: نعرف به أي جانب (قبل/بعد) هو الخلفية وأيهما القطعة
+  function ringHist(F, box){
+    const W = F.w, H = F.h, gx = box.w * 0.5, gy = box.h * 0.5, h = new Float32Array(64); let n = 0;
+    const x0 = Math.max(2, Math.floor((box.x - gx) * W)), y0 = Math.max(2, Math.floor((box.y - gy) * H)), x1 = Math.min(W - 2, Math.ceil((box.x + box.w + gx) * W)), y1 = Math.min(H - 2, Math.ceil((box.y + box.h + gy) * H));
+    const bx0 = box.x * W, by0 = box.y * H, bx1 = (box.x + box.w) * W, by1 = (box.y + box.h) * H, q = (v, lo, hi) => Math.max(0, Math.min(3, Math.floor((v - lo) / (hi - lo) * 4)));
+    for(let y = y0; y < y1; y += 2) for(let x = x0; x < x1; x += 2){ if(x >= bx0 && x < bx1 && y >= by0 && y < by1) continue; const i = y * W + x; h[q(F.g[i], 0, 256) * 16 + q(F.ca[i], -80, 80) * 4 + q(F.cb[i], -80, 80)]++; n++; }
+    if(n) for(let k = 0; k < 64; k++) h[k] /= n;
+    return { h: Array.from(h), n };
+  }
+  // تشابه توزيعين (باتاشاريا) بلا شروط المساحة
+  function histSim(a, b){ if(!a || !b || !a.n || !b.n) return 0; let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc; }
   // تشابه بصمتين (0..1): معامل باتاشاريا للألوان، بشرط تقارب المساحة والملمس
   function sigSim(a, b){
     if(!a || !b || a.n < 30 || b.n < 30) return 0;
+    // الملمس يُقاس عند بكسلات القطعة وحوافها، والحواف تتغيّر مع السطح الذي تحتها (خشب، قماش)، فالشرط متسامح
     const ar = a.n / b.n, tr = (a.tex + 1) / (b.tex + 1);
-    if(ar < 0.4 || ar > 2.5 || tr < 0.6 || tr > 1.67) return 0;
+    if(ar < 0.4 || ar > 2.5 || tr < 0.4 || tr > 2.5) return 0;
     let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
   }
   // «تراجع الصف» لرفوف البضاعة المتكررة (شيبس، شوكولا، علب): القطع متطابقة خلف بعضها، فأخذ القطعة الأمامية لا يُحدث
@@ -398,7 +410,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, recess, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 /* =================== أدوات =================== */
@@ -445,6 +457,7 @@ const blindSec = () => isTest() ? Math.max(3, +S.cfg.testSec || 10) : 60; // م�
 // حساسية كل عارضة: «دقيق» للقطع الصغيرة، «عادي»، أو «تلقائي» = الإعداد العام
 const fineOf = z => z.sens === 'fine' || (z.sens !== 'normal' && !!S.cfg.fine);
 const MOVE_SIM = 0.8; // حد تطابق بصمة القطعة لاعتبار الشيل «نقلاً»
+const MOVE_SIM_HAND = 0.6; // أخفّ عندما تتبّعت اليد الأخذ ثم الوضع (الدليل من الترتيب لا من البصمة وحدها)
 const fmtGrace = () => { const s = Math.round(grace() * 60); return s < 60 ? s + ' ثانية' : Math.round(s / 60) + ' دقيقة'; };
 function isNight(){
   if(!S.cfg.night || isDemo() || isTest()) return false;
@@ -505,7 +518,7 @@ function mpPeople(c){
         const px = (rr - l) * 0.35 + 0.01, py = (b - t) * 0.35 + 0.01; out.push({ kind: 'يد', x: Math.max(0, l - px), y: Math.max(0, t - py), w: Math.min(1, rr - l + 2 * px), h: Math.min(1, b - t + 2 * py) }); }
     }catch(e){}
   }
-  MP.ms = Math.round(performance.now() - t0); MP.boxes = out;
+  MP.ms = Math.round(performance.now() - t0); MP.boxes = out; logHands(out);
   return out;
 }
 // تسمية القطعة: نبحث في الصورة "قبل" عن جسم معروف داخل مكان النقص
@@ -590,6 +603,10 @@ function loop(){
   if(S.cfg.conceal && MP.pose && !isDemo() && now() - (S.poseAt || 0) >= (now() - (S.activeAt || 0) < 8 ? 0.4 : 2)){
     busy = true; S.poseAt = now(); try{ const c = grabFrame(); if(c) CONCEAL.tick(c); }catch(e){ console.error(e); } busy = false;
   }
+  // تتبّع الأيدي بسرعة (كل نصف ثانية) عند وجود حركة في العارضات: نعرف أين أخذت اليد وأين وضعت
+  if(S.cfg.ai && MP.state === 'ready' && !isDemo() && S.zones.length && now() - (S.handAt || 0) >= 0.5){
+    busy = true; S.handAt = now(); try{ const c = grabFrame(); if(c && quickMotion(c)) mpPeople(c); }catch(e){ console.error(e); } busy = false;
+  }
   if(now() - S.lastTick < pollSec() - 0.05) return;
   busy = true;
   try{
@@ -671,7 +688,7 @@ const ENG = {
       this.prev = F; return;
     }
     this.camBump = 0;
-    const rems = [], adds = [], toRebase = [];
+    const cands = [], toRebase = [];
     for(const z of S.zones){
       const zs = this.zst[z.id] = this.zst[z.id] || { big: 0 };
       const ez = { x: Math.max(0, z.x - 0.04), y: Math.max(0, z.y - 0.04) }; ez.w = Math.min(1 - ez.x, z.w + 0.08); ez.h = Math.min(1 - ez.y, z.h + 0.08);
@@ -722,30 +739,21 @@ const ENG = {
         }
         toRebase.push(z); continue;
       }
-      const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
-      const handled = new Set();
+      const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+      const handled = new Set(), since = (zs.judged || 0) - 3;
       for(const reg of mergeNear(r.regions, 0.04)){
-        if(reg.type === 'rem'){
-          if(opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
-          rems.push({ z, reg, sig: DET.itemSig(this.base, F, reg, sh) });
-        } else {
-          const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35);
-          if(m.length) m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c); } });
-          else adds.push({ z, reg, sig: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) });
-        }
+        // لكل تغيّر: هل لمسته يد (ومتى)، وما كان فيه قبل وما فيه الآن، ومقارنة كلٍّ منهما بالسطح المحيط
+        const cd = { z, reg, hT: handTouch(reg, since), before: DET.itemSig(this.base, F, reg, sh), after: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) };
+        cd.pol = (1 - DET.histSim(cd.after, DET.ringHist(F, reg))) - (1 - DET.histSim(cd.before, DET.ringHist(this.base, reg))); // موجب = وُضع شيء، سالب = أُخذ شيء
+        // رجوع قطعة لمكان حالة مفتوحة: بيد، أو بتغيّر ليس «نقصاً»، أو بنفس بصمة القطعة المشالة
+        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (cd.hT || reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c); } }); continue; }
+        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        cands.push(cd);
       }
-      toRebase.push(z);
+      zs.judged = now(); toRebase.push(z);
     }
-    // نقل القطعة لمكان آخر (رف تحته، عارضة مجاورة) أو إدارة زاويتها ≠ شيل: نطابق ما اختفى مع ما ظهر ببصمة القطعة،
-    // واحد لواحد (لا تُخفي حركة قطعة سرقة قطعة أخرى). ليلاً لا مطابقة: أي تغيّر ينبّه
-    const used = new Set();
-    for(const rm of rems){
-      let best = null, bs = MOVE_SIM;
-      if(!night) adds.forEach((a, k) => { if(used.has(k)) return; const v = DET.sigSim(rm.sig, a.sig); if(v > bs){ bs = v; best = k; } });
-      if(best !== null){ used.add(best); this.newMoved(rm, adds[best], c, bs); }
-      else this.newRemoval(rm.z, rm.reg, c, night, rm.sig);
-    }
-    adds.forEach((a, k) => { if(used.has(k) || (!night && this.movedLater(a, c))) return; this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c); });
+    this.decide(cands, c, night);
     toRebase.forEach(z => this.rebase(z, F, c));
     // انزياح بسيط مستقر بدون أي تغيّر في العارضات: نعيد المحاذاة بهدوء حتى لا تتراكم الإزاحة
     if(moved && gm < 0.03 && S.zones.every(z => { const d = S.diag[z.id]; return d && d.state === 'ok' && d.r && !d.r.regions.length; }) && !P().length) this.rebaseAll(F, c);
@@ -774,16 +782,44 @@ const ENG = {
     x.fillStyle = '#222'; x.font = 'bold 14px Tahoma'; x.textAlign = 'right'; x.fillText('قبل', c.width - 6, 17); x.fillStyle = '#c53030'; x.fillText('بعد', w - 6, 17);
     return c.toDataURL('image/jpeg', 0.75);
   },
-  newRemoval(z, reg, c, night, sig){
+  newRemoval(z, reg, c, night, sig, why){
     const t = now(), cu = S.cleaning[z.id] || 0;
     let deadline = t + grace() * 60; if(cu > t) deadline = Math.max(deadline, cu + 60);
     const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
       img_b: this.shot(this.baseCv, reg, '#e53e3e'), img_a: this.shot(c, reg, '#e53e3e'), img_c: this.crop(this.baseCv, c, reg), note: night ? 'رُصد بعد ساعات العمل' : '' };
+    if(why) e.note = ((e.note || '') + ' ' + why).trim();
     if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
     this.extras(z, e);
     addEvent(e);
     if(!night) trySale(e);
     if(night) alertEv(e);
+  },
+  // القرار في كل التغيّرات المحسومة في هذه القراءة (كل العارضات معاً).
+  // 1) ما لمسته يد: يُرتَّب حسب وقت اللمس — الأسبق مكان الأخذ، واللاحق مكان الوضع. إذا كانت القطعة الموضوعة هي نفسها المأخوذة
+  //    (بالبصمة) = «نقل» مهما بدا التغيّر (إضافة أو نقصاً). وما لمسته يد ولم يُفسَّر بنقل أو رجوع = أخذ (شيل بمهلة)،
+  //    إلا إذا كان وضعاً واضحاً على سطح فارغ (القطعة جديدة والخلفية كانت ظاهرة) = إضافة.
+  // 2) بلا يد: مطابقة النقل في الاتجاهين بالبصمة، والاتجاه من «أي جانب هو القطعة»؛ والباقي بالطريقة القديمة.
+  // ليلاً لا مطابقة: أي تغيّر ينبّه. والمطابقة واحد لواحد حتى لا تُخفي حركة قطعة سرقة قطعة أخرى.
+  decide(cands, c, night){
+    // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
+    const src = a => a.pol < 0.25, dst = b => b.pol > -0.25;
+    const used = new Set(), Hd = cands.filter(a => a.hT).sort((a, b) => a.hT - b.hT), Nd = cands.filter(a => !a.hT);
+    if(!night) for(let i = 0; i < Hd.length; i++){ if(used.has(Hd[i]) || !src(Hd[i])) continue; let best = null, bs = MOVE_SIM_HAND;
+      for(let j = i + 1; j < Hd.length; j++){ if(used.has(Hd[j]) || !dst(Hd[j])) continue; const v = DET.sigSim(Hd[i].before, Hd[j].after); if(v > bs){ bs = v; best = Hd[j]; } }
+      if(best){ used.add(Hd[i]); used.add(best); this.newMoved(Hd[i], best, c, bs, true); } }
+    for(const a of Hd){ if(used.has(a)) continue;
+      if(!night && a.pol > 0.25 && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c, MOVE_SIM_HAND)) continue;
+      if(!night && a.pol > 0.25) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
+      else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
+    }
+    const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && dst(b)){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
+    P2.sort((x, y) => y[0] - x[0]);
+    if(!night) for(const [, v, a, b] of P2){ if(used.has(a) || used.has(b)) continue; used.add(a); used.add(b); this.newMoved(a, b, c, v); }
+    for(const a of Nd){ if(used.has(a)) continue;
+      if(a.reg.type === 'rem') this.newRemoval(a.z, a.reg, c, night, a.before);
+      else if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue;
+      else this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c);
+    }
   },
   // رف بضاعة: «التقاط» (أُخذت قطعة من مقدمة الصف) أو «تعبئة» — معلوماتي، يُعدّ في التقارير ويُقارن بالمبيعات
   newStock(z, reg, c){
@@ -794,16 +830,16 @@ const ENG = {
     this.extras(z, e); addEvent(e); S.lastPick = kind === 'pick' ? { zone: z.id, t: now(), id: e.id } : S.lastPick;
   },
   // قطعة نُقلت في نفس القراءة: حدث معلوماتي فيه صورة المكان القديم والجديد، بلا مهلة ولا تنبيه
-  newMoved(rm, ad, c, sim){
+  newMoved(rm, ad, c, sim, byHand){
     const zf = rm.z, zt = ad.z, u = { x: Math.min(rm.reg.x, ad.reg.x), y: Math.min(rm.reg.y, ad.reg.y) }; u.w = Math.max(rm.reg.x + rm.reg.w, ad.reg.x + ad.reg.w) - u.x; u.h = Math.max(rm.reg.y + rm.reg.h, ad.reg.y + ad.reg.h) - u.y;
     const e = { id: rid(), zone: zf.id, kind: 'moved', status: 'info', t_start: now(), t_end: now(), box: { x: rm.reg.x, y: rm.reg.y, w: rm.reg.w, h: rm.reg.h }, to: { zone: zt.id, box: { x: ad.reg.x, y: ad.reg.y, w: ad.reg.w, h: ad.reg.h } },
       img_b: this.shot(this.baseCv, rm.reg, '#e0a020'), img_a: this.shot(c, ad.reg, '#38a169'), img_c: this.crop(this.baseCv, c, u),
-      note: (zf.id === zt.id ? 'نُقلت القطعة أو تغيّرت زاويتها داخل نفس العارضة' : 'نُقلت القطعة إلى «' + zt.name + '»') + ' (تطابق ' + Math.round(sim * 100) + '%).' };
+      note: (zf.id === zt.id ? 'نُقلت القطعة أو تغيّرت زاويتها داخل نفس العارضة' : 'نُقلت القطعة إلى «' + zt.name + '»') + ' (تطابق ' + Math.round(sim * 100) + '%' + (byHand ? '، وتتبّعت اليد الأخذ ثم الوضع' : '') + ').' };
     this.extras(zf, e); addEvent(e);
   },
   // قطعة ظهرت الآن وتطابق قطعة شيلت قبل قليل (الموظف حملها ثوانٍ ثم وضعها في مكان آخر): نغلق حالة الشيل «نُقلت»
-  movedLater(a, c){
-    const late = now() - 24 * 3600; let best = null, bs = MOVE_SIM;
+  movedLater(a, c, thr){
+    const late = now() - 24 * 3600; let best = null, bs = thr || MOVE_SIM;
     for(const e of S.events){ if(e.kind !== 'removal' || !e.sig || !(e.status === 'pending' || (e.status === 'incident' && e.t_start >= late))) continue;
       const v = DET.sigSim(e.sig, a.sig); if(v > bs){ bs = v; best = e; } }
     if(!best) return false;
@@ -821,8 +857,8 @@ const ENG = {
       note: sub === 'cover' ? 'العدسة مغطاة أو الصورة مظلمة.' : 'تغيّر المشهد كله: وُجّهت الكاميرا لمكان آخر. أُعيد ضبط الصورة المرجعية على المشهد الجديد.' };
     addEvent(e); alertEv(e); return e;
   },
-  newInfo(z, reg, kind, c){
-    addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
+  newInfo(z, reg, kind, c, note){
+    addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h }, note: note || '',
       img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, '#38a169'), img_c: this.crop(this.baseCv, c, reg) });
   },
   returned(e, c){
@@ -901,6 +937,23 @@ const CONCEAL = { st: {}, last: {},
     addEvent(e); alertEv(e);
   }
 };
+/* ----- تتبّع الأيدي: سجل أماكن الأيدي بالوقت (آخر 3 دقائق) ----- */
+function logHands(boxes){ const h = boxes.filter(b => b.kind === 'يد'); if(!h.length) return; (S.handLog = S.handLog || []).push({ t: now(), b: h });
+  const lim = now() - 180; while(S.handLog.length && S.handLog[0].t < lim) S.handLog.shift(); }
+// آخر وقت لمست فيه يدٌ هذا المكان منذ «since» (0 = لم تلمسه)
+function handTouch(reg, since){ const g = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) }); let t = 0;
+  for(const h of S.handLog || []) if(h.t >= since && h.b.some(b => ix(g(b, 0.2), g(reg, 0.1)))) t = h.t; return t; }
+// فحص حركة رخيص على صورة مصغّرة: نشغّل كاشف الأيدي فقط عند حركة داخل عارضة (أو يد رُصدت قبل لحظات)
+const QW = 160; let qPrev = null;
+function quickMotion(c){
+  const qc = quickMotion.cv || (quickMotion.cv = document.createElement('canvas')), H = Math.round(QW * c.height / c.width); if(qc.width !== QW || qc.height !== H){ qc.width = QW; qc.height = H; qPrev = null; }
+  const x = qc.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0, QW, H); const d = x.getImageData(0, 0, QW, H).data, g = new Uint8Array(QW * H);
+  for(let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = (d[j] * 3 + d[j + 1] * 6 + d[j + 2]) / 10;
+  let hit = false;
+  if(qPrev) for(const z of S.zones){ const x0 = Math.max(0, Math.floor((z.x - 0.06) * QW)), x1 = Math.min(QW, Math.ceil((z.x + z.w + 0.06) * QW)), y0 = Math.max(0, Math.floor((z.y - 0.06) * H)), y1 = Math.min(H, Math.ceil((z.y + z.h + 0.06) * H)); let n = 0, m = 0;
+    for(let y = y0; y < y1; y++) for(let xx = x0; xx < x1; xx++){ const i = y * QW + xx; n++; if(Math.abs(g[i] - qPrev[i]) > 18) m++; } if(n && m / n > 0.004){ hit = true; break; } }
+  qPrev = g; const h = S.handLog || []; return hit || (h.length && now() - h[h.length - 1].t < 2);
+}
 // مناطق رف البضاعة: تراجع/تقدّم الصف (recess) + فراغ واضح (آخر قطعة: rem) أو قطع جديدة في مكان فارغ (add).
 // إذا تعارض «التقاط» و«تعبئة» في نفس الصف (أثر جانبي لتغيّر الحجم بالمنظور) يفوز الأكبر
 function stockRegions(r, rc){

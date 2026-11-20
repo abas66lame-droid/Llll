@@ -16,6 +16,8 @@ OUT = os.path.join(HERE, 'out')
 CHROME = os.environ.get('CHROME')  # مثال: /usr/bin/google-chrome
 
 GUM = {'id': 'gum', 'name': 'العلكة', 'section': '', 'x': 0.1672, 'y': 0.1796, 'w': 0.4554, 'h': 0.2764}
+ZL = {'id': 'zl', 'name': 'عارضة يسار', 'section': '', 'x': 0.08, 'y': 0.2, 'w': 0.38, 'h': 0.6}
+ZR = {'id': 'zr', 'name': 'عارضة يمين', 'section': '', 'x': 0.54, 'y': 0.2, 'w': 0.38, 'h': 0.6}
 SHELF = {'id': 'sh', 'name': 'رف الشيبس والشوكولا', 'section': 'مواد غذائية', 'mode': 'stock', 'x': 0.0, 'y': 0.17, 'w': 0.66, 'h': 0.75}
 MOUSE = {'id': 'mouse', 'name': 'الماوس', 'section': '', 'x': 0.7166, 'y': 0.2577, 'w': 0.2492, 'h': 0.2233}
 # كاشف أشخاص وهمي (يحاكي MediaPipe): يعتبر البكسلات الخضراء (كمّ الذراع) شخصاً
@@ -34,6 +36,15 @@ MOCK_POSE = r"""(()=>{MP.state='ready';MP.hand=null;MP.obj={detect:()=>({detecti
   if(Y.length<2||B.length<2)return {landmarks:[]};const lm=Array.from({length:33},()=>({x:0,y:0,visibility:0}));
   lm[11]=Object.assign(Y[0],{visibility:1});lm[12]=Object.assign(Y[1],{visibility:1});lm[23]=Object.assign(B[0],{visibility:1});lm[24]=Object.assign(B[1],{visibility:1});
   if(R.length)lm[15]=Object.assign(R[0],{visibility:1});return {landmarks:[lm]};}};})();"""
+
+# نقل واحد فقط من العارضة اليسرى (المصدر)، بلا أي حالة نقص مفتوحة
+ONE_MOVE = lambda ev: [(z, k if k == 'moved' else s) for z, k, s in ev if k == 'moved' or s == 'moved'] == [('عارضة يسار', 'moved')] and NO_ALARM(ev)
+
+# كاشف أيادٍ وهمي (يحاكي MediaPipe GestureRecognizer): العلامة السماوية وسط اليد = يد، بلا أشخاص
+MOCK_HAND = r"""(()=>{MP.state='ready';MP.obj={detect:()=>({detections:[]})};
+ MP.hand={recognize:c=>{const x=c.getContext('2d').getImageData(0,0,c.width,c.height).data,W=c.width,H=c.height;let sx=0,sy=0,n=0;
+  for(let y=0;y<H;y+=2)for(let xx=0;xx<W;xx+=2){const i=(y*W+xx)*4;if(x[i]<70&&x[i+1]>200&&x[i+2]>200){sx+=xx;sy+=y;n++;}}
+  if(n<4)return {landmarks:[]};const cx=sx/n/W,cy=sy/n/H;return {landmarks:[[[-.05,-.05],[.05,-.05],[.05,.05],[-.05,.05],[0,0]].map(([a,b])=>({x:cx+a,y:cy+b}))]};}};})();"""
 
 # لا حالة نقص مفتوحة أو منبَّه عليها (النقل أو التدوير ليس شيلاً)
 NO_ALARM = lambda ev: not [1 for _, k, st in ev if k in ('removal', 'night') and st in ('pending', 'incident')]
@@ -77,6 +88,14 @@ SCENARIOS = {
     # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
     'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE, {'noSales': False}),
     'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE, {'noSales': False}),
+    # تتبّع الأيدي: الترتيب حسب اليد لا حسب الملمس (موبايل أملس على سطح مزخرف، أو قطعة تكشف ما وراءها)
+    'handmove': ('handmove.y4m', [ZL, ZR], 34, ONE_MOVE, MOCK_HAND),
+    'handmove2': ('handmove2.y4m', [ZL, ZR], 34, ONE_MOVE, MOCK_HAND),
+    'movenohand': ('movenohand.y4m', [ZL, ZR], 34, ONE_MOVE, None, {'ai': False}),
+    'handtake': ('handtake.y4m', [ZL, ZR], 30, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يسار', 'incident')], MOCK_HAND),
+    'reveal': ('reveal.y4m', [ZL, ZR], 30, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يسار', 'incident')], MOCK_HAND),
+    'handswap': ('handswap.y4m', [ZL, ZR], 34, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يسار', 'incident')] and not [1 for _, k, s in ev if k == 'moved' or s == 'moved'], MOCK_HAND),
+    'putthentake': ('putthentake.y4m', [ZL, ZR], 34, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يمين', 'incident')] and not [1 for _, k, s in ev if k == 'moved' or s == 'moved'], MOCK_HAND),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
@@ -90,12 +109,10 @@ async def run_one(p, name):
     await pg.goto(HTML); await pg.wait_for_timeout(600)
     import json
     await pg.evaluate("([z, c]) => { S.zones = z; S.cfg.test = true; S.cfg.testSec = 10; Object.assign(S.cfg, c); saveZones(); saveCfg(); }", [zones, cfg])
-    await pg.click('text=تشغيل الكاميرا')
-    if mock:
-        for _ in range(20):
-            await pg.wait_for_timeout(300)
-            if await pg.evaluate('MP.state') in ('error', 'ready'): break
+    if mock:  # الكاشف الوهمي بدل MediaPipe: نمنع تحميل النماذج الحقيقية حتى لا تستبدله لاحقاً، ونحقنه قبل تشغيل الكاميرا
+        await pg.evaluate("window.loadMP = async () => {}; window.loadPose = async () => {};")
         await pg.evaluate(mock)
+    await pg.click('text=تشغيل الكاميرا')
     await pg.wait_for_timeout(secs * 1000)
     ev = await pg.evaluate("S.events.map(e => [zoneOf(e.zone).name, e.kind, e.status])")
     await b.close()

@@ -257,5 +257,51 @@ def conceal():
         write_y4m(name + '.y4m', seq)
 
 
+# ===================== تتبّع الأيدي (تجربة ميدانية) =====================
+# سطح خشبي مزخرف وموبايلات ملساء داكنة: أخذ الموبايل «يكشف» الزخرفة (يبدو إضافة)، ووضعه «يغطيها» (يبدو نقصاً).
+# اليد: بيضاوي بلون الجلد مع علامة سماوية في وسطها (يقرؤها كاشف الأيدي الوهمي بدل MediaPipe).
+def hand_scene(items, hand=None, marker=True, cloth=False):
+    yy, xx = np.mgrid[0:SH, 0:SW].astype(np.float32)
+    v = 150 + 22 * np.sin(xx / 7 + 3 * np.sin(yy / 31)) + 10 * np.sin(yy / 4.3)
+    a = np.stack([v, v * .74, v * .52], 2)
+    if cloth:  # النصف الأيمن قماش أزرق بخطوط مائلة (سطح مختلف عن الخشب)
+        c = 110 + 35 * (np.sin((xx + yy) / 3.5) > 0); a[:, 320:] = np.stack([c * .35, c * .5, c * 1.2], 2)[:, 320:]
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)); d = ImageDraw.Draw(im)
+    for kind, cx, cy in items:
+        if kind == 'phone': d.rounded_rectangle([cx - 38, cy - 70, cx + 38, cy + 70], radius=10, fill=(28, 28, 34), outline=(70, 70, 80), width=2); d.rectangle([cx - 30, cy - 58, cx + 30, cy + 52], fill=(36, 38, 46))
+        elif kind == 'box': d.rectangle([cx - 50, cy - 82, cx + 50, cy + 82], fill=(230, 40, 50)); [d.line([cx - 50, cy - 82 + k * 12, cx + 50, cy - 70 + k * 12], fill=(250, 230, 60), width=4) for k in range(14)]  # تغطي كل ما وراء الموبايل
+        elif kind == 'plain': d.rectangle([cx - 40, cy - 60, cx + 40, cy + 60], fill=(45, 45, 50))  # علبة سادة بلا تفاصيل
+        elif kind == 'gift': d.rectangle([cx - 36, cy - 36, cx + 36, cy + 36], fill=(40, 90, 210)); d.rectangle([cx - 6, cy - 36, cx + 6, cy + 36], fill=(250, 250, 250)); d.rectangle([cx - 36, cy - 6, cx + 36, cy + 6], fill=(250, 250, 250))
+    if hand:
+        d.ellipse([hand[0] - 45, hand[1] - 40, hand[0] + 45, hand[1] + 40], fill=(205, 160, 135)); d.rectangle([hand[0] - 30, min(SH, hand[1] + 30), hand[0] + 30, SH], fill=(60, 64, 80))  # الذراع حتى أسفل الصورة
+        if marker: d.ellipse([hand[0] - 9, hand[1] - 9, hand[0] + 9, hand[1] + 9], fill=(0, 255, 255))
+    return im
+
+def hands():
+    A, B = (180, 240), (460, 250)
+    def run(name, before, after_take, after_put, put_at, seed, marker=True, cloth=False):
+        rng = np.random.default_rng(seed); f = lambda it, h=None: noisy(rng, hand_scene(it, h, marker, cloth), 3)
+        seq = [f(before) for _ in range(24)]
+        seq += [f(before, (A[0], A[1] + 120)), f(before, (A[0], A[1] + 20)), f(before, A), f(after_take, A), f(after_take, A)]  # اليد تمسك القطعة
+        if put_at:  # تحملها وتضعها في مكان آخر
+            seq += [f(after_take, (A[0] + 90, A[1] - 10)), f(after_take, (B[0] - 90, B[1] - 10))] + [f(after_put, B) for _ in range(3)] + [f(after_put, (B[0], B[1] + 120)), f(after_put, (B[0], B[1] + 260))]
+        else:       # تخرج بها من الصورة
+            seq += [f(after_take, (A[0], A[1] + 120)), f(after_take, (A[0], A[1] + 260))]
+        seq += [f(after_put if put_at else after_take) for _ in range(170)]
+        write_y4m(name + '.y4m', seq)
+    ph, ph2 = [('phone', *A)], [('phone', *B)]
+    run('handmove', ph, [], ph2, B, 61)                                   # نقل الموبايل من عارضة لأخرى — يُفترض: نقل بلا إنذار
+    run('movenohand', ph, [], ph2, B, 62, marker=False)                   # نفس النقل بدون ذكاء اصطناعي — يُفترض: نقل بلا إنذار
+    run('handtake', ph, [], None, None, 63)                               # أخذ الموبايل عن السطح المزخرف — يُفترض: شيل ثم إنذار
+    run('reveal', [('box', *A), ('phone', *A)], [('box', *A)], None, None, 64)  # أخذ قطعة يكشف ما وراءها — يُفترض: شيل ثم إنذار
+    run('handswap', ph, [], [('gift', *B)], B, 65)
+    run('handmove2', [('plain', *A)], [], [('plain', *B)], B, 66, cloth=True)  # علبة سادة من الخشب إلى قماش أزرق — يُفترض: نقل بلا إنذار
+    # يد تضع علبة جديدة على اليسار ثم تأخذ الموبايل من اليمين — يُفترض: إنذار للموبايل، و«إضافة» للعلبة، بلا نقل
+    rng = np.random.default_rng(67); f = lambda it, h=None: noisy(rng, hand_scene(it, h), 3); g, p2 = ('gift', *A), ('phone', *B)
+    seq = [f([p2]) for _ in range(24)] + [f([p2], (A[0], A[1] + 120)), f([p2], A), f([g, p2], A), f([g, p2], A), f([g, p2], (A[0] + 100, A[1] + 20))]
+    seq += [f([g, p2], (B[0] - 80, B[1] + 10)), f([g, p2], B), f([g], B), f([g], B), f([g], (B[0], B[1] + 120)), f([g], (B[0], B[1] + 260))] + [f([g]) for _ in range(170)]
+    write_y4m('putthentake.y4m', seq)                        # أخذ الموبايل ووضع علبة مختلفة — يُفترض: إنذار للموبايل
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal()
+    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal(); hands()

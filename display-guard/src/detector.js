@@ -109,11 +109,23 @@ const DET = (() => {
     if(n) for(let k = 0; k < 64; k++) h[k] /= n;
     return { h: Array.from(h), n, tex: n ? tex / n : 0 };
   }
+  // توزيع ألوان «الحلقة» المحيطة بالمربع (السطح حول القطعة) بنفس تكميم البصمة: نعرف به أي جانب (قبل/بعد) هو الخلفية وأيهما القطعة
+  function ringHist(F, box){
+    const W = F.w, H = F.h, gx = box.w * 0.5, gy = box.h * 0.5, h = new Float32Array(64); let n = 0;
+    const x0 = Math.max(2, Math.floor((box.x - gx) * W)), y0 = Math.max(2, Math.floor((box.y - gy) * H)), x1 = Math.min(W - 2, Math.ceil((box.x + box.w + gx) * W)), y1 = Math.min(H - 2, Math.ceil((box.y + box.h + gy) * H));
+    const bx0 = box.x * W, by0 = box.y * H, bx1 = (box.x + box.w) * W, by1 = (box.y + box.h) * H, q = (v, lo, hi) => Math.max(0, Math.min(3, Math.floor((v - lo) / (hi - lo) * 4)));
+    for(let y = y0; y < y1; y += 2) for(let x = x0; x < x1; x += 2){ if(x >= bx0 && x < bx1 && y >= by0 && y < by1) continue; const i = y * W + x; h[q(F.g[i], 0, 256) * 16 + q(F.ca[i], -80, 80) * 4 + q(F.cb[i], -80, 80)]++; n++; }
+    if(n) for(let k = 0; k < 64; k++) h[k] /= n;
+    return { h: Array.from(h), n };
+  }
+  // تشابه توزيعين (باتاشاريا) بلا شروط المساحة
+  function histSim(a, b){ if(!a || !b || !a.n || !b.n) return 0; let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc; }
   // تشابه بصمتين (0..1): معامل باتاشاريا للألوان، بشرط تقارب المساحة والملمس
   function sigSim(a, b){
     if(!a || !b || a.n < 30 || b.n < 30) return 0;
+    // الملمس يُقاس عند بكسلات القطعة وحوافها، والحواف تتغيّر مع السطح الذي تحتها (خشب، قماش)، فالشرط متسامح
     const ar = a.n / b.n, tr = (a.tex + 1) / (b.tex + 1);
-    if(ar < 0.4 || ar > 2.5 || tr < 0.6 || tr > 1.67) return 0;
+    if(ar < 0.4 || ar > 2.5 || tr < 0.4 || tr > 2.5) return 0;
     let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
   }
   // «تراجع الصف» لرفوف البضاعة المتكررة (شيبس، شوكولا، علب): القطع متطابقة خلف بعضها، فأخذ القطعة الأمامية لا يُحدث
@@ -304,7 +316,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, recess, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;
