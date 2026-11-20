@@ -148,5 +148,36 @@ def tamper():
     write_y4m('turn.y4m', seq)
 
 
+def relocate():
+    """الموظف ينقل القطعة لرف تحته أو يدير زاويتها (تجربة ميدانية) — يُفترض: لا إنذار، بل حدث «نُقلت» معلوماتي."""
+    base, gone = _pair('gum_mouse_pair.png'); b = np.asarray(base).astype(np.int16); g = np.asarray(gone).astype(np.int16)
+    X0, Y0, X1, Y1 = 55, 125, 172, 238  # العلكة
+    mask = ((b.max(2) - b.min(2)) > 55) | (b.sum(2) > 420); mask[:Y0] = 0; mask[Y1:] = 0; mask[:, :X0] = 0; mask[:, X1:] = 0  # ألوان العلكة (لا سطح اللابتوب الداكن)
+    mask = np.asarray(Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(5))) > 0
+    item = base.crop((X0, Y0, X1, Y1)); m = Image.fromarray((mask[Y0:Y1, X0:X1] * 255).astype(np.uint8))
+    empty = Image.fromarray(np.where(mask[..., None], g, b).astype(np.uint8))  # المكان بدون العلكة
+    def put(bg, dx, dy, rot=0):
+        out = bg.copy(); it, mm = (item.rotate(rot, resample=Image.BICUBIC, expand=True), m.rotate(rot, resample=Image.BICUBIC, expand=True)) if rot else (item, m)
+        cx, cy = (X0 + X1) // 2 + dx, (Y0 + Y1) // 2 + dy; out.paste(it, (cx - it.size[0] // 2, cy - it.size[1] // 2), mm); return out
+    hand = lambda im, x, y: (lambda c: (ImageDraw.Draw(c).ellipse([x, y, x + 130, y + 120], fill=(205, 160, 135)), c)[1])(im.copy())
+    for name, dx, dy, rot, seed in [('move', 40, 165, 0, 31), ('rotate', 0, 0, 28, 32)]:
+        rng = np.random.default_rng(seed); seq = [noisy(rng, base) for _ in range(24)]
+        seq += [noisy(rng, hand(base, 60, 120)), noisy(rng, hand(empty, 70, 160)), noisy(rng, hand(put(empty, dx // 2, dy // 2, rot / 2), 80 + dx // 2, 140 + dy // 2))]
+        seq += [noisy(rng, hand(put(empty, dx, dy, rot), 120 + dx, 150 + dy)), noisy(rng, hand(put(empty, dx, dy, rot), 200 + dx, 200 + dy))]
+        seq += [noisy(rng, put(empty, dx, dy, rot)) for _ in range(120)]
+        write_y4m(name + '.y4m', seq)
+    # 3) حملها الموظف ~6 ث ثم وضعها على الرف تحته — يُفترض: لا إنذار (تُغلق حالة الشيل «نُقلت»)
+    rng = np.random.default_rng(33); seq = [noisy(rng, base) for _ in range(24)] + [noisy(rng, hand(base, 60, 120)), noisy(rng, hand(empty, 70, 160))]
+    seq += [noisy(rng, empty) for _ in range(24)] + [noisy(rng, hand(put(empty, 40, 165), 160, 320))] + [noisy(rng, put(empty, 40, 165)) for _ in range(120)]
+    write_y4m('movelate.y4m', seq)
+    # 4) سرقة العلكة مع وضع قطعة أخرى مختلفة (علبة زرقاء) في الأسفل — يُفترض: إنذار للعلكة رغم ظهور قطعة
+    rng = np.random.default_rng(34)
+    def box(im):
+        out = im.copy(); d = ImageDraw.Draw(out); d.rectangle([110, 300, 200, 370], fill=(40, 90, 200)); d.rectangle([120, 312, 190, 330], fill=(230, 230, 240)); return out
+    seq = [noisy(rng, base) for _ in range(24)] + [noisy(rng, hand(base, 60, 120)), noisy(rng, hand(empty, 70, 160)), noisy(rng, hand(box(empty), 160, 320))]
+    seq += [noisy(rng, box(empty)) for _ in range(120)]
+    write_y4m('stealadd.y4m', seq)
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal(); tamper()
+    live(); gum(); user(); focus(); steal(); tamper(); relocate()

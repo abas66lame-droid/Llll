@@ -93,6 +93,29 @@ const DET = (() => {
   }
   // صحة الصورة: متوسط السطوع ومتوسط قوة الحواف (الملمس). العدسة المغطاة أو المظلمة = ملمس شبه معدوم
   function health(F){ let s = 0, t = 0, n = 0; for(let i = 0; i < F.g.length; i += 7){ s += F.g[i]; t += F.G[i]; n++; } return { mu: s / n, tex: t / n }; }
+  // بصمة القطعة (لا تعتمد على المكان ولا الزاوية): بكسلات A التي تختلف عن B داخل المربع = القطعة نفسها
+  // (عند الشيل: A = المرجع، B = الحالي؛ عند الظهور: العكس). البصمة = توزيع الألوان (4×4×4) + متوسط الملمس + المساحة
+  function itemSig(A, B, box, shift){
+    const W = A.w, H = A.h, sx = (shift && shift[0]) || 0, sy = (shift && shift[1]) || 0; // B عند (x+sx, y+sy)
+    const x0 = Math.max(2, Math.floor(box.x * W)), y0 = Math.max(2, Math.floor(box.y * H)), x1 = Math.min(W - 2, Math.ceil((box.x + box.w) * W)), y1 = Math.min(H - 2, Math.ceil((box.y + box.h) * H));
+    const h = new Float32Array(64); let n = 0, tex = 0;
+    const q = (v, lo, hi) => Math.max(0, Math.min(3, Math.floor((v - lo) / (hi - lo) * 4)));
+    for(let y = y0; y < y1; y += 2) for(let x = x0; x < x1; x += 2){
+      const i = y * W + x, j = Math.min(H - 1, Math.max(0, y + sy)) * W + Math.min(W - 1, Math.max(0, x + sx));
+      const dg = Math.abs(A.g[i] - B.g[j]), dc = Math.abs(A.ca[i] - B.ca[j]) + Math.abs(A.cb[i] - B.cb[j]);
+      if(dg < 22 && dc < 24) continue;
+      h[q(A.g[i], 0, 256) * 16 + q(A.ca[i], -80, 80) * 4 + q(A.cb[i], -80, 80)]++; tex += A.G[i]; n++;
+    }
+    if(n) for(let k = 0; k < 64; k++) h[k] /= n;
+    return { h: Array.from(h), n, tex: n ? tex / n : 0 };
+  }
+  // تشابه بصمتين (0..1): معامل باتاشاريا للألوان، بشرط تقارب المساحة والملمس
+  function sigSim(a, b){
+    if(!a || !b || a.n < 30 || b.n < 30) return 0;
+    const ar = a.n / b.n, tr = (a.tex + 1) / (b.tex + 1);
+    if(ar < 0.4 || ar > 2.5 || tr < 0.6 || tr > 1.67) return 0;
+    let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
+  }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -243,7 +266,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;

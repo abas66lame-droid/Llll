@@ -119,6 +119,7 @@ const pollSec = () => isDemo() ? 2 : isTest() ? 1 : Math.max(2, +S.cfg.poll || 1
 const blindSec = () => isTest() ? Math.max(3, +S.cfg.testSec || 10) : 60; // مدة تغطية العدسة قبل التنبيه
 // حساسية كل عارضة: «دقيق» للقطع الصغيرة، «عادي»، أو «تلقائي» = الإعداد العام
 const fineOf = z => z.sens === 'fine' || (z.sens !== 'normal' && !!S.cfg.fine);
+const MOVE_SIM = 0.8; // حد تطابق بصمة القطعة لاعتبار الشيل «نقلاً»
 const fmtGrace = () => { const s = Math.round(grace() * 60); return s < 60 ? s + ' ثانية' : Math.round(s / 60) + ' دقيقة'; };
 function isNight(){
   if(!S.cfg.night || isDemo() || isTest()) return false;
@@ -330,6 +331,7 @@ const ENG = {
       this.prev = F; return;
     }
     this.camBump = 0;
+    const rems = [], adds = [], toRebase = [];
     for(const z of S.zones){
       const zs = this.zst[z.id] = this.zst[z.id] || { big: 0 };
       const ez = { x: Math.max(0, z.x - 0.04), y: Math.max(0, z.y - 0.04) }; ez.w = Math.min(1 - ez.x, z.w + 0.08); ez.h = Math.min(1 - ez.y, z.h + 0.08);
@@ -370,15 +372,26 @@ const ENG = {
       for(const reg of mergeNear(r.regions, 0.04)){
         if(reg.type === 'rem'){
           if(opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
-          this.newRemoval(z, reg, c, night);
+          rems.push({ z, reg, sig: DET.itemSig(this.base, F, reg, sh) });
         } else {
           const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35);
           if(m.length) m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c); } });
-          else this.newInfo(z, reg, reg.type === 'add' ? 'added' : 'swap', c);
+          else adds.push({ z, reg, sig: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) });
         }
       }
-      this.rebase(z, F, c);
+      toRebase.push(z);
     }
+    // نقل القطعة لمكان آخر (رف تحته، عارضة مجاورة) أو إدارة زاويتها ≠ شيل: نطابق ما اختفى مع ما ظهر ببصمة القطعة،
+    // واحد لواحد (لا تُخفي حركة قطعة سرقة قطعة أخرى). ليلاً لا مطابقة: أي تغيّر ينبّه
+    const used = new Set();
+    for(const rm of rems){
+      let best = null, bs = MOVE_SIM;
+      if(!night) adds.forEach((a, k) => { if(used.has(k)) return; const v = DET.sigSim(rm.sig, a.sig); if(v > bs){ bs = v; best = k; } });
+      if(best !== null){ used.add(best); this.newMoved(rm, adds[best], c, bs); }
+      else this.newRemoval(rm.z, rm.reg, c, night, rm.sig);
+    }
+    adds.forEach((a, k) => { if(used.has(k) || (!night && this.movedLater(a, c))) return; this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c); });
+    toRebase.forEach(z => this.rebase(z, F, c));
     // انزياح بسيط مستقر بدون أي تغيّر في العارضات: نعيد المحاذاة بهدوء حتى لا تتراكم الإزاحة
     if(moved && gm < 0.03 && S.zones.every(z => { const d = S.diag[z.id]; return d && d.state === 'ok' && d.r && !d.r.regions.length; }) && !P().length) this.rebaseAll(F, c);
     this.prev = F;
@@ -406,15 +419,36 @@ const ENG = {
     x.fillStyle = '#222'; x.font = 'bold 14px Tahoma'; x.textAlign = 'right'; x.fillText('قبل', c.width - 6, 17); x.fillStyle = '#c53030'; x.fillText('بعد', w - 6, 17);
     return c.toDataURL('image/jpeg', 0.75);
   },
-  newRemoval(z, reg, c, night){
+  newRemoval(z, reg, c, night, sig){
     const t = now(), cu = S.cleaning[z.id] || 0;
     let deadline = t + grace() * 60; if(cu > t) deadline = Math.max(deadline, cu + 60);
     const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
       img_b: this.shot(this.baseCv, reg, '#e53e3e'), img_a: this.shot(c, reg, '#e53e3e'), img_c: this.crop(this.baseCv, c, reg), note: night ? 'رُصد بعد ساعات العمل' : '' };
+    if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
     this.extras(z, e);
     addEvent(e);
     if(!night) trySale(e);
     if(night) alertEv(e);
+  },
+  // قطعة نُقلت في نفس القراءة: حدث معلوماتي فيه صورة المكان القديم والجديد، بلا مهلة ولا تنبيه
+  newMoved(rm, ad, c, sim){
+    const zf = rm.z, zt = ad.z, u = { x: Math.min(rm.reg.x, ad.reg.x), y: Math.min(rm.reg.y, ad.reg.y) }; u.w = Math.max(rm.reg.x + rm.reg.w, ad.reg.x + ad.reg.w) - u.x; u.h = Math.max(rm.reg.y + rm.reg.h, ad.reg.y + ad.reg.h) - u.y;
+    const e = { id: rid(), zone: zf.id, kind: 'moved', status: 'info', t_start: now(), t_end: now(), box: { x: rm.reg.x, y: rm.reg.y, w: rm.reg.w, h: rm.reg.h }, to: { zone: zt.id, box: { x: ad.reg.x, y: ad.reg.y, w: ad.reg.w, h: ad.reg.h } },
+      img_b: this.shot(this.baseCv, rm.reg, '#e0a020'), img_a: this.shot(c, ad.reg, '#38a169'), img_c: this.crop(this.baseCv, c, u),
+      note: (zf.id === zt.id ? 'نُقلت القطعة أو تغيّرت زاويتها داخل نفس العارضة' : 'نُقلت القطعة إلى «' + zt.name + '»') + ' (تطابق ' + Math.round(sim * 100) + '%).' };
+    this.extras(zf, e); addEvent(e);
+  },
+  // قطعة ظهرت الآن وتطابق قطعة شيلت قبل قليل (الموظف حملها ثوانٍ ثم وضعها في مكان آخر): نغلق حالة الشيل «نُقلت»
+  movedLater(a, c){
+    const late = now() - 24 * 3600; let best = null, bs = MOVE_SIM;
+    for(const e of S.events){ if(e.kind !== 'removal' || !e.sig || !(e.status === 'pending' || (e.status === 'incident' && e.t_start >= late))) continue;
+      const v = DET.sigSim(e.sig, a.sig); if(v > bs){ bs = v; best = e; } }
+    if(!best) return false;
+    best.img_r = this.shot(c, a.reg, '#38a169'); best.t_end = now(); best.to = { zone: a.z.id, box: { x: a.reg.x, y: a.reg.y, w: a.reg.w, h: a.reg.h } };
+    const where = a.z.id === best.zone ? 'مكان آخر في نفس العارضة' : '«' + a.z.name + '»';
+    if(best.status === 'pending'){ best.status = 'moved'; best.note = ((best.note || '') + ' نُقلت إلى ' + where + ' (تطابق ' + Math.round(bs * 100) + '%).').trim(); }
+    else { best.status = 'resolved'; best.resolution = 'moved'; best.resolved_by = 'النظام'; best.t_resolved = now(); best.note = ((best.note || '') + ' وُجدت بعد التنبيه في ' + where + '.').trim(); }
+    putEvent(best); return true;
   },
   // عبث بالكاميرا (تغطية العدسة أو توجيهها لمكان آخر): تنبيه فوري على مستوى الكاميرا كلها
   newTamper(sub, c){
@@ -567,9 +601,9 @@ class DemoSource {
 }
 
 /* =================== الواجهة =================== */
-const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا' };
-const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
-const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه' };
+const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل' };
+const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], moved: ['نُقل لمكان آخر', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
+const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه', moved: 'نُقل لمكان آخر' };
 let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
 function counts(){
   const t0 = new Date(); t0.setHours(0, 0, 0, 0); const T = t0.getTime() / 1000, E = S.events, rem = E.filter(e => (e.kind === 'removal' || e.kind === 'night') && e.t_start >= T);

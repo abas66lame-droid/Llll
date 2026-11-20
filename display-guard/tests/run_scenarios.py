@@ -23,6 +23,9 @@ MOCK_PERSON = r"""(()=>{MP.state='ready';MP.hand=null;
   for(let y=0;y<H;y+=3)for(let xx=0;xx<W;xx+=3){const i=(y*W+xx)*4;if(x[i+1]>110&&x[i+1]-x[i]>60&&x[i+1]-x[i+2]>35){n++;l=Math.min(l,xx);r=Math.max(r,xx);t=Math.min(t,y);b=Math.max(b,y);}}
   return {detections:n>30?[{boundingBox:{originX:l,originY:t,width:r-l,height:b-t},categories:[{categoryName:'person',score:.9}]}]:[]};}};})();"""
 
+# لا حالة نقص مفتوحة أو منبَّه عليها (النقل أو التدوير ليس شيلاً)
+NO_ALARM = lambda ev: not [1 for _, k, st in ev if k in ('removal', 'night') and st in ('pending', 'incident')]
+
 # (اسم، فيديو، مناطق، مدة بالثواني، دالة تحقق على قائمة [اسم_المنطقة، النوع، الحالة]، كاشف وهمي)
 SCENARIOS = {
     'live':  ('live.y4m',  [{'id': 'z1', 'name': 'عارضة', 'section': '', 'x': .03, 'y': .07, 'w': .47, 'h': .38}], 45,
@@ -42,6 +45,13 @@ SCENARIOS = {
     'bumpsteal': ('bumpsteal.y4m', [GUM, MOUSE], 32, lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
     # العبث بالكاميرا: تغطية العدسة مع أخذ قطعة تحتها، أو توجيهها لمكان آخر
     'cover': ('cover.y4m', [GUM, MOUSE], 44, lambda ev: any(k == 'tamper' for _, k, _ in ev) and {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
+    # نقل القطعة لرف تحته (نفس العارضة، أو من عارضة لأخرى) أو إدارة زاويتها: لا إنذار
+    'move': ('move.y4m', [{'id': 'all', 'name': 'الستاند', 'section': '', 'x': .08, 'y': .2, 'w': .62, 'h': .65}], 32, NO_ALARM, None),
+    'move2': ('move.y4m', [{'id': 'up', 'name': 'الرف العلوي', 'section': '', 'x': .1, 'y': .2, 'w': .45, 'h': .33}, {'id': 'dn', 'name': 'الرف السفلي', 'section': '', 'x': .1, 'y': .56, 'w': .55, 'h': .3}], 32, NO_ALARM, None),
+    'rotate': ('rotate.y4m', [GUM, MOUSE], 32, NO_ALARM, None),
+    'movelate': ('movelate.y4m', [{'id': 'up', 'name': 'الرف العلوي', 'section': '', 'x': .1, 'y': .2, 'w': .45, 'h': .33}, {'id': 'dn', 'name': 'الرف السفلي', 'section': '', 'x': .1, 'y': .56, 'w': .55, 'h': .3}], 36, NO_ALARM, None),
+    # النقل لا يُخفي السرقة: أُخذت العلكة ووُضعت قطعة مختلفة في الأسفل — يجب أن يبقى الإنذار
+    'stealadd': ('stealadd.y4m', [{'id': 'all', 'name': 'الستاند', 'section': '', 'x': .08, 'y': .2, 'w': .62, 'h': .65}], 32, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident'] and not [1 for _, k, _ in ev if k == 'moved'], None),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
