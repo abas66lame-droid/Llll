@@ -4563,8 +4563,15 @@ html body #shiftView table tr > :first-child:not(#_a):not(#_b):not(#_c):not(#_d)
 html body #shiftView .card > h3:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){color:var(--accent2)!important;font-size:15px!important;font-weight:800!important;background:none!important;-webkit-text-fill-color:currentColor!important}
 
 </style>
+<style id="amSafeTop">
+/* آيفون (شريط الحالة الشفاف): الشريط العلوي ينزل تحت الساعة والبطارية بمقدارها، وشريط ثابت يغطي منطقة الحالة */
+html body #appScreen > #amTopBar:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e){
+  padding-top:env(safe-area-inset-top,0px)!important;min-height:calc(58px + env(safe-area-inset-top,0px))!important;
+  margin-top:calc(-18px - env(safe-area-inset-top,0px))!important}
+#amStatusBg{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--amBar,#0f2742);z-index:2147483000;pointer-events:none}
+</style>
 </head>
-<body>
+<body><div id="amStatusBg" aria-hidden="true"></div>
 <script>window.__neoApplyPrepaintBody&&window.__neoApplyPrepaintBody();</script>
 
 <div class="container">
