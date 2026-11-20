@@ -9337,6 +9337,10 @@ async function renderShiftView(profile){
           </div>
         </div>
       </div>
+      <div class="amSaBtns" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;">
+        <button type="button" class="secondary" onclick="amShiftAnalytics('trend')">الاتجاه</button>
+        <button type="button" class="secondary" onclick="amShiftAnalytics('report')">التقرير</button>
+      </div>
       <div id="streakBox"></div><div id="shiftLoadState" role="status">${neoLoadPlaceholder('استكمال بنود القسم')}</div>
       <div id="shiftLocationData">${neoLoadPlaceholder('المواقع')}</div>
     </div>
@@ -31592,6 +31596,105 @@ window.neoStreakZero = async function(id,kind){
 })();
 </script>
 
+<script id="amShiftAnalytics">
+/* «الاتجاه» و«التقرير» لمسؤول الشفت — قسمه فقط، قراءة فقط من النسب المثبَّتة */
+(function(){
+  var st = { tab:'trend', off:0 };
+  function myDept(){ var p = window.__fleetProfile || {}; return p.role === 'shift' ? String((p.department_ids||[])[0] || '') : ''; }
+  function f(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function avg(a){ return a.length ? Math.round(a.reduce(function(s,v){return s+v;},0)/a.length) : null; }
+  async function rows(dept, from, to){
+    var r = await supabaseClient.from('daily_stats').select('log_date,pct,done,total,saved_by_name')
+      .eq('department_id', dept).gte('log_date', from).lte('log_date', to).order('log_date');
+    if (r.error) throw r.error; return r.data || [];
+  }
+  function shell(){
+    var o = document.getElementById('amSaOv');
+    if (!o){
+      o = document.createElement('div'); o.id = 'amSaOv';
+      o.style.cssText = 'position:fixed;inset:0;z-index:999990;overflow:auto;background:var(--bg,#0a1220);padding:14px 14px 90px;';
+      document.body.appendChild(o); document.body.style.overflow = 'hidden';
+    }
+    return o;
+  }
+  window.amSaClose = function(){ var o = document.getElementById('amSaOv'); if (o) o.remove(); document.body.style.overflow = ''; };
+  window.amSaTab = function(t){ st.tab = t; render(); };
+  window.amSaCycle = function(d){ st.off = Math.max(0, st.off + d); render(); };
+  window.amSaCopy = function(){ var t = document.getElementById('amSaTxt'); if (!t) return;
+    try{ navigator.clipboard.writeText(t.value); }catch(e){} if (typeof neoToast==='function') neoToast('نُسخ التقرير', true); };
+  function head(name){
+    return '<div class="card" style="display:flex;align-items:center;gap:8px;justify-content:space-between;">'
+      + '<h2 style="margin:0;font-size:17px;">' + neoHtml(name) + '</h2>'
+      + '<button class="secondary" onclick="amSaClose()" style="width:auto;padding:8px 14px;">رجوع</button></div>'
+      + '<div class="neoAnalyticsSwitch" role="group" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">'
+      + '<button type="button" class="secondary ' + (st.tab==='report'?'neoSelected':'') + '" onclick="amSaTab(\'report\')">التقرير</button>'
+      + '<button type="button" class="secondary ' + (st.tab==='trend'?'neoSelected':'') + '" onclick="amSaTab(\'trend\')">الاتجاه</button></div>';
+  }
+  async function render(){
+    var dept = myDept(); if (!dept) return;
+    var name = (document.getElementById('shiftDeptName')||{}).textContent || 'قسمي';
+    var o = shell();
+    o.innerHTML = head(name) + '<div class="card" style="color:var(--ui-muted);">جاري التحميل…</div>';
+    try{
+      o.innerHTML = head(name) + (st.tab === 'trend' ? await trend(dept) : await report(dept, name));
+    }catch(e){
+      o.innerHTML = head(name) + '<div class="card">تعذّر التحميل — تحقق من الاتصال وأعد المحاولة.</div>';
+    }
+  }
+  async function trend(dept){
+    var c = neoBillingMonth(st.off), pc = neoBillingMonth(st.off + 1);
+    var today = f(typeof iraqNow==='function' ? iraqNow() : new Date());
+    var days = []; var s = new Date(c.from+'T12:00:00');
+    for (var i=0;i<c.days;i++){ var d=new Date(s); d.setDate(d.getDate()+i); var iso=f(d); if (iso>today) break; days.push(iso); }
+    var cur = await rows(dept, c.from, c.to), prev = await rows(dept, pc.from, pc.to);
+    var by = {}; cur.forEach(function(r){ by[r.log_date] = Number(r.pct)||0; });
+    var series = days.map(function(d){ return d in by ? by[d] : null; });
+    var vals = series.filter(function(v){ return v!==null; });
+    var a = avg(vals), pa = avg(prev.map(function(r){ return Number(r.pct)||0; }));
+    var diff = (a!==null && pa!==null) ? a - pa : null;
+    var W=100,H=46,P=2.5, y=function(v){ return P+(1-v/100)*(H-P*2); }, x=function(i){ return days.length>1 ? P+(i/(days.length-1))*(W-P*2) : W/2; };
+    var path='', on=false; series.forEach(function(v,i){ if (v===null){ on=false; return; } path += (on?' L ':' M ')+x(i).toFixed(1)+' '+y(v).toFixed(1); on=true; });
+    var DOW=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'], dw={};
+    days.forEach(function(d,i){ if (series[i]===null) return; var k=new Date(d+'T12:00:00').getDay(); (dw[k]=dw[k]||[]).push(series[i]); });
+    var dl = Object.keys(dw).map(function(k){ return { d:DOW[k], v:avg(dw[k]) }; }).sort(function(p,q){ return p.v-q.v; });
+    return '<div class="card"><h3 style="margin:0 0 4px;">اتجاه دورة ' + c.label + '</h3>'
+      + '<div style="color:var(--ui-muted);font-size:12px;margin-bottom:8px;">' + c.from + ' إلى ' + c.to + '</div>'
+      + '<div style="display:flex;gap:6px;"><button class="secondary" onclick="amSaCycle(1)" style="flex:1;font-size:12px;padding:9px;">الدورة السابقة</button>'
+      + '<button class="secondary" onclick="amSaCycle(-1)" style="flex:1;font-size:12px;padding:9px;' + (st.off===0?'opacity:.4;pointer-events:none;':'') + '">الدورة التالية</button></div></div>'
+      + '<div class="card"><div style="display:flex;justify-content:space-around;text-align:center;margin-bottom:12px;">'
+      + '<div><div style="color:var(--ui-muted);font-size:11px;">المتوسط</div><div class="neoTrendScore" data-band="' + neoTrendBand(a) + '">' + (a===null?'—':a+'٪') + '</div><div class="neoTrendScoreLabel">' + neoTrendBandLabel(a) + '</div></div>'
+      + '<div><div style="color:var(--ui-muted);font-size:11px;">مقارنة بالدورة السابقة</div><div style="font-size:22px;font-weight:800;color:' + (diff===null?'#7487a0':diff>2?'#3ecf6b':diff<-2?'#e15b64':'#d3a04f') + ';">' + (diff===null?'—':diff>0?'▲'+diff:diff<0?'▼'+Math.abs(diff):'ثابت') + '</div><div style="color:var(--ui-muted);font-size:10px;">' + (pa===null?'لا بيانات سابقة':'كانت '+pa+'٪') + '</div></div>'
+      + '<div><div style="color:var(--ui-muted);font-size:11px;">أيام مثبّتة</div><div style="font-size:22px;font-weight:800;">' + vals.length + '</div></div></div>'
+      + '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:150px;background:rgba(0,0,0,.18);border-radius:12px;">'
+      + [0,50,100].map(function(v){ return '<line x1="0" x2="'+W+'" y1="'+y(v).toFixed(1)+'" y2="'+y(v).toFixed(1)+'" stroke="rgba(122,167,255,.15)" stroke-width="0.3"/>'; }).join('')
+      + '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>'
+      + series.map(function(v,i){ return v===null?'':'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(v).toFixed(1)+'" r="1" fill="'+neoTrendColor(v)+'"/>'; }).join('')
+      + '</svg></div>'
+      + '<div class="card"><h3 style="margin:0 0 8px;">أيام الدورة</h3><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">'
+      + days.map(function(d,i){ var v=series[i]; return '<div class="neoTrendHeat' + (v===null?' neoTrendHeatEmpty':'') + '" data-band="' + neoTrendBand(v) + '" title="' + d + '" style="text-align:center;padding:6px 0;border-radius:8px;font-size:11px;"><div style="opacity:.7;font-size:9px;">' + Number(d.slice(8)) + '</div><b>' + (v===null?'—':v) + '</b></div>'; }).join('')
+      + '</div></div>'
+      + (dl.length>=3 ? '<div class="card"><h3 style="margin:0 0 8px;">أداء أيام الأسبوع</h3>' + dl.map(function(r){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;"><span style="min-width:58px;font-size:12px;">'+r.d+'</span><div style="flex:1;height:12px;border-radius:6px;background:rgba(122,167,255,.12);overflow:hidden;"><div class="neoTrendBar" data-band="'+neoTrendBand(r.v)+'" style="height:100%;width:'+r.v+'%;"></div></div><b style="min-width:34px;font-size:12px;">'+r.v+'٪</b></div>'; }).join('') + '</div>' : '');
+  }
+  async function report(dept, name){
+    var cur = neoWeekRange(0), prev = neoWeekRange(1);
+    var a = await rows(dept, cur.from, cur.to), b = await rows(dept, prev.from, prev.to);
+    var ca = avg(a.map(function(r){ return Number(r.pct)||0; })), pa = avg(b.map(function(r){ return Number(r.pct)||0; }));
+    var diff = (ca!==null && pa!==null) ? ca - pa : null;
+    var col = function(v){ return v>=85?'#3ecf6b':v>=60?'#d3a04f':'#e15b64'; };
+    var txt = 'تقرير ' + name + ' — ' + cur.from + ' إلى ' + cur.to + '\nالمتوسط: ' + (ca===null?'—':ca+'٪')
+      + (diff===null?'':' (الأسبوع السابق '+pa+'٪)') + '\nثبّت ' + a.length + ' من ٧ أيام\n\n'
+      + a.map(function(r){ return r.log_date + ': ' + r.pct + '٪'; }).join('\n');
+    return '<div class="card" style="text-align:center;"><div style="color:var(--ui-muted);font-size:12px;">التقرير الأسبوعي · ' + cur.from + ' إلى ' + cur.to + '</div>'
+      + '<div style="font-size:42px;font-weight:800;color:' + (ca===null?'#7487a0':col(ca)) + ';">' + (ca===null?'—':ca+'٪') + '</div>'
+      + '<div style="color:var(--ui-muted);font-size:12px;">' + (diff===null?'لا مقارنة':diff>2?'▲ '+diff+' عن الأسبوع السابق':diff<-2?'▼ '+Math.abs(diff)+' عن الأسبوع السابق':'ثابت عن الأسبوع السابق') + ' · ثبّت ' + a.length + ' من ٧ أيام</div></div>'
+      + '<div class="card"><h3 style="margin:0 0 8px;">أيام الأسبوع</h3>'
+      + (a.length ? a.map(function(r){ var v=Number(r.pct)||0; return '<div style="padding:8px 2px;border-bottom:1px solid var(--line-strong,rgba(122,167,255,.12));"><div style="display:flex;justify-content:space-between;"><span>' + r.log_date + (/تحديث/.test(r.saved_by_name||'')?' <small style="color:#d3a04f;">تحديث</small>':'') + '</span><b style="color:'+col(v)+';">'+v+'٪</b></div><div style="height:6px;border-radius:4px;background:rgba(122,167,255,.15);overflow:hidden;margin-top:5px;"><div style="height:100%;width:'+v+'%;background:'+col(v)+';"></div></div></div>'; }).join('') : '<div style="color:var(--ui-muted);">لا توجد نسب مثبّتة هذا الأسبوع.</div>')
+      + '</div><div class="card"><button onclick="amSaCopy()" style="width:100%;">نسخ التقرير كنص</button>'
+      + '<textarea id="amSaTxt" readonly style="position:absolute;left:-9999px;">' + neoHtml(txt) + '</textarea></div>';
+  }
+  window.amShiftAnalytics = function(tab){ if (!myDept()) return; st.tab = tab || 'trend'; st.off = 0; render(); };
+})();
+</script>
 <script id="amCleanScript">
 /* عرض فقط: يمرّر نسبة شريط التقدّم الموجود إلى متغيّر CSS (--amPct) لرسم الحلقة. لا يغيّر أي بيانات ولا يستدعي أي دالة من التطبيق. */
 (function(){
