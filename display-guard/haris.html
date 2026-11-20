@@ -125,6 +125,49 @@ const DET = (() => {
     const c = bd.slice(); for(let dy = -2; dy <= 2; dy++) for(let dx = -2; dx <= 2; dx++){ if(!dx && !dy) continue; const s = score(c[0] + dx, c[1] + dy); if(s > best + 1e-6){ best = s; bd = [c[0] + dx, c[1] + dy]; } }
     return bd;
   }
+  // حركة الكاميرا الكاملة (إزاحة + دوران + تقريب): نقيس إزاحة 48 رقعة موزعة على الصورة (من الخشن للدقيق حتى لا تخدعنا
+  // الأنماط المتكررة مثل أزرار الكيبورد) ثم نطابقها بتحويل أفيني بطريقة RANSAC (تستبعد الرقع الشاذة مثل مكان قطعة مشالة).
+  // يرجع {a,b,c,d,e,f}: u = a·x + c·y + e ، v = b·x + d·y + f (بالبكسل، من المرجع إلى الحالي)، أو null إذا تعذّر القياس بثقة
+  function estimateAffine(ref, cur, base){
+    const W = ref.w, H = ref.h, w4 = Math.floor(W / 4), h4 = Math.floor(H / 4);
+    const down = F => { const o = new Float32Array(w4 * h4);
+      for(let y = 0; y < h4; y++) for(let x = 0; x < w4; x++){ let t = 0; for(let yy = 0; yy < 4; yy++){ const r = (y * 4 + yy) * W + x * 4; t += F.g[r] + F.g[r + 1] + F.g[r + 2] + F.g[r + 3]; } o[y * w4 + x] = t / 16; }
+      return grad(o, w4, h4); };
+    const A4 = down(ref), B4 = down(cur);
+    const ncc = (A, B, w, h, x0, y0, x1, y1, dx, dy, st) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y1; y += st){ const yy = y + dy; if(yy < 1 || yy >= h - 1) continue; for(let x = x0; x < x1; x += st){ const xx = x + dx; if(xx < 1 || xx >= w - 1) continue;
+        const a = A[y * w + x], b = B[yy * w + xx]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return n > 40 && va > n * 2 && vb > 0 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    const NX = 8, NY = 6, pts = [], b4 = [Math.round(base[0] / 4), Math.round(base[1] / 4)];
+    for(let j = 0; j < NY; j++) for(let i = 0; i < NX; i++){
+      const x0 = Math.round(i * w4 / NX), x1 = Math.round((i + 1) * w4 / NX), y0 = Math.round(j * h4 / NY), y1 = Math.round((j + 1) * h4 / NY);
+      let best = -1, bd = b4;
+      for(let dy = -8; dy <= 8; dy++) for(let dx = -8; dx <= 8; dx++){ const s = ncc(A4, B4, w4, h4, x0, y0, x1, y1, b4[0] + dx, b4[1] + dy, 1); if(s > best){ best = s; bd = [b4[0] + dx, b4[1] + dy]; } }
+      if(best < 0.5) continue;
+      const X0 = x0 * 4, X1 = x1 * 4, Y0 = y0 * 4, Y1 = y1 * 4; let fb = -1, fd = [bd[0] * 4, bd[1] * 4];
+      for(let dy = -4; dy <= 4; dy++) for(let dx = -4; dx <= 4; dx++){ const s = ncc(ref.G, cur.G, W, H, X0, Y0, X1, Y1, bd[0] * 4 + dx, bd[1] * 4 + dy, 2); if(s > fb){ fb = s; fd = [bd[0] * 4 + dx, bd[1] * 4 + dy]; } }
+      if(fb > 0.5) pts.push({ x: (X0 + X1) / 2, y: (Y0 + Y1) / 2, u: (X0 + X1) / 2 + fd[0], v: (Y0 + Y1) / 2 + fd[1] });
+    }
+    const fit = P => { // مربعات صغرى للتحويل الأفيني (حول المتوسط)
+      const n = P.length, mx = P.reduce((s, p) => s + p.x, 0) / n, my = P.reduce((s, p) => s + p.y, 0) / n, mu = P.reduce((s, p) => s + p.u, 0) / n, mv = P.reduce((s, p) => s + p.v, 0) / n;
+      let xx = 0, xy = 0, yy = 0, xu = 0, yu = 0, xv = 0, yv = 0;
+      for(const p of P){ const x = p.x - mx, y = p.y - my, u = p.u - mu, v = p.v - mv; xx += x * x; xy += x * y; yy += y * y; xu += x * u; yu += y * u; xv += x * v; yv += y * v; }
+      const det = xx * yy - xy * xy; if(Math.abs(det) < 1e-6 * (xx * yy + 1)) return null;
+      const a = (xu * yy - yu * xy) / det, c = (yu * xx - xu * xy) / det, b = (xv * yy - yv * xy) / det, d = (yv * xx - xv * xy) / det;
+      return { a, b, c, d, e: mu - a * mx - c * my, f: mv - b * mx - d * my }; };
+    const res = (T, p) => Math.hypot(T.a * p.x + T.c * p.y + T.e - p.u, T.b * p.x + T.d * p.y + T.f - p.v);
+    const sane = T => T && [T.a - 1, T.d - 1, T.b, T.c].every(v => Math.abs(v) < 0.12);
+    const n = pts.length; if(n < 8) return null;
+    let bestIn = null;
+    for(let i = 0; i < n; i++) for(let j = i + 1; j < n; j++) for(let k = j + 1; k < n; k++){ // كل الثلاثيات (عددها صغير)
+      const T = fit([pts[i], pts[j], pts[k]]); if(!sane(T)) continue;
+      const In = pts.filter(p => res(T, p) < 3); if(!bestIn || In.length > bestIn.length) bestIn = In;
+    }
+    if(!bestIn || bestIn.length < Math.max(8, 0.4 * n)) return null;
+    let T = fit(bestIn); if(!sane(T)) return null;
+    const In = pts.filter(p => res(T, p) < 3); if(In.length >= bestIn.length){ const T2 = fit(In); if(sane(T2)) T = T2; }
+    T.inliers = In.length; T.total = n; return T;
+  }
   function zoneBox(F, z, fine){
     const W = F.w, H = F.h;
     let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
@@ -275,7 +318,7 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, compareZone, motion, rebase, overlap, coarseSim };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, compareZone, motion, rebase, overlap, coarseSim };
 })();
 /* DETECTOR_END */
 /* =================== أدوات =================== */
@@ -461,6 +504,30 @@ const ENG = {
   camMove: 0, camBump: 0, settle: 0,
   reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
   rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; },
+  // قبل إعادة ضبط المرجع كاملاً (بعد حركة الكاميرا): نقارن كل عارضة بالمرجع القديم بعد محاذاته بالإزاحة المقاسة،
+  // حتى لا تُخفى سرقة حدثت مع حركة الموبايل (دفعه وأخذ القطعة في نفس اللحظة). نفتح فقط حالات «نقص» واضحة، ونغلق ما رجع.
+  realign(F, c, sh, ppl, night){
+    let n = 0;
+    const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
+    // نطابق المرجع القديم على الصورة الحالية (إزاحة + دوران + تقريب). إذا تعذّر القياس بثقة لا نفتح حالات (تفادياً للإنذار الكاذب)
+    const T = DET.estimateAffine(this.base, F, sh);
+    if(!T){ this.rebaseAll(F, c); return 0; }
+    const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
+    const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
+    const B = DET.frameFromCanvas(wc);
+    for(const z of S.zones){
+      const r = DET.compareZone(B, F, z, [0, 0], { fine: !!S.cfg.fine });
+      if(r.changed > 0.5) continue; // تغيّر شامل للعارضة بعد الحركة: لا نستطيع الحكم بثقة
+      const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
+      for(const reg of mergeNear(r.regions, 0.04)){
+        if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
+        if(reg.type === 'rem'){ if(!opened.some(e => DET.overlap(reg, e.box) > 0.5)){ this.newRemoval(z, reg, c, night); n++; } }
+        else opened.filter(e => DET.overlap(reg, e.box) > 0.35).forEach(e => this.returned(e, c));
+      }
+    }
+    this.rebaseAll(F, c);
+    return n;
+  },
   process(c, ppl){
     ppl = ppl || [];
     const F = DET.frameFromCanvas(c);
@@ -477,7 +544,7 @@ const ENG = {
     // 2) بعد اللمس أو الاهتزاز: ننتظر قراءتين مستقرتين ثم نعتمد الصورة الحالية مرجعاً (إذا تغيّرت الصورة عموماً)
     if(this.settle > 0){
       S.camState = 'settle'; S.zones.forEach(z => S.diag[z.id] = { state: 'settle' });
-      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ this.rebaseAll(F, c); toast('تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
+      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ const n = this.realign(F, c, sh, ppl, night); toast(n ? 'تحرك الموبايل؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
       this.prev = F; return;
     }
     S.camState = 'ok';
@@ -485,7 +552,7 @@ const ENG = {
     const gBase = DET.motion(this.base, F, FULL)[0], moved = Math.abs(sh[0]) >= 4 || Math.abs(sh[1]) >= 4;
     if(gBase > 0.22 && (moved || gBase > 0.6) && gm < 0.03 && !ppl.length){
       S.camState = 'bumped'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' });
-      if(++this.camBump >= 2){ this.rebaseAll(F, c); this.camBump = 0; S.camState = 'ok'; toast('انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
+      if(++this.camBump >= 2){ const n = this.realign(F, c, sh, ppl, night); this.camBump = 0; S.camState = 'ok'; toast(n ? 'انزاحت الكاميرا؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
       this.prev = F; return;
     }
     this.camBump = 0;

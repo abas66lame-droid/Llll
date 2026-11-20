@@ -37,6 +37,9 @@ SCENARIOS = {
     'nudge': ('nudge.y4m', [GUM, MOUSE], 32,
               lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
     'nudge2': ('nudge2.y4m', [GUM, MOUSE], 20, lambda ev: not [1 for _, k, _ in ev if k == 'removal'], None),
+    # السرقة لا تُخفى داخل «حركة الكاميرا»: ذراع تملأ الصورة، أو دفع الموبايل مع الأخذ
+    'reach': ('reach.y4m', [GUM, MOUSE], 32, lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
+    'bumpsteal': ('bumpsteal.y4m', [GUM, MOUSE], 32, lambda ev: {z for z, k, _ in ev if k == 'removal'} == {'العلكة'}, None),
 }
 
 

@@ -259,6 +259,30 @@ const ENG = {
   camMove: 0, camBump: 0, settle: 0,
   reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
   rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; },
+  // قبل إعادة ضبط المرجع كاملاً (بعد حركة الكاميرا): نقارن كل عارضة بالمرجع القديم بعد محاذاته بالإزاحة المقاسة،
+  // حتى لا تُخفى سرقة حدثت مع حركة الموبايل (دفعه وأخذ القطعة في نفس اللحظة). نفتح فقط حالات «نقص» واضحة، ونغلق ما رجع.
+  realign(F, c, sh, ppl, night){
+    let n = 0;
+    const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
+    // نطابق المرجع القديم على الصورة الحالية (إزاحة + دوران + تقريب). إذا تعذّر القياس بثقة لا نفتح حالات (تفادياً للإنذار الكاذب)
+    const T = DET.estimateAffine(this.base, F, sh);
+    if(!T){ this.rebaseAll(F, c); return 0; }
+    const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
+    const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
+    const B = DET.frameFromCanvas(wc);
+    for(const z of S.zones){
+      const r = DET.compareZone(B, F, z, [0, 0], { fine: !!S.cfg.fine });
+      if(r.changed > 0.5) continue; // تغيّر شامل للعارضة بعد الحركة: لا نستطيع الحكم بثقة
+      const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
+      for(const reg of mergeNear(r.regions, 0.04)){
+        if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
+        if(reg.type === 'rem'){ if(!opened.some(e => DET.overlap(reg, e.box) > 0.5)){ this.newRemoval(z, reg, c, night); n++; } }
+        else opened.filter(e => DET.overlap(reg, e.box) > 0.35).forEach(e => this.returned(e, c));
+      }
+    }
+    this.rebaseAll(F, c);
+    return n;
+  },
   process(c, ppl){
     ppl = ppl || [];
     const F = DET.frameFromCanvas(c);
@@ -275,7 +299,7 @@ const ENG = {
     // 2) بعد اللمس أو الاهتزاز: ننتظر قراءتين مستقرتين ثم نعتمد الصورة الحالية مرجعاً (إذا تغيّرت الصورة عموماً)
     if(this.settle > 0){
       S.camState = 'settle'; S.zones.forEach(z => S.diag[z.id] = { state: 'settle' });
-      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ this.rebaseAll(F, c); toast('تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
+      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ const n = this.realign(F, c, sh, ppl, night); toast(n ? 'تحرك الموبايل؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
       this.prev = F; return;
     }
     S.camState = 'ok';
@@ -283,7 +307,7 @@ const ENG = {
     const gBase = DET.motion(this.base, F, FULL)[0], moved = Math.abs(sh[0]) >= 4 || Math.abs(sh[1]) >= 4;
     if(gBase > 0.22 && (moved || gBase > 0.6) && gm < 0.03 && !ppl.length){
       S.camState = 'bumped'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' });
-      if(++this.camBump >= 2){ this.rebaseAll(F, c); this.camBump = 0; S.camState = 'ok'; toast('انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
+      if(++this.camBump >= 2){ const n = this.realign(F, c, sh, ppl, night); this.camBump = 0; S.camState = 'ok'; toast(n ? 'انزاحت الكاميرا؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
       this.prev = F; return;
     }
     this.camBump = 0;

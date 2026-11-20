@@ -108,5 +108,26 @@ def focus():
     write_y4m('focus.y4m', seq)
 
 
+def steal():
+    """هجمات تُخفي السرقة داخل «حركة الكاميرا» (تجربة ميدانية: بعد إصلاح الحركة البسيطة صار لا يكشف السرقة نهائياً)."""
+    rng = np.random.default_rng(11); base, gone = _pair('gum_mouse_pair.png'); OW, OH = base.size
+    g = np.asarray(gone).copy(); b = np.asarray(base); g[:, 190:] = b[:, 190:]; gum_gone = Image.fromarray(g)
+    mv = lambda img, dx, dy, rot: img.rotate(rot, resample=Image.BILINEAR, translate=(dx, dy), fillcolor=(30, 30, 40))
+    # 1) ذراع قريبة من الموبايل تملأ أغلب الصورة (تبدو «حركة كاميرا») وتأخذ العلكة — يُفترض: إنذار للعلكة
+    def arm(img, x):
+        out = img.copy(); d = ImageDraw.Draw(out)
+        d.polygon([(x, 0), (x + 560, 0), (x + 460, OH), (x - 120, OH)], fill=(60, 64, 80)); d.ellipse([x + 60, 40, x + 420, 380], fill=(205, 160, 135))
+        return out
+    seq = [noisy(rng, base) for _ in range(24)] + [noisy(rng, arm(base if i < 10 else gum_gone, -300 + i * 30 if i < 10 else 0 - (i - 10) * 40)) for i in range(20)] + [noisy(rng, gum_gone) for _ in range(120)]
+    write_y4m('reach.y4m', seq)
+    # 2) دفع الموبايل قليلاً وأخذ العلكة في نفس اللحظة — يُفترض: إنذار للعلكة فقط (لا للماوس)
+    rng = np.random.default_rng(12)
+    hand = lambda im, x: (lambda c: (ImageDraw.Draw(c).ellipse([x, 150, x + 150, 290], fill=(205, 160, 135)), c)[1])(im.copy())
+    seq = [noisy(rng, base) for _ in range(24)]
+    seq += [noisy(rng, hand(mv(base if i < 3 else gum_gone, 2 * i, 1.5 * i, .2 * i), 40 + i * 12)) for i in range(6)]
+    seq += [noisy(rng, mv(gum_gone, 10, 7, 1.0)) for _ in range(120)]
+    write_y4m('bumpsteal.y4m', seq)
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus()
+    live(); gum(); user(); focus(); steal()

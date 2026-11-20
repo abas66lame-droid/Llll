@@ -17,4 +17,14 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   t(`${nm} ${fine ? 'fine' : 'normal'}: no false regions under noise/exposure`, fp === 0);
   t(`${nm} ${fine ? 'fine' : 'normal'}: small item removal detected`, r.regions.some(g => g.type === 'rem'));
 }
+// حركة الكاميرا: تقدير التحويل الأفيني (إزاحة + دوران + تقريب) على مشهد بنمط متكرر (مثل الكيبورد) وقطعة مشالة
+{
+  const tex = (x, y) => { const k = (Math.floor(x / 14) + Math.floor(y / 14)) % 2 ? 40 : 0; const v = 120 + 50 * Math.sin(x / 23 + Math.sin(y / 37) * 3) + 30 * Math.sin(y / 17 - x / 51) + (y > 380 ? k : 0); return [v, v * .9, v * .8]; };
+  const th = 1.5 * Math.PI / 180, sc = 1.01, A = { a: sc * Math.cos(th), b: sc * Math.sin(th), c: -sc * Math.sin(th), d: sc * Math.cos(th) }; A.e = 14 - (A.a - 1) * 480 - A.c * 270; A.f = 9 - A.b * 480 - (A.d - 1) * 270;
+  const det = A.a * A.d - A.b * A.c, inv = (u, v) => { u -= A.e; v -= A.f; return [(A.d * u - A.c * v) / det, (-A.b * u + A.a * v) / det]; };
+  const ref = scene(tex, 4, 1), cur = scene((u, v) => { const [x, y] = inv(u, v); return (x >= 430 && x < 520 && y >= 250 && y < 300) ? [200, 60, 60] : tex(x, y); }, 4, 1);
+  const t0 = Date.now(), T = D.estimateAffine(ref, cur, D.estimateShift(ref, cur)), ms = Date.now() - t0;
+  const err = T ? Math.max(...[[100, 100], [860, 100], [100, 440], [860, 440], [480, 270]].map(([x, y]) => Math.hypot(T.a * x + T.c * y + T.e - (A.a * x + A.c * y + A.e), T.b * x + T.d * y + T.f - (A.b * x + A.d * y + A.f)))) : 1e9;
+  t(`camera affine: recovered within 1.5px (max err ${err.toFixed(2)}px, ${ms}ms)`, err < 1.5);
+}
 process.exit(fails ? 1 : 0);
