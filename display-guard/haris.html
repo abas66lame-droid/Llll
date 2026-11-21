@@ -1491,7 +1491,15 @@ function vStockRep(since){
   return `<div class="card"><h3>رفوف البضاعة: الالتقاطات مقابل المبيعات</h3><p class="sm mut" style="margin-top:0">«التقاط» يعني أن قطعة أُخذت من مقدمة صف، <b>وليس سرقة</b>: أغلب الالتقاطات زبائن يشترون. المقارنة تصبح مفيدة فقط إذا سُجّلت مبيعات الرف (مجموع اليوم من تقرير الكاشير يكفي، من تبويب «المبيعات»). بدون مبيعات، مؤشر السرقة الوحيد هو «اشتباه إخفاء».</p>
     <div class="tw"><table><tr><th>الرف</th><th>القسم</th><th>التقاطات</th><th>تعبئة</th><th>مبيعات مسجّلة</th><th>التقاطات بلا بيع</th><th>اشتباه إخفاء</th></tr>${rows.map(o => `<tr><td>${esc(o.z.name)}</td><td>${esc(o.z.section || '')}</td><td>${o.pk}</td><td>${o.rs}</td><td>${o.sl}</td><td style="${o.sl && o.gap ? 'color:var(--da);font-weight:700' : ''}">${o.sl ? o.gap : '<span class="mut">لا مبيعات مسجّلة</span>'}</td><td>${o.cn}</td></tr>`).join('')}</table></div></div>`;
 }
-function download(name, text, type){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+// تنزيل ملف: على الموبايل نستخدم قائمة المشاركة (واتساب، تيليجرام، حفظ في الملفات) لأن كثيراً من التطبيقات تمنع التنزيل بصمت
+async function download(name, text, type){
+  const blob = new Blob(['\ufeff' + text], { type });
+  try{ const f = new File([blob], name, { type }); if(navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: name }); return; } }
+  catch(e){ if(e && e.name === 'AbortError') return; }
+  const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  // إن لم يبدأ التنزيل: رابط واضح يفتح الملف ليُحفظ يدوياً
+  openModal(`<h2>حفظ الملف</h2><p class="sm">إذا لم يبدأ التنزيل تلقائياً، اضغط الرابط ثم اختر «مشاركة» أو «حفظ في الملفات».</p><a class="btn pri w" href="${url}" download="${esc(name)}" target="_blank">فتح الملف: ${esc(name)}</a><div style="height:8px"></div><button class="btn w" onclick="closeModal()">إغلاق</button>`);
+}
 function exportCsv(){
   const rows = [['الوقت', 'العارضة', 'القسم', 'النوع', 'الحالة', 'المعالجة', 'ملاحظة', 'عالجها']].concat(S.events.map(e => { const z = zoneOf(e.zone); return [new Date(e.t_start * 1000).toLocaleString('en-GB'), z.name, z.section || '', KIND[e.kind] || e.kind, (STA[e.status] || [e.status])[0], RES[e.resolution] || '', e.note || '', e.resolved_by || '']; }));
   download('haris-events.csv', rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv;charset=utf-8');
