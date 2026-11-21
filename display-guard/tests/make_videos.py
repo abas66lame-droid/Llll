@@ -301,7 +301,13 @@ def hands():
     run('handtake', ph, [], None, None, 63)                               # أخذ الموبايل عن السطح المزخرف — يُفترض: شيل ثم إنذار
     run('reveal', [('box', *A), ('phone', *A)], [('box', *A)], None, None, 64)  # أخذ قطعة يكشف ما وراءها — يُفترض: شيل ثم إنذار
     run('handswap', ph, [], [('gift', *B)], B, 65)
-    run('handmove2', [('plain', *A)], [], [('plain', *B)], B, 66, cloth=True)  # علبة سادة من الخشب إلى قماش أزرق — يُفترض: نقل بلا إنذار
+    run('handmove2', [('plain', *A)], [], [('plain', *B)], B, 66, cloth=True)
+    # (تجربة ميدانية) «غيّرت مكان قطعة 2 سم فحسبها سرقة»: الموبايل يُزاح قليلاً في مكانه (بيد وبدونها)
+    def nudge(name, dx, seed, marker):
+        rng = np.random.default_rng(seed); f = lambda it, h=None: noisy(rng, hand_scene(it, h, marker), 3); P0, P1 = [('phone', *A)], [('phone', A[0] + dx, A[1] + 4)]
+        seq = [f(P0) for _ in range(24)] + [f(P0, (A[0], A[1] + 120)), f(P0, A), f(P1, (A[0] + dx, A[1])), f(P1, (A[0] + dx, A[1] + 140)), f(P1, (A[0] + dx, A[1] + 280))] + [f(P1) for _ in range(170)]
+        write_y4m(name + '.y4m', seq)
+    nudge('nudgeitem', 22, 68, True); nudge('nudgeitem_nohand', 22, 69, False); nudge('nudgeitem2', 50, 70, True)  # علبة سادة من الخشب إلى قماش أزرق — يُفترض: نقل بلا إنذار
     # يد تضع علبة جديدة على اليسار ثم تأخذ الموبايل من اليمين — يُفترض: إنذار للموبايل، و«إضافة» للعلبة، بلا نقل
     rng = np.random.default_rng(67); f = lambda it, h=None: noisy(rng, hand_scene(it, h), 3); g, p2 = ('gift', *A), ('phone', *B)
     seq = [f([p2]) for _ in range(24)] + [f([p2], (A[0], A[1] + 120)), f([p2], A), f([g, p2], A), f([g, p2], A), f([g, p2], (A[0] + 100, A[1] + 20))]

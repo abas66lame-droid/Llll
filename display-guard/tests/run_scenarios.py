@@ -108,6 +108,10 @@ SCENARIOS = {
     # بيد: نقل واحد بلا إنذار. بلا يد لا دليل على أنها نفس القطعة؛ المطلوب على الأقل ألا تصبح سرقتين (مكان الوضع ليس سرقة)
     'moveclutter2': ('moveclutter2.y4m', [ZALL], 36, lambda ev: NO_ALARM(ev) and len([1 for _, k, s in ev if k == 'moved' or s == 'moved']) == 1, MOCK_HAND),
     'moveclutter2_nohand': ('moveclutter2_nohand.y4m', [ZALL], 36, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s in ('pending', 'incident')]) <= 1, None, {'ai': False}),
+    # إزاحة القطعة قليلاً في مكانها ≠ سرقة
+    'nudgeitem': ('nudgeitem.y4m', [ZL, ZR], 30, NO_ALARM, MOCK_HAND),
+    'nudgeitem_nohand': ('nudgeitem_nohand.y4m', [ZL, ZR], 30, NO_ALARM, None, {'ai': False}),
+    'nudgeitem2': ('nudgeitem2.y4m', [ZL, ZR], 30, NO_ALARM, MOCK_HAND),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 

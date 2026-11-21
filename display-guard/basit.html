@@ -462,7 +462,9 @@ const blindSec = () => isTest() ? Math.max(3, +S.cfg.testSec || 10) : 60; // م�
 const fineOf = z => z.sens === 'fine' || (z.sens !== 'normal' && !!S.cfg.fine);
 const MOVE_SIM = 0.8; // حد تطابق بصمة القطعة لاعتبار الشيل «نقلاً»
 const PUT = 0.25; // قطبية التغيّر: فوقها = وُضع شيء بوضوح، وتحت سالبها = أُخذ شيء بوضوح
-const MOVE_SIM_HAND = 0.6; // أخفّ عندما تتبّعت اليد الأخذ ثم الوضع (الدليل من الترتيب لا من البصمة وحدها)
+const MOVE_SIM_HAND = 0.6;
+const NUDGE_SIM = 0.6; // إزاحة صغيرة: نفس القطعة قريبة من مكانها
+let DBG_CUR = null; // أرقام القرار تُحفظ مع الحدث لتحليل الأخطاء الميدانية // أخفّ عندما تتبّعت اليد الأخذ ثم الوضع (الدليل من الترتيب لا من البصمة وحدها)
 const fmtGrace = () => { const s = Math.round(grace() * 60); return s < 60 ? s + ' ثانية' : Math.round(s / 60) + ' دقيقة'; };
 function isNight(){
   if(!S.cfg.night || isDemo() || isTest()) return false;
@@ -818,11 +820,28 @@ const ENG = {
   decide(cands, c, night){
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
+    for(const a of cands) a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
+    // (تجربة ميدانية) «حرّكت قطعة 2 سم فحسبها سرقة»: إزاحة صغيرة تظهر منطقة واحدة فيها القطعة قبل وبعد، أو منطقتين متلاصقتين.
+    // نفس القطعة في المكان نفسه تقريباً = تحرّكت، لا سرقة (لا يحتاج يداً)
+    const usedPre = new Set();
+    if(!night) for(const a of cands){ if(usedPre.has(a)) continue;
+      if(a.dbg.self >= NUDGE_SIM && a.before.n > 30 && a.after.n > 30){ usedPre.add(a); DBG_CUR = a.dbg; this.newInfo(a.z, a.reg, 'moved', c, 'تحرّكت القطعة قليلاً في مكانها (تطابق ' + Math.round(a.dbg.self * 100) + '%).'); DBG_CUR = null; continue; }
+      for(const b of cands){ if(b === a || usedPre.has(b) || b.z !== a.z) continue;
+        const gap = Math.max(0, Math.max(a.reg.x, b.reg.x) - Math.min(a.reg.x + a.reg.w, b.reg.x + b.reg.w)) + Math.max(0, Math.max(a.reg.y, b.reg.y) - Math.min(a.reg.y + a.reg.h, b.reg.y + b.reg.h));
+        if(gap > 0.6 * Math.max(a.reg.w, a.reg.h)) continue; const v = DET.sigSim(a.before, b.after);
+        if(v >= NUDGE_SIM && src(a) && dst(b)){ usedPre.add(a); usedPre.add(b); DBG_CUR = a.dbg; this.newMoved(a, b, c, v); DBG_CUR = null; break; } } }
+    // أجزاء نفس القطعة المتحركة (حوافها وظلها) تظهر مناطق صغيرة حولها: لا تُحسب سرقة مستقلة
+    const absorb = (boxes) => { const U = boxes.map(b => ({ x: b.x - b.w * .3, y: b.y - b.h * .3, w: b.w * 1.6, h: b.h * 1.6 }));
+      for(const a of cands) if(!usedPre.has(a) && U.some(u => { const ox = Math.max(0, Math.min(a.reg.x + a.reg.w, u.x + u.w) - Math.max(a.reg.x, u.x)), oy = Math.max(0, Math.min(a.reg.y + a.reg.h, u.y + u.h) - Math.max(a.reg.y, u.y)); return ox * oy > 0.6 * a.reg.w * a.reg.h; })) usedPre.add(a); };
+    absorb([...usedPre].map(a => a.reg));
+    cands = cands.filter(a => !usedPre.has(a));
     const used = new Set(), Hd = cands.filter(a => a.hT).sort((a, b) => a.hT - b.hT), Nd = cands.filter(a => !a.hT);
     if(!night) for(let i = 0; i < Hd.length; i++){ if(used.has(Hd[i]) || !src(Hd[i])) continue; let best = null, bs = MOVE_SIM_HAND;
       for(let j = i + 1; j < Hd.length; j++){ if(used.has(Hd[j]) || !dst(Hd[j])) continue; const v = DET.sigSim(Hd[i].before, Hd[j].after); if(v > bs){ bs = v; best = Hd[j]; } }
-      if(best){ used.add(Hd[i]); used.add(best); this.newMoved(Hd[i], best, c, bs, true); } }
-    for(const a of Hd){ if(used.has(a)) continue;
+      if(best){ used.add(Hd[i]); used.add(best); DBG_CUR = Hd[i].dbg; this.newMoved(Hd[i], best, c, bs, true); DBG_CUR = null;
+        const U = [Hd[i].reg, best.reg].map(b => ({ x: b.x - b.w * .3, y: b.y - b.h * .3, w: b.w * 1.6, h: b.h * 1.6 }));
+        for(const a of cands) if(!used.has(a) && U.some(u => { const ox = Math.max(0, Math.min(a.reg.x + a.reg.w, u.x + u.w) - Math.max(a.reg.x, u.x)), oy = Math.max(0, Math.min(a.reg.y + a.reg.h, u.y + u.h) - Math.max(a.reg.y, u.y)); return ox * oy > 0.6 * a.reg.w * a.reg.h; })) used.add(a); } }
+    for(const a of Hd){ if(used.has(a)) continue; DBG_CUR = a.dbg;
       if(!night && a.pol > PUT && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c, MOVE_SIM_HAND)) continue;
       if(!night && a.pol > PUT) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
       else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
@@ -830,13 +849,14 @@ const ENG = {
     const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && dst(b)){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
     P2.sort((x, y) => y[0] - x[0]);
     if(!night) for(const [, v, a, b] of P2){ if(used.has(a) || used.has(b)) continue; used.add(a); used.add(b); this.newMoved(a, b, c, v); }
-    for(const a of Nd){ if(used.has(a)) continue;
+    for(const a of Nd){ if(used.has(a)) continue; DBG_CUR = a.dbg;
       // وضعٌ واضح (حدّ القطعة الجديدة أمام ما خلفها) ليس سرقة أبداً، حتى لو غطّت زخرفة فبدا «نقصاً» بالملمس
       if(a.pol > PUT){ if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue; this.newInfo(a.z, a.reg, 'added', c, 'ظهرت قطعة جديدة أمام ما خلفها.'); continue; }
       if(a.reg.type === 'rem' || a.pol < -PUT) this.newRemoval(a.z, a.reg, c, night, a.before);
       else if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue;
       else this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c);
     }
+    DBG_CUR = null;
   },
   // رف بضاعة: «التقاط» (أُخذت قطعة من مقدمة الصف) أو «تعبئة» — معلوماتي، يُعدّ في التقارير ويُقارن بالمبيعات
   newStock(z, reg, c){
@@ -896,7 +916,7 @@ const ENG = {
     }
   }
 };
-function addEvent(e){ if(isDemo()) e.demo = true; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); }
+function addEvent(e){ if(isDemo()) e.demo = true; if(DBG_CUR && !e.dbg) e.dbg = DBG_CUR; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); }
 function putEvent(e){ DB.put('events', e); refreshSoon(); }
 function trySale(e){
   const w = saleWin() * 60, s = S.sales.filter(s => s.zone === e.zone && s.remaining > 0 && s.t >= e.t_start - w).sort((a, b) => a.t - b.t)[0];
@@ -1323,7 +1343,13 @@ function vEv(){
   const L = S.events.filter(f).slice(0, 120);
   return `<h2>التنبيهات والأحداث</h2><div class="seg">${F.map(([k, n]) => `<button class="${S.evf === k ? 'on' : ''}" onclick="S.evf='${k}';render()">${n}</button>`).join('')}</div>
     <div class="note sm">عند شيل منتج تبدأ مهلة ${fmtGrace()}. إذا رجع المنتج أو سُجّل بيعه تُغلق الحالة تلقائياً. وإذا انتهت المهلة بدون ذلك تصبح «اختفاء غير مبرر» ويصدر تنبيه.</div>
+    <div class="row" style="margin:8px 0"><button class="btn sm" onclick="exportCases()">📤 تصدير آخر الحالات بالصور (أرسله للمطوّر)</button></div>
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
+}
+// ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
+function exportCases(){
+  const L = S.events.slice(0, 30).map(e => ({ kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
+  download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
 function evCard(e){
   const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
