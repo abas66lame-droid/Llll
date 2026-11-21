@@ -136,9 +136,18 @@ async function gemini(content, schema){
   GM = GM || 'models/gemini-flash-latest'; // الاسم الذي تعطيه Google في مثالها الرسمي
   const parts = content.map(c => c.type === 'image' ? { inline_data: { mime_type: 'image/jpeg', data: c.source.data } } : { text: c.text });
   parts.push({ text: 'أجب بـ JSON فقط بهذا الشكل: ' + JSON.stringify(Object.fromEntries(Object.entries(schema.properties).map(([k, v]) => [k, v.enum ? v.enum.join('|') : v.type]))) });
-  const r = await (await fetch(B + GM + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) })).json();
-  if(r.error) throw new Error('Gemini: ' + r.error.message);
+  // عند الازدحام (503/429) نعيد المحاولة بعد ثوانٍ، ثم ننتقل لنموذج أخف
+  const models = [GM, 'models/gemini-flash-lite-latest'], body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
+  let r, last = '';
+  for(let k = 0; k < 4; k++){
+    const m = models[k < 2 ? 0 : 1];
+    r = await (await fetch(B + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key }, body })).json();
+    if(!r.error) break;
+    last = r.error.message; const busy = [429, 500, 503].includes(r.error.code) || /demand|overload|unavailable|exhausted/i.test(last);
+    if(!busy) throw new Error('Gemini: ' + last);
+    $('#ai').textContent = '🤖 Gemini مزدحم، إعادة المحاولة…'; await new Promise(ok => setTimeout(ok, 4000 * (k + 1)));
+  }
+  if(r.error) throw new Error('Gemini مزدحم الآن، سيُعاد المحاولة تلقائياً');
   return JSON.parse(r.candidates[0].content.parts.map(p => p.text || '').join(''));
 }
 async function claude(content, schema){
@@ -157,7 +166,7 @@ async function countBase(){
   try{ const r = await claude([img(base.img), { type: 'text', text: 'هذه عارضة منتجات في محل. عُدّ القطع (العلب والأجهزة) الموجودة عليها بدقة، ولا تعدّ بطاقات الأسعار.' }],
       { type: 'object', additionalProperties: false, required: ['count'], properties: { count: { type: 'integer' } } });
     base.n = r.count; $('#cnt').textContent = r.count; $('#ai').textContent = ''; }
-  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); }
+  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); setTimeout(() => { if(base && base.n == null && !asking) countBase(); }, 30000); }
   asking = false;
 }
 async function judge(b, F){
