@@ -36,7 +36,7 @@ main{max-width:900px;margin:auto;padding:12px 16px 40px}
   <div id="app" hidden>
     <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
     <div class="bar"><span>القطع في العارضة:</span><span class="cnt" id="cnt">—</span><span class="mut" id="st"></span></div>
-    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><span class="mut" id="ai"></span><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
+    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><button class="btn" onclick="ping()">اختبار الاتصال</button><span class="mut" id="ai"></span><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
     <div id="alarms"></div>
     <h3>الحالات</h3><div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
   </div>
@@ -141,13 +141,14 @@ async function gemini(content, schema){
   let r, last = '';
   for(let k = 0; k < 4; k++){
     const m = models[k < 2 ? 0 : 1];
-    r = await (await fetch(B + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key }, body })).json();
+    try{ r = await (await fetch(B + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key }, body, signal: AbortSignal.timeout(40000) })).json(); }
+    catch(e){ r = { error: { code: 503, message: e.name === 'TimeoutError' ? 'لا رد خلال 40 ثانية' : 'تعذّر الاتصال: ' + (e.message || e) } }; }
     if(!r.error) break;
     last = r.error.message; const busy = [429, 500, 503].includes(r.error.code) || /demand|overload|unavailable|exhausted/i.test(last);
     if(!busy) throw new Error('Gemini: ' + last);
     $('#ai').textContent = '🤖 Gemini مزدحم، إعادة المحاولة…'; await new Promise(ok => setTimeout(ok, 4000 * (k + 1)));
   }
-  if(r.error) throw new Error('Gemini مزدحم الآن، سيُعاد المحاولة تلقائياً');
+  if(r.error) throw new Error('Gemini: ' + last + ' — سيُعاد المحاولة تلقائياً');
   return JSON.parse(r.candidates[0].content.parts.map(p => p.text || '').join(''));
 }
 async function claude(content, schema){
@@ -201,7 +202,10 @@ function overlay(){
     ;
 }
 let AC; function beep(){ try{ AC = AC || new AudioContext(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
-Object.assign(window, { startCam, resetBase, state: () => ({ cases, base, zone }) });
+async function ping(){ $('#ai').textContent = '🤖 جارٍ اختبار الاتصال…'; const t = Date.now();
+  try{ const r = await claude([{ type: 'text', text: 'رد بكلمة: تمام' }], { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'string' } } }); $('#ai').textContent = '🤖 الاتصال يعمل ✓ (' + Math.round((Date.now() - t) / 1000) + ' ث)'; }
+  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); } }
+Object.assign(window, { ping, startCam, resetBase, state: () => ({ cases, base, zone }) });
 </script>
 </body>
 </html>
