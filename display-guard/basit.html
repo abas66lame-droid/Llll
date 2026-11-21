@@ -27,7 +27,10 @@ main{max-width:900px;margin:auto;padding:12px 16px 40px}
 <header>رقابة العارضة</header>
 <main>
   <div id="start"><p>اضغط لتشغيل الكاميرا، ثم ارسم بإصبعك مربعاً حول العارضة. ثبّت الموبايل على حامل.</p>
-    <p class="mut">مفتاح Claude (مرة واحدة، يُحفظ على هذا الجهاز فقط):</p><input id="key" type="password" dir="ltr" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
+    <p class="mut">من يحلل الصور؟</p>
+    <select id="prov" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px"><option value="local">كمبيوتر المحل (مجاني)</option><option value="claude">Claude (بمفتاح)</option></select>
+    <input id="url" dir="ltr" placeholder="http://192.168.1.20:11434" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
+    <input id="key" type="password" dir="ltr" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
     <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
   <div id="app" hidden>
     <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
@@ -47,9 +50,10 @@ const W = 160; // دقة التحليل لعرض المنطقة
 let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases', []), base = null, prev = null, stable = 0, pend = null, lastCount = null, drawing = null;
 const cv = $('#cv'), vid = $('#vid');
 
-$('#key').value = LS.get('basit_key', '');
+$('#key').value = LS.get('basit_key', ''); $('#url').value = LS.get('basit_url', ''); $('#prov').value = LS.get('basit_prov', 'local');
+const showProv = () => { const l = $('#prov').value === 'local'; $('#url').hidden = !l; $('#key').hidden = l; }; $('#prov').onchange = showProv; showProv();
 async function startCam(){
-  const k = $('#key').value.trim(); if(k) LS.set('basit_key', k);
+  const k = $('#key').value.trim(); if(k) LS.set('basit_key', k); LS.set('basit_url', $('#url').value.trim().replace(/\/+$/, '')); LS.set('basit_prov', $('#prov').value);
   try{ vid.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); await vid.play(); }
   catch(e){ alert('تعذّر تشغيل الكاميرا. افتح الصفحة من رابط https أو من ملف على الكمبيوتر.'); return; }
   $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); renderCases();
@@ -115,7 +119,16 @@ function tick(){
 function zoneImg(){ const c = document.createElement('canvas'), w = zone.w * cv.width, h = zone.h * cv.height, k = Math.min(1, 1000 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
   c.getContext('2d').drawImage(cv, zone.x * cv.width, zone.y * cv.height, w, h, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', .85); }
 let SDK = null;
+// كمبيوتر المحل: برنامج Ollama مع نموذج Qwen2.5-VL المفتوح (مجاني، داخل شبكة المحل)
+async function local(content, schema){
+  const url = LS.get('basit_url', ''); if(!url) throw new Error('أدخل عنوان كمبيوتر المحل في أول الصفحة');
+  const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n'), images = content.filter(c => c.type === 'image').map(c => c.source.data);
+  const r = await fetch(url + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen2.5vl:7b', stream: false, format: schema, options: { temperature: 0 }, messages: [{ role: 'user', content: text, images }] }) });
+  if(!r.ok) throw new Error('كمبيوتر المحل رد بخطأ ' + r.status);
+  return JSON.parse((await r.json()).message.content);
+}
 async function claude(content, schema){
+  if(LS.get('basit_prov', 'local') === 'local') return local(content, schema);
   const key = LS.get('basit_key', ''); if(!key) throw new Error('أدخل مفتاح Claude في أول الصفحة');
   SDK = SDK || (await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm')).default;
   const client = new SDK({ apiKey: key, dangerouslyAllowBrowser: true });
@@ -126,7 +139,7 @@ async function claude(content, schema){
 }
 const img = d => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: d.split(',')[1] } });
 async function countBase(){
-  asking = true; $('#ai').textContent = '🤖 Claude يعدّ القطع…';
+  asking = true; $('#ai').textContent = '🤖 جارٍ عدّ القطع…';
   try{ const r = await claude([img(base.img), { type: 'text', text: 'هذه عارضة منتجات في محل. عُدّ القطع (العلب والأجهزة) الموجودة عليها بدقة، ولا تعدّ بطاقات الأسعار.' }],
       { type: 'object', additionalProperties: false, required: ['count'], properties: { count: { type: 'integer' } } });
     base.n = r.count; $('#cnt').textContent = r.count; $('#ai').textContent = ''; }
@@ -134,7 +147,7 @@ async function countBase(){
   asking = false;
 }
 async function judge(b, F){
-  asking = true; $('#ai').textContent = '🤖 Claude يقارن…'; const after = zoneImg();
+  asking = true; $('#ai').textContent = '🤖 جارٍ المقارنة…'; const after = zoneImg();
   try{
     const r = await claude([{ type: 'text', text: 'الصورة الأولى: العارضة قبل.' }, img(b.img), { type: 'text', text: 'الصورة الثانية: العارضة الآن.' }, img(after),
       { type: 'text', text: 'عُدّ القطع (العلب والأجهزة، لا بطاقات الأسعار) في كل صورة، وقارن. verdict = missing إذا نقصت قطعة، changed إذا لم ينقص شيء لكن قطعة نُقلت أو أُضيفت أو تغيّر مكانها، none إذا لا تغيير حقيقي (إضاءة، اهتزاز). summary جملة عربية واحدة تحدد القطعة ومكانها.' }],
