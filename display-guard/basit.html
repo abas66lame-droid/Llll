@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رقابة العارضة</title>
+<style>
+:root{--bg:#f3f5f8;--fg:#14202e;--mut:#667;--da:#c53030;--wa:#d97706;--ok:#2f855a;--line:#dde3ea}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,Tahoma,sans-serif}
+header{background:#13233a;color:#fff;padding:12px 16px;font-weight:700;font-size:17px}
+main{max-width:900px;margin:auto;padding:12px 16px 40px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}
+.btn.pri{background:#13233a;color:#fff;border-color:#13233a}
+.live{position:relative;border-radius:12px;overflow:hidden;background:#000;touch-action:none;user-select:none}
+.live canvas{display:block;width:100%}
+#ov{position:absolute;inset:0;width:100%;height:100%}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.cnt{font-size:34px;font-weight:800}.mut{color:var(--mut);font-size:13px}
+.alarm{background:var(--da);color:#fff;border-radius:12px;padding:10px 12px;margin:10px 0;display:flex;gap:10px;align-items:center}
+.alarm.chg{background:var(--wa)}.alarm b{font-size:17px}
+.case{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0}
+.case .pics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}.case img{width:100%;border-radius:8px}
+.tag{display:inline-block;border-radius:8px;padding:1px 8px;color:#fff;font-size:13px;font-weight:700}
+</style>
+</head>
+<body>
+<header>رقابة العارضة</header>
+<main>
+  <div id="start"><p>اضغط لتشغيل الكاميرا، ثم ارسم بإصبعك مربعاً حول العارضة. ثبّت الموبايل على حامل.</p>
+    <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
+  <div id="app" hidden>
+    <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
+    <div class="bar"><span>القطع في العارضة:</span><span class="cnt" id="cnt">—</span><span class="mut" id="st"></span></div>
+    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
+    <div id="alarms"></div>
+    <h3>الحالات</h3><div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
+  </div>
+</main>
+<video id="vid" playsinline muted autoplay style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
+<script>
+/* نسخة تجريبية مبسّطة: منطقة رقابة واحدة، عدّ تلقائي للقطع، وإنذاران:
+   «نقص بالعدد» إذا قلّ عدد القطع، و«تغيّر» إذا بقي العدد (أو زاد) لكن شكل العارضة تغيّر.
+   الحكم فقط عندما تثبت الصورة (لا يد ولا حركة)، ثم يصبح الوضع الجديد هو المرجع. */
+const $ = s => document.querySelector(s), LS = { get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} } };
+const W = 160; // دقة التحليل لعرض المنطقة
+let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases', []), base = null, prev = null, stable = 0, pend = null, lastCount = null, drawing = null;
+const cv = $('#cv'), vid = $('#vid');
+
+async function startCam(){
+  try{ vid.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); await vid.play(); }
+  catch(e){ alert('تعذّر تشغيل الكاميرا. افتح الصفحة من رابط https أو من ملف على الكمبيوتر.'); return; }
+  $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); renderCases();
+}
+function paint(){ if(vid.videoWidth){ const w = Math.min(960, vid.videoWidth); if(cv.width !== w){ cv.width = w; cv.height = Math.round(w * vid.videoHeight / vid.videoWidth); } cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height); } }
+
+// رسم منطقة الرقابة بالسحب
+const pos = e => { const r = $('#live').getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+$('#live').onpointerdown = e => { const [x, y] = pos(e); drawing = { x0: x, y0: y, x1: x, y1: y }; $('#live').setPointerCapture(e.pointerId); };
+$('#live').onpointermove = e => { if(!drawing) return; [drawing.x1, drawing.y1] = pos(e); overlay(); };
+$('#live').onpointerup = () => { const d = drawing; drawing = null; if(!d) return;
+  const z = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+  if(z.w > 0.05 && z.h > 0.05){ zone = z; LS.set('basit_zone', zone); base = null; prev = null; pend = null; stable = 0; } overlay(); };
+
+// قراءة المنطقة بدقة صغيرة: رمادي مُنعّم + لون
+function grab(){
+  if(!zone || !cv.width) return null;
+  const H = Math.max(8, Math.round(W * zone.h * cv.height / (zone.w * cv.width))), c = grab.c || (grab.c = document.createElement('canvas')); c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.filter = 'blur(1px)';
+  x.drawImage(cv, zone.x * cv.width, zone.y * cv.height, zone.w * cv.width, zone.h * cv.height, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data, n = W * H, r = new Float32Array(n), g = new Float32Array(n), b = new Float32Array(n);
+  for(let i = 0, j = 0; i < n; i++, j += 4){ r[i] = d[j]; g[i] = d[j + 1]; b[i] = d[j + 2]; }
+  return { W, H, r, g, b, img: c.toDataURL('image/jpeg', .7) };
+}
+const dist = (F, i, G, k) => Math.abs(F.r[i] - G.r[k]) + Math.abs(F.g[i] - G.g[k]) + Math.abs(F.b[i] - G.b[k]);
+// نسبة البكسلات المتغيّرة بين صورتين (مع سماح لإزاحة بكسل واحد وتغيّر الإضاءة)
+function diffMask(A, B){
+  const n = A.W * A.H, m = new Uint8Array(n); let ma = 0, mb = 0; for(let i = 0; i < n; i++){ ma += A.g[i]; mb += B.g[i]; } const k = mb / Math.max(1, ma);
+  for(let y = 1; y < A.H - 1; y++) for(let x = 1; x < A.W - 1; x++){ const i = y * A.W + x; let best = 1e9;
+    for(const o of [0, -1, 1, -A.W, A.W]){ const v = Math.abs(A.r[i + o] * k - B.r[i]) + Math.abs(A.g[i + o] * k - B.g[i]) + Math.abs(A.b[i + o] * k - B.b[i]); if(v < best) best = v; }
+    if(best > 60) m[i] = 1; }
+  return m;
+}
+// عدّ القطع: لون السطح = اللون الغالب على حواف المنطقة، والقطعة = كتلة متصلة تختلف عنه
+function count(F){
+  const { W, H } = F, n = W * H, edge = [];
+  for(let x = 0; x < W; x += 2){ edge.push(x, (H - 1) * W + x); } for(let y = 0; y < H; y += 2){ edge.push(y * W, y * W + W - 1); }
+  const med = a => { const s = edge.map(i => a[i]).sort((p, q) => p - q); return s[s.length >> 1]; }, bg = { r: [med(F.r)], g: [med(F.g)], b: [med(F.b)] };
+  let fg = new Uint8Array(n); for(let i = 0; i < n; i++) fg[i] = dist(F, i, bg, 0) > 75 ? 1 : 0;
+  const morph = (m, on) => { const o = new Uint8Array(n); for(let y = 1; y < H - 1; y++) for(let x = 1; x < W - 1; x++){ const i = y * W + x, s = m[i - 1] + m[i + 1] + m[i - W] + m[i + W] + m[i]; o[i] = on ? (s >= 1 ? 1 : 0) : (s === 5 ? 1 : 0); } return o; };
+  fg = morph(morph(fg, false), true); fg = morph(morph(fg, true), false); // إزالة النقط ثم سدّ الثقوب
+  const lab = new Int32Array(n), boxes = [], min = n * 0.006;
+  for(let i = 0; i < n; i++){ if(!fg[i] || lab[i]) continue; const q = [i]; lab[i] = 1; let a = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+    while(q.length){ const c = q.pop(), x = c % W, y = (c / W) | 0; a++; if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y;
+      for(const o of [c - 1, c + 1, c - W, c + W]) if(o >= 0 && o < n && fg[o] && !lab[o] && Math.abs((o % W) - x) <= 1){ lab[o] = 1; q.push(o); } }
+    if(a >= min) boxes.push({ x: x0 / W, y: y0 / H, w: (x1 - x0 + 1) / W, h: (y1 - y0 + 1) / H }); }
+  return boxes;
+}
+function tick(){
+  const F = grab(); if(!F) return overlay();
+  const moving = prev && prev.H === F.H && diffMask(prev, F).reduce((s, v) => s + v, 0) > F.W * F.H * 0.004; prev = F;
+  if(moving){ stable = 0; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
+  if(++stable < 2) return;
+  const boxes = count(F); lastCount = boxes; $('#cnt').textContent = boxes.length;
+  if(!base || base.F.H !== F.H){ base = { F, n: boxes.length, img: F.img }; $('#st').textContent = 'تراقب ✓'; return overlay(); }
+  const m = diffMask(base.F, F), changed = m.reduce((s, v) => s + v, 0) / (F.W * F.H);
+  let kind = null; if(boxes.length < base.n) kind = 'lack'; else if(changed > 0.015) kind = 'chg';
+  // نتأكد بقراءتين متتاليتين قبل الإنذار
+  if(kind && pend && pend.kind === kind && pend.n === boxes.length){ alarm(kind, base, F, boxes.length); base = { F, n: boxes.length, img: F.img }; pend = null; }
+  else pend = kind ? { kind, n: boxes.length } : null;
+  $('#st').textContent = kind ? 'جارٍ التأكد…' : 'تراقب ✓'; overlay();
+}
+function resetBase(){ base = null; pend = null; }
+function alarm(kind, b, F, n){
+  const c = { t: Date.now(), kind, from: b.n, to: n, before: b.img, after: F.img };
+  cases.unshift(c); cases = cases.slice(0, 60); LS.set('basit_cases', cases); renderCases(); beep();
+  const el = document.createElement('div'); el.className = 'alarm' + (kind === 'chg' ? ' chg' : '');
+  el.innerHTML = `<div style="flex:1"><b>${kind === 'lack' ? '⚠️ نقص بالعدد' : '🔄 تغيّر بالعرض'}</b><div>${kind === 'lack' ? `كان ${b.n} وصار ${n}` : `العدد ${n}، لكن شكل العارضة تغيّر`}</div></div><button class="btn">تم الاطلاع</button>`;
+  el.querySelector('button').onclick = () => el.remove(); $('#alarms').prepend(el);
+}
+function renderCases(){
+  $('#cases').innerHTML = cases.length ? cases.map(c => `<div class="case"><span class="tag" style="background:${c.kind === 'lack' ? 'var(--da)' : 'var(--wa)'}">${c.kind === 'lack' ? 'نقص بالعدد' : 'تغيّر'}</span>
+    <b> ${c.kind === 'lack' ? `${c.from} ← ${c.to}` : `العدد ${c.to}`}</b> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}</span>
+    <div class="pics"><div><img src="${c.before}"><div class="mut">قبل</div></div><div><img src="${c.after}"><div class="mut">بعد</div></div></div></div>`).join('') : '<div class="mut">لا توجد حالات بعد.</div>';
+}
+function overlay(){
+  const z = drawing ? { x: Math.min(drawing.x0, drawing.x1), y: Math.min(drawing.y0, drawing.y1), w: Math.abs(drawing.x1 - drawing.x0), h: Math.abs(drawing.y1 - drawing.y0) } : zone;
+  if(!z){ $('#ov').innerHTML = ''; $('#st').textContent = 'ارسم مربعاً حول العارضة على الصورة'; return; }
+  $('#ov').innerHTML = `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="none" stroke="#38d0c0" stroke-width="2" vector-effect="non-scaling-stroke" stroke-dasharray="${drawing ? '6 4' : ''}"/>`
+    + (!drawing && lastCount ? lastCount.map(b => `<rect x="${(z.x + b.x * z.w) * 100}" y="${(z.y + b.y * z.h) * 100}" width="${b.w * z.w * 100}" height="${b.h * z.h * 100}" fill="none" stroke="#fff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`).join('') : '');
+}
+let AC; function beep(){ try{ AC = AC || new AudioContext(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
+</script>
+</body>
+</html>
