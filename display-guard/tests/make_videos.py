@@ -273,6 +273,10 @@ def hand_scene(items, hand=None, marker=True, cloth=False):
             w, h, a = 38, 70, math.radians(14); pts = [(cx + x * math.cos(a) - y * math.sin(a), cy + x * math.sin(a) + y * math.cos(a)) for x, y in [(-w, -h), (w, -h), (w, h), (-w, h)]]
             d.polygon(pts, fill=(48, 46, 54), outline=(95, 95, 105)); d.polygon([(cx + x * .8 * math.cos(a) - y * .82 * math.sin(a), cy + x * .8 * math.sin(a) + y * .82 * math.cos(a)) for x, y in [(-w, -h), (w, -h), (w, h), (-w, h)]], fill=(60, 64, 76))
         elif kind == 'box': d.rectangle([cx - 50, cy - 82, cx + 50, cy + 82], fill=(230, 40, 50)); [d.line([cx - 50, cy - 82 + k * 12, cx + 50, cy - 70 + k * 12], fill=(250, 230, 60), width=4) for k in range(14)]  # تغطي كل ما وراء الموبايل
+        elif kind == 'book': d.rectangle([cx - 70, cy - 50, cx + 70, cy + 50], fill=(200, 160, 60)); d.rectangle([cx - 70, cy - 50, cx + 70, cy - 30], fill=(120, 80, 30)); [d.line([cx - 55, cy - 15 + k * 12, cx + 40, cy - 15 + k * 12], fill=(90, 60, 30), width=3) for k in range(5)]
+        elif kind == 'metal': d.rectangle([cx - 45, cy - 18, cx + 45, cy + 18], fill=(150, 152, 158), outline=(90, 92, 98), width=3)
+        elif kind == 'paper': d.polygon([(cx - 50, cy - 40), (cx + 45, cy - 30), (cx + 50, cy + 40), (cx - 40, cy + 35)], fill=(245, 245, 248)); [d.line([cx - 35, cy - 20 + k * 14, cx + 30, cy - 10 + k * 14], fill=(40, 60, 160), width=2) for k in range(4)]
+        elif kind == 'mouse': d.ellipse([cx - 35, cy - 55, cx + 35, cy + 55], fill=(25, 25, 30)); d.line([cx, cy - 55, cx, cy - 15], fill=(70, 70, 80), width=3)
         elif kind == 'plain': d.rectangle([cx - 40, cy - 60, cx + 40, cy + 60], fill=(45, 45, 50))  # علبة سادة بلا تفاصيل
         elif kind.startswith('back'):  # قطع خلفية مزدحمة (علب ملونة بخطوط) تُغطّى جزئياً بما يوضع أمامها
             col = [(220, 60, 60), (60, 150, 220), (240, 190, 40), (90, 180, 90)][int(kind[4:])]
@@ -313,6 +317,13 @@ def hands():
     seq = [f([p2]) for _ in range(24)] + [f([p2], (A[0], A[1] + 120)), f([p2], A), f([g, p2], A), f([g, p2], A), f([g, p2], (A[0] + 100, A[1] + 20))]
     seq += [f([g, p2], (B[0] - 80, B[1] + 10)), f([g, p2], B), f([g], B), f([g], B), f([g], (B[0], B[1] + 120)), f([g], (B[0], B[1] + 260))] + [f([g]) for _ in range(170)]
     write_y4m('putthentake.y4m', seq)
+    # (تجربة ميدانية) «شلت الكتاب والقطعة الحديدية والورقة والماوس، وبقي المكان فارغاً، فحسبها نقلاً»
+    desk = [('book', 140, 150), ('metal', 330, 140), ('paper', 470, 170), ('mouse', 560, 330), ('book', 230, 340)]
+    for mk, sfx, seed in [(True, '', 75), (False, '_nohand', 76)]:
+        rng = np.random.default_rng(seed); f = lambda it, h=None: noisy(rng, hand_scene(it, h, mk), 3); seq = [f(desk) for _ in range(24)]; cur = list(desk)
+        for it in desk:
+            p = (it[1], it[2]); seq += [f(cur, (p[0], p[1] + 60))] * 2; cur = [x for x in cur if x is not it]; seq += [f(cur, (p[0], p[1] + 200)), f(cur, (p[0], SH - 10))]
+        seq += [f([]) for _ in range(160)]; write_y4m('takeall' + sfx + '.y4m', seq)
     # (تجربة ميدانية) «أضفت قطعة اعتبرها سرقة لأنها غطّت جزءاً مما خلفها» و«نقلت قطعة فاعتبرها سرقتين»
     back = [('back0', 110, 220), ('back1', 250, 220), ('back2', 390, 220), ('back3', 530, 220)]
     def clutter(name, seed, before, after, touch, marker=True):

@@ -116,6 +116,9 @@ SCENARIOS = {
     'carrytake': ('carrytake.y4m', [ZALL], 32, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['incident'], MOCK_HAND),
     'carryback': ('carryback.y4m', [ZALL], 32, NO_ALARM, MOCK_HAND),
     'carryadd': ('carryadd.y4m', [ZALL], 32, NO_ALARM, MOCK_HAND),
+    # أخذ كل القطع من المكتب واحدة تلو الأخرى: كلها شيل، لا «نقل»
+    'takeall': ('takeall.y4m', [ZALL], 40, lambda ev: not [1 for _, k, s in ev if k == 'moved' or s == 'moved'] and len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 3, MOCK_HAND),
+    'takeall_nohand': ('takeall_nohand.y4m', [ZALL], 40, lambda ev: not [1 for _, k, s in ev if k == 'moved' or s == 'moved'] and len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 3, None, {'ai': False}),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 

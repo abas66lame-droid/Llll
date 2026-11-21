@@ -827,7 +827,8 @@ const ENG = {
     // نفس القطعة في المكان نفسه تقريباً = تحرّكت، لا سرقة (لا يحتاج يداً)
     const usedPre = new Set();
     if(!night) for(const a of cands){ if(usedPre.has(a)) continue;
-      if(a.dbg.self >= NUDGE_SIM && a.before.n > 30 && a.after.n > 30){ usedPre.add(a); DBG_CUR = a.dbg; this.newInfo(a.z, a.reg, 'moved', c, 'تحرّكت القطعة قليلاً في مكانها (تطابق ' + Math.round(a.dbg.self * 100) + '%).'); DBG_CUR = null; continue; }
+      // منطقة واحدة «تحرّكت»: إذا قال الملمس «اختفى/ظهر» نشترط تطابقاً شبه تام (القطعة نفسها ظاهرة قبل وبعد)، فالقطعة المأخوذة من سطح قريب من لونها ليست إزاحة
+      if(a.dbg.self >= (a.reg.type === 'chg' ? NUDGE_SIM : 0.93) && a.before.n > 30 && a.after.n > 30){ usedPre.add(a); DBG_CUR = a.dbg; this.newInfo(a.z, a.reg, 'moved', c, 'تحرّكت القطعة قليلاً في مكانها (تطابق ' + Math.round(a.dbg.self * 100) + '%).'); DBG_CUR = null; continue; }
       for(const b of cands){ if(b === a || usedPre.has(b) || b.z !== a.z) continue;
         const gap = Math.max(0, Math.max(a.reg.x, b.reg.x) - Math.min(a.reg.x + a.reg.w, b.reg.x + b.reg.w)) + Math.max(0, Math.max(a.reg.y, b.reg.y) - Math.min(a.reg.y + a.reg.h, b.reg.y + b.reg.h));
         if(gap > 0.6 * Math.max(a.reg.w, a.reg.h)) continue; const v = DET.sigSim(a.before, b.after);
@@ -848,7 +849,7 @@ const ENG = {
       if(!night && a.pol > PUT) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
       else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
     }
-    const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && dst(b)){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
+    const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && b.pol > 0){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
     P2.sort((x, y) => y[0] - x[0]);
     if(!night) for(const [, v, a, b] of P2){ if(used.has(a) || used.has(b)) continue; used.add(a); used.add(b); this.newMoved(a, b, c, v); }
     for(const a of Nd){ if(used.has(a)) continue; DBG_CUR = a.dbg;
