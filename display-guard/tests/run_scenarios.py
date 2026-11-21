@@ -85,7 +85,8 @@ SCENARIOS = {
     # تدوير كيس في مكانه أو دفعه جانباً قليلاً (ترتيب الرف) في وضع «لا بيع»: لا حالة شيل ولا إنذار
     'stockturn': ('stockturn.y4m', [SHELF], 30, NO_ALARM, None, {'noSales': True}),
     'stocknudge': ('stocknudge.y4m', [SHELF], 30, NO_ALARM, None, {'noSales': True}),
-    'stockret': ('stockret.y4m', [SHELF], 30, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['returned'], None, {'noSales': True}),
+    # بلا ذكاء اصطناعي: MediaPipe الحقيقي قد يرى «شخصاً» في الرسم فيؤجّل الحكم حتى ترجع القطعة (لا شيء يُسجَّل) فيصبح الاختبار متذبذباً
+    'stockret': ('stockret.y4m', [SHELF], 30, lambda ev: [s for _, k, s in ev if k == 'removal'] == ['returned'], None, {'noSales': True, 'ai': False}),
     # إخفاء قطعة في الجيب بعد لمس الرف = «اشتباه إخفاء»؛ وضعها في السلة بعيداً عن الجسم = لا اشتباه
     'conceal': ('conceal.y4m', [SHELF], 36, lambda ev: [k for _, k, _ in ev if k == 'conceal'] == ['conceal'], MOCK_POSE, {'noSales': False}),
     'basket': ('basket.y4m', [SHELF], 36, lambda ev: not [1 for _, k, _ in ev if k == 'conceal'], MOCK_POSE, {'noSales': False}),
