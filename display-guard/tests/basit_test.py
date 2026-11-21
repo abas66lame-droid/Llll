@@ -17,7 +17,8 @@ async def run(p, name):
     pg = await b.new_page(viewport={'width': 390, 'height': 844}); errs = []; pg.on('pageerror', lambda e: errs.append(str(e)))
     async def fake(route):
         body = json.loads(route.request.post_data or '{}')
-        if PROV == 'gemini': assert route.request.headers.get('x-goog-api-key') == 'AIza-test' and 'gemini-flash-latest' in route.request.url
+        if route.request.method == 'GET': return await route.fulfill(status=200, content_type='application/json', body=json.dumps({'models': [{'name': 'models/gemini-flash-latest', 'supportedGenerationMethods': ['generateContent']}, {'name': 'models/gemini-9-pro', 'supportedGenerationMethods': ['generateContent']}]}))
+        if PROV == 'gemini': assert route.request.headers.get('x-goog-api-key') == 'AIza-test' and 'generateContent' in route.request.url
         if PROV == 'gemini': imgs = sum(1 for x in body['contents'][0]['parts'] if 'inline_data' in x)
         elif PROV == 'local': imgs = len(body['messages'][0]['images'])
         else: imgs = sum(1 for c in body['messages'][0]['content'] if c['type'] == 'image')
