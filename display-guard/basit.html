@@ -74,7 +74,7 @@ $('#live').onpointerup = () => { const d = drawing; drawing = null; if(!d) retur
 /* ---------- قراءة صورة (من الكاميرا أو من أي canvas/صورة) ---------- */
 function frameOf(src, sx, sy, sw, sh){
   const H = Math.max(16, Math.round(W * sh / sw)), c = document.createElement('canvas'); c.width = W; c.height = H;
-  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+  const x = c.getContext('2d', { willReadFrequently: true }); x.filter = 'blur(1px)'; x.drawImage(src, sx, sy, sw, sh, 0, 0, W, H); x.filter = 'none';
   const d = x.getImageData(0, 0, W, H).data; return { W, H, d, c };
 }
 const grab = () => zone && cv.width ? frameOf(cv, zone.x * cv.width, zone.y * cv.height, zone.w * cv.width, zone.h * cv.height) : null;
@@ -137,7 +137,7 @@ function analyse(A, B, pool){
 /* ---------- المراقبة ---------- */
 function tick(){
   const F = grab(); if(!F) return overlay();
-  const moving = prev && prev.H === F.H && diff(prev, F, 60).reduce((s, v) => s + v, 0) > F.W * F.H * 0.004; prev = F;
+  const moving = prev && prev.H === F.H && diff(prev, F, 90).reduce((s, v) => s + v, 0) > F.W * F.H * 0.01; prev = F;
   if(moving){ stable = 0; pend = 0; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
   if(++stable < 2) return;
   if(!base || base.H !== F.H){ base = F; $('#st').textContent = 'تراقب ✓'; return overlay(); }
