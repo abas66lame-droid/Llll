@@ -30,7 +30,7 @@ main{max-width:900px;margin:auto;padding:12px 16px 40px}
     <p class="mut">من يحلل الصور؟</p>
     <select id="prov" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px"><option value="gemini">Gemini من Google (مفتاح مجاني)</option><option value="local">كمبيوتر المحل (مجاني)</option><option value="claude">Claude (بمفتاح)</option></select>
     <input id="url" dir="ltr" placeholder="http://192.168.1.20:11434" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
-    <input id="gkey" type="password" dir="ltr" placeholder="AIza..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
+    <input id="gkey" type="password" dir="ltr" placeholder="مفتاح Gemini (AQ... أو AIza...)" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
     <input id="key" type="password" dir="ltr" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
     <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
   <div id="app" hidden>
@@ -128,17 +128,15 @@ async function local(content, schema){
   if(!r.ok) throw new Error('كمبيوتر المحل رد بخطأ ' + r.status);
   return JSON.parse((await r.json()).message.content);
 }
-// Gemini من Google: مفتاح مجاني من aistudio.google.com. نختار أحدث نموذج «flash» متاح للمفتاح تلقائياً
+// Gemini من Google: مفتاح مجاني من aistudio.google.com، يُرسل في ترويسة X-goog-api-key مع النموذج gemini-flash-latest
 let GM = null;
 async function gemini(content, schema){
   const key = LS.get('basit_gkey', ''); if(!key) throw new Error('أدخل مفتاح Gemini في أول الصفحة');
   const B = 'https://generativelanguage.googleapis.com/v1beta/';
-  if(!GM){ const l = await (await fetch(B + 'models?pageSize=200&key=' + encodeURIComponent(key))).json(); if(l.error) throw new Error('Gemini: ' + l.error.message);
-    const ms = (l.models || []).filter(m => /flash/.test(m.name) && !/lite|image|tts|live|thinking|exp|preview/.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name).sort();
-    GM = ms[ms.length - 1]; if(!GM) throw new Error('لا يوجد نموذج Gemini مناسب لهذا المفتاح'); }
+  GM = GM || 'models/gemini-flash-latest'; // الاسم الذي تعطيه Google في مثالها الرسمي
   const parts = content.map(c => c.type === 'image' ? { inline_data: { mime_type: 'image/jpeg', data: c.source.data } } : { text: c.text });
   parts.push({ text: 'أجب بـ JSON فقط بهذا الشكل: ' + JSON.stringify(Object.fromEntries(Object.entries(schema.properties).map(([k, v]) => [k, v.enum ? v.enum.join('|') : v.type]))) });
-  const r = await (await fetch(B + GM + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  const r = await (await fetch(B + GM + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key },
     body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } }) })).json();
   if(r.error) throw new Error('Gemini: ' + r.error.message);
   return JSON.parse(r.candidates[0].content.parts.map(p => p.text || '').join(''));
