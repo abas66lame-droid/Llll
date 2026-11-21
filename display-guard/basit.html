@@ -5,211 +5,189 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>رقابة العارضة</title>
 <style>
-:root{--bg:#f3f5f8;--fg:#14202e;--mut:#667;--da:#c53030;--wa:#d97706;--ok:#2f855a;--line:#dde3ea}
+:root{--bg:#f3f5f8;--fg:#14202e;--mut:#667;--da:#c53030;--wa:#d97706;--ok:#2f855a;--inf:#2b6cb0;--line:#dde3ea}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,Tahoma,sans-serif}
-header{background:#13233a;color:#fff;padding:12px 16px;font-weight:700;font-size:17px}
+header{background:#13233a;color:#fff;padding:12px 16px;font-weight:700;font-size:17px;display:flex;gap:8px;align-items:center}
+header .sp,.bar .sp{flex:1}header small{font-weight:400;opacity:.85}
 main{max-width:900px;margin:auto;padding:12px 16px 40px}
-.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}
+.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font:inherit;font-weight:700;cursor:pointer}
 .btn.pri{background:#13233a;color:#fff;border-color:#13233a}
 .live{position:relative;border-radius:12px;overflow:hidden;background:#000;touch-action:none;user-select:none}
 .live canvas{display:block;width:100%}
-#ov{position:absolute;inset:0;width:100%;height:100%}
-.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
-.cnt{font-size:34px;font-weight:800}.mut{color:var(--mut);font-size:13px}
-.alarm{background:var(--da);color:#fff;border-radius:12px;padding:10px 12px;margin:10px 0;display:flex;gap:10px;align-items:center}
-.alarm.chg{background:var(--wa)}.alarm b{font-size:17px}
-.case{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0}
-.case .pics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}.case img{width:100%;border-radius:8px}
-.tag{display:inline-block;border-radius:8px;padding:1px 8px;color:#fff;font-size:13px;font-weight:700}
+#ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.mut{color:var(--mut);font-size:13px}
+.case{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0}
+.case.new{border:2px solid var(--da)}
+.case .pics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}.case img{width:100%;border-radius:8px;background:#eee}
+.tag{display:inline-block;border-radius:8px;padding:1px 9px;color:#fff;font-size:13px;font-weight:700}
+.t-take{background:var(--da)}.t-put{background:var(--inf)}.t-move{background:var(--ok)}.t-none{background:#888}
+.lbl{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.lbl button{padding:8px 4px}.lbl button.on{outline:3px solid #13233a}
 </style>
 </head>
 <body>
-<header>رقابة العارضة</header>
+<header><span>رقابة العارضة</span><span class="sp"></span><small id="mem"></small></header>
 <main>
   <div id="start"><p>اضغط لتشغيل الكاميرا، ثم ارسم بإصبعك مربعاً حول العارضة. ثبّت الموبايل على حامل.</p>
-    <p class="mut">من يحلل الصور؟</p>
-    <select id="prov" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px"><option value="gemini">Gemini من Google (مفتاح مجاني)</option><option value="local">كمبيوتر المحل (مجاني)</option><option value="claude">Claude (بمفتاح)</option></select>
-    <input id="url" dir="ltr" placeholder="http://192.168.1.20:11434" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
-    <input id="gkey" type="password" dir="ltr" placeholder="مفتاح Gemini (AQ... أو AIza...)" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
-    <input id="key" type="password" dir="ltr" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
     <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
   <div id="app" hidden>
     <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
-    <div class="bar"><span>القطع في العارضة:</span><span class="cnt" id="cnt">—</span><span class="mut" id="st"></span></div>
-    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><button class="btn" onclick="ping()">اختبار الاتصال</button><span class="mut" id="ai"></span><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
-    <div id="alarms"></div>
-    <h3>الحالات</h3><div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
+    <div class="bar"><b id="st">—</b><span class="sp"></span><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button></div>
+    <div class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</div>
   </div>
+  <div class="bar" style="margin-top:14px"><button class="btn" onclick="exportMem()">💾 حفظ نسخة مما تعلّمه</button>
+    <label class="btn">📂 استيراد نسخة<input type="file" accept=".json" hidden onchange="importMem(this.files[0])"></label></div>
+  <h3>الحالات <span class="mut">— صحّح أي حالة بزر، والنظام يتعلّم منها</span></h3>
+  <div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
 </main>
 <video id="vid" playsinline muted autoplay style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
-<script type="module">
-/* نسخة تجريبية مبسّطة: منطقة رقابة واحدة، عدّ تلقائي للقطع، وإنذاران:
-   «نقص بالعدد» إذا قلّ عدد القطع، و«تغيّر» إذا بقي العدد (أو زاد) لكن شكل العارضة تغيّر.
-   الحكم فقط عندما تثبت الصورة (لا يد ولا حركة)، ثم يصبح الوضع الجديد هو المرجع. */
-const $ = s => document.querySelector(s), LS = { get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} } };
-const W = 160; // دقة التحليل لعرض المنطقة
-let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases', []), base = null, prev = null, stable = 0, pend = null, lastCount = null, drawing = null;
+<script>/*__SEED__*/</script>
+<script>
+/* رقابة عارضة تتعلّم من تصحيحك:
+   1) كشف مكان كل تغيّر بمقارنة الصورة الثابتة بالمرجع (يعمل بلا إنترنت).
+   2) لكل مكان: بصمة من صورة «قبل» و«بعد» (ألوان، ملمس، سطوع، وشبه كلٍّ منهما بالمحيط).
+   3) النقل: قطعة اختفت من مكان وظهرت هي نفسها في مكان آخر.
+   4) الباقي: يُصنَّف بأقرب الحالات التي صحّحتها أنت (سرقة / إضافة / لا شيء). كلما صحّحت أكثر صار أدق.
+   الذاكرة محفوظة على هذا الجهاز، وتُصدَّر وتُستورد كملف. */
+const $ = s => document.querySelector(s), LS = { get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ alert('الذاكرة ممتلئة: احفظ نسخة واحذف حالات قديمة'); } } };
+const NAME = { take: 'سرقة / شيل', put: 'إضافة', move: 'نقل', none: 'لا شيء' };
+const W = 320; // دقة التحليل
+const RP = { thr: 35, open: 2, grow: 5, min: 0.004 }; // حساسية كشف المناطق
+let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases2', []), mem = LS.get('basit_mem', null) || (window.SEED || []).slice();
+let base = null, prev = null, stable = 0, pend = 0, drawing = null;
 const cv = $('#cv'), vid = $('#vid');
 
-$('#key').value = LS.get('basit_key', ''); $('#url').value = LS.get('basit_url', ''); $('#prov').value = LS.get('basit_prov', 'gemini'); $('#gkey').value = LS.get('basit_gkey', '');
-const showProv = () => { const v = $('#prov').value; $('#url').hidden = v !== 'local'; $('#key').hidden = v !== 'claude'; $('#gkey').hidden = v !== 'gemini'; }; $('#prov').onchange = showProv; showProv();
+/* ---------- الكاميرا والمنطقة ---------- */
 async function startCam(){
-  const k = $('#key').value.trim(); if(k) LS.set('basit_key', k); LS.set('basit_url', $('#url').value.trim().replace(/\/+$/, '')); LS.set('basit_prov', $('#prov').value); const gk = $('#gkey').value.trim(); if(gk) LS.set('basit_gkey', gk);
   try{ vid.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); await vid.play(); }
   catch(e){ alert('تعذّر تشغيل الكاميرا. افتح الصفحة من رابط https أو من ملف على الكمبيوتر.'); return; }
-  $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); renderCases();
+  $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); render();
 }
-function paint(){ if(vid.videoWidth){ const w = Math.min(960, vid.videoWidth); if(cv.width !== w){ cv.width = w; cv.height = Math.round(w * vid.videoHeight / vid.videoWidth); } cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height); } }
-
-// رسم منطقة الرقابة بالسحب
+function paint(){ if(!vid.videoWidth) return; const w = Math.min(960, vid.videoWidth); if(cv.width !== w){ cv.width = w; cv.height = Math.round(w * vid.videoHeight / vid.videoWidth); } cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height); }
 const pos = e => { const r = $('#live').getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
 $('#live').onpointerdown = e => { const [x, y] = pos(e); drawing = { x0: x, y0: y, x1: x, y1: y }; $('#live').setPointerCapture(e.pointerId); };
 $('#live').onpointermove = e => { if(!drawing) return; [drawing.x1, drawing.y1] = pos(e); overlay(); };
 $('#live').onpointerup = () => { const d = drawing; drawing = null; if(!d) return;
   const z = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
-  if(z.w > 0.05 && z.h > 0.05){ zone = z; LS.set('basit_zone', zone); base = null; prev = null; pend = null; stable = 0; } overlay(); };
+  if(z.w > 0.05 && z.h > 0.05){ zone = z; LS.set('basit_zone', zone); resetBase(); } overlay(); };
 
-// قراءة المنطقة بدقة صغيرة: رمادي مُنعّم + لون
-function grab(){
-  if(!zone || !cv.width) return null;
-  const H = Math.max(8, Math.round(W * zone.h * cv.height / (zone.w * cv.width))), c = grab.c || (grab.c = document.createElement('canvas')); c.width = W; c.height = H;
-  const x = c.getContext('2d', { willReadFrequently: true }); x.filter = 'blur(1px)';
-  x.drawImage(cv, zone.x * cv.width, zone.y * cv.height, zone.w * cv.width, zone.h * cv.height, 0, 0, W, H);
-  const d = x.getImageData(0, 0, W, H).data, n = W * H, r = new Float32Array(n), g = new Float32Array(n), b = new Float32Array(n);
-  for(let i = 0, j = 0; i < n; i++, j += 4){ r[i] = d[j]; g[i] = d[j + 1]; b[i] = d[j + 2]; }
-  return { W, H, r, g, b, img: c.toDataURL('image/jpeg', .7) };
+/* ---------- قراءة صورة (من الكاميرا أو من أي canvas/صورة) ---------- */
+function frameOf(src, sx, sy, sw, sh){
+  const H = Math.max(16, Math.round(W * sh / sw)), c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data; return { W, H, d, c };
 }
-const dist = (F, i, G, k) => Math.abs(F.r[i] - G.r[k]) + Math.abs(F.g[i] - G.g[k]) + Math.abs(F.b[i] - G.b[k]);
-// نسبة البكسلات المتغيّرة بين صورتين (مع سماح لإزاحة بكسل واحد وتغيّر الإضاءة)
-function diffMask(A, B){
-  const n = A.W * A.H, m = new Uint8Array(n); let ma = 0, mb = 0; for(let i = 0; i < n; i++){ ma += A.g[i]; mb += B.g[i]; } const k = mb / Math.max(1, ma);
-  for(let y = 1; y < A.H - 1; y++) for(let x = 1; x < A.W - 1; x++){ const i = y * A.W + x; let best = 1e9;
-    for(const o of [0, -1, 1, -A.W, A.W]){ const v = Math.abs(A.r[i + o] * k - B.r[i]) + Math.abs(A.g[i + o] * k - B.g[i]) + Math.abs(A.b[i + o] * k - B.b[i]); if(v < best) best = v; }
-    if(best > 60) m[i] = 1; }
+const grab = () => zone && cv.width ? frameOf(cv, zone.x * cv.width, zone.y * cv.height, zone.w * cv.width, zone.h * cv.height) : null;
+// خريطة التغيّر بين صورتين متطابقتي الحجم (مع تعويض السطوع العام وسماح بإزاحة بكسل)
+function diff(A, B, thr = 70){
+  const n = A.W * A.H, m = new Uint8Array(n); let sa = 0, sb = 0; for(let i = 0; i < n * 4; i += 4){ sa += A.d[i + 1]; sb += B.d[i + 1]; } const k = sb / Math.max(1, sa);
+  for(let y = 2; y < A.H - 2; y++) for(let x = 2; x < A.W - 2; x++){ const i = y * A.W + x; let best = 1e9;
+    for(const o of [0, -1, 1, -A.W, A.W]){ const p = (i + o) * 4, q = i * 4; const v = Math.abs(A.d[p] * k - B.d[q]) + Math.abs(A.d[p + 1] * k - B.d[q + 1]) + Math.abs(A.d[p + 2] * k - B.d[q + 2]); if(v < best) best = v; }
+    if(best > thr) m[i] = 1; }
   return m;
 }
-// عدّ القطع: لون السطح = اللون الغالب على حواف المنطقة، والقطعة = كتلة متصلة تختلف عنه
-function count(F){
-  const { W, H } = F, n = W * H, edge = [];
-  for(let x = 0; x < W; x += 2){ edge.push(x, (H - 1) * W + x); } for(let y = 0; y < H; y += 2){ edge.push(y * W, y * W + W - 1); }
-  const med = a => { const s = edge.map(i => a[i]).sort((p, q) => p - q); return s[s.length >> 1]; }, bg = { r: [med(F.r)], g: [med(F.g)], b: [med(F.b)] };
-  let fg = new Uint8Array(n); for(let i = 0; i < n; i++) fg[i] = dist(F, i, bg, 0) > 75 ? 1 : 0;
-  const morph = (m, on) => { const o = new Uint8Array(n); for(let y = 1; y < H - 1; y++) for(let x = 1; x < W - 1; x++){ const i = y * W + x, s = m[i - 1] + m[i + 1] + m[i - W] + m[i + W] + m[i]; o[i] = on ? (s >= 1 ? 1 : 0) : (s === 5 ? 1 : 0); } return o; };
-  fg = morph(morph(fg, false), true); fg = morph(morph(fg, true), false); // إزالة النقط ثم سدّ الثقوب
-  const lab = new Int32Array(n), boxes = [], min = n * 0.006;
-  for(let i = 0; i < n; i++){ if(!fg[i] || lab[i]) continue; const q = [i]; lab[i] = 1; let a = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
-    while(q.length){ const c = q.pop(), x = c % W, y = (c / W) | 0; a++; if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y;
-      for(const o of [c - 1, c + 1, c - W, c + W]) if(o >= 0 && o < n && fg[o] && !lab[o] && Math.abs((o % W) - x) <= 1){ lab[o] = 1; q.push(o); } }
-    if(a >= min) boxes.push({ x: x0 / W, y: y0 / H, w: (x1 - x0 + 1) / W, h: (y1 - y0 + 1) / H }); }
-  return boxes;
+// مناطق التغيّر: تنعيم ثم مكوّنات متصلة كبيرة بما يكفي لتكون قطعة
+function regions(A, B){
+  const { W: w, H: h } = A, n = w * h; let m = diff(A, B, RP.thr);
+  const morph = (m, r, on) => { const o = new Uint8Array(n); for(let y = r; y < h - r; y++) for(let x = r; x < w - r; x++){ let s = 0, t = 0; for(let dy = -r; dy <= r; dy++) for(let dx = -r; dx <= r; dx++){ s += m[(y + dy) * w + x + dx]; t++; } o[y * w + x] = on ? (s > 0 ? 1 : 0) : (s === t ? 1 : 0); } return o; };
+  m = morph(morph(m, RP.open, false), RP.grow, true);
+  const lab = new Uint8Array(n), out = [];
+  for(let i = 0; i < n; i++){ if(!m[i] || lab[i]) continue; const q = [i]; lab[i] = 1; let a = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    while(q.length){ const c = q.pop(), x = c % w, y = (c / w) | 0; a++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      for(const o of [c - 1, c + 1, c - w, c + w]) if(o >= 0 && o < n && m[o] && !lab[o] && Math.abs((o % w) - x) <= 1){ lab[o] = 1; q.push(o); } }
+    if(a > n * RP.min) out.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }); }
+  return out;
 }
-/* المحرك المحلي يكتشف فقط: تغيّر شيء وثبتت الصورة. Claude يعدّ ويقارن الصورتين ويحكم. */
-let asking = false;
+/* ---------- البصمة ---------- */
+function hsv(r, g, b){ r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0;
+  if(d){ h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if(h < 0) h += 360; } return [h, mx ? d / mx : 0, mx]; }
+function stats(F, R, ring){ // توزيع ألوان 12×4 + ملمس + سطوع، داخل المربع أو في المحيط حوله
+  const g = ring ? Math.round(Math.max(R.w, R.h) / 2) : 0, X0 = Math.max(1, R.x - g), Y0 = Math.max(1, R.y - g), X1 = Math.min(F.W - 2, R.x + R.w + g), Y1 = Math.min(F.H - 2, R.y + R.h + g);
+  const h = new Float32Array(48); let n = 0, tex = 0, br = 0, sat = 0;
+  for(let y = Y0; y < Y1; y++) for(let x = X0; x < X1; x++){
+    const inside = x >= R.x && x < R.x + R.w && y >= R.y && y < R.y + R.h; if(ring === inside) continue;
+    const p = (y * F.W + x) * 4, [H, S, V] = hsv(F.d[p], F.d[p + 1], F.d[p + 2]);
+    h[(S < 0.15 ? 0 : 1 + Math.min(10, (H / 36) | 0)) * 4 + Math.min(3, (V * 4) | 0)]++; n++; br += V; sat += S;
+    const q = p + 4, u = p + F.W * 4; tex += Math.abs(F.d[p + 1] - F.d[q + 1]) + Math.abs(F.d[p + 1] - F.d[u + 1]);
+  }
+  for(let k = 0; k < 48; k++) h[k] /= Math.max(1, n); return { h, tex: tex / Math.max(1, n), br: br / Math.max(1, n), sat: sat / Math.max(1, n) };
+}
+const corr = (a, b) => { let s = 0; for(let k = 0; k < a.length; k++) s += Math.sqrt(a[k] * b[k]); return s; };
+function feat(A, B, R){
+  const ib = stats(A, R, false), ia = stats(B, R, false), rb = stats(A, R, true), ra = stats(B, R, true);
+  return { ib, ia, v: [corr(ib.h, rb.h), corr(ia.h, ra.h), corr(ib.h, rb.h) - corr(ia.h, ra.h), Math.log((ib.tex + 1) / (ia.tex + 1)), ib.br - ia.br, ib.sat - ia.sat, Math.log((ib.tex + 1) / (rb.tex + 1)) - Math.log((ia.tex + 1) / (ra.tex + 1))] };
+}
+// أقرب الحالات المُعلَّمة (k=3، بأوزان المسافة)
+function knn(v, pool){
+  const L = (pool || mem).filter(m => m.label !== 'move'); if(!L.length) return { label: v[2] > 0 ? 'take' : 'put', conf: 0, n: 0 };
+  const sc = v.map((_, i) => { const xs = L.map(m => m.v[i]), mu = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - mu) ** 2, 0) / xs.length) || 1; });
+  const d = L.map(m => ({ m, d: Math.sqrt(v.reduce((s, x, i) => s + ((x - m.v[i]) / sc[i]) ** 2, 0)) })).sort((a, b) => a.d - b.d).slice(0, 3), w = {};
+  d.forEach(({ m, d }) => w[m.label] = (w[m.label] || 0) + 1 / (d + 0.05)); const tot = Object.values(w).reduce((a, b) => a + b, 0), best = Object.keys(w).sort((a, b) => w[b] - w[a])[0];
+  return { label: best, conf: w[best] / tot, n: L.length };
+}
+// تحليل كامل لزوج صور: المناطق، ثم النقل، ثم التصنيف بالتعلّم
+function analyse(A, B, pool){
+  const R = regions(A, B), F = R.map(r => ({ r, f: feat(A, B, r) })), out = [], used = new Set();
+  F.forEach((p, i) => { if(used.has(i)) return; let best = -1, bs = 0.8;
+    F.forEach((q, j) => { if(j === i || used.has(j)) return; const s = corr(p.f.ib.h, q.f.ia.h); if(s > bs){ bs = s; best = j; } });
+    if(best >= 0){ used.add(i); used.add(best); out.push({ kind: 'move', box: p.r, to: F[best].r, conf: bs, v: p.f.v }); } });
+  F.forEach((p, i) => { if(used.has(i)) return; const k = knn(p.f.v, pool); out.push({ kind: k.label, box: p.r, conf: k.conf, v: p.f.v }); });
+  return out;
+}
+/* ---------- المراقبة ---------- */
 function tick(){
   const F = grab(); if(!F) return overlay();
-  const moving = prev && prev.H === F.H && diffMask(prev, F).reduce((s, v) => s + v, 0) > F.W * F.H * 0.004; prev = F;
-  if(moving){ stable = 0; pend = null; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
-  if(++stable < 2 || asking) return;
-  if(!base || base.F.H !== F.H){ base = { F, n: null, img: zoneImg() }; $('#st').textContent = 'تراقب ✓'; countBase(); return overlay(); }
-  const changed = diffMask(base.F, F).reduce((s, v) => s + v, 0) / (F.W * F.H);
-  if(changed < 0.008){ pend = null; $('#st').textContent = 'تراقب ✓'; return; }
-  if(!pend){ pend = 1; $('#st').textContent = 'تغيّر… جارٍ التأكد'; return; }  // قراءتان ثابتتان قبل السؤال
-  pend = null; judge(base, F);
+  const moving = prev && prev.H === F.H && diff(prev, F, 60).reduce((s, v) => s + v, 0) > F.W * F.H * 0.004; prev = F;
+  if(moving){ stable = 0; pend = 0; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
+  if(++stable < 2) return;
+  if(!base || base.H !== F.H){ base = F; $('#st').textContent = 'تراقب ✓'; return overlay(); }
+  const ev = analyse(base, F).filter(e => e.kind !== 'none');
+  if(!ev.length){ pend = 0; $('#st').textContent = 'تراقب ✓'; return overlay(); }
+  if(++pend < 2){ $('#st').textContent = 'تغيّر… جارٍ التأكد'; return; }
+  pend = 0; record(base, F, ev); base = F; overlay();
 }
-// صورة المنطقة بدقة جيدة (حتى 1000 بكسل) لـ Claude
-function zoneImg(){ const c = document.createElement('canvas'), w = zone.w * cv.width, h = zone.h * cv.height, k = Math.min(1, 768 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
-  c.getContext('2d').drawImage(cv, zone.x * cv.width, zone.y * cv.height, w, h, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', .75); }
-let SDK = null;
-// كمبيوتر المحل: برنامج Ollama مع نموذج Qwen2.5-VL المفتوح (مجاني، داخل شبكة المحل)
-async function local(content, schema){
-  const url = LS.get('basit_url', ''); if(!url) throw new Error('أدخل عنوان كمبيوتر المحل في أول الصفحة');
-  const text = content.filter(c => c.type === 'text').map(c => c.text).join('\n'), images = content.filter(c => c.type === 'image').map(c => c.source.data);
-  const r = await fetch(url + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen2.5vl:7b', stream: false, format: schema, options: { temperature: 0 }, messages: [{ role: 'user', content: text, images }] }) });
-  if(!r.ok) throw new Error('كمبيوتر المحل رد بخطأ ' + r.status);
-  return JSON.parse((await r.json()).message.content);
+function crop(F, R, color){ const c = document.createElement('canvas'), g = Math.round(Math.max(R.w, R.h) * 0.6), x0 = Math.max(0, R.x - g), y0 = Math.max(0, R.y - g), w = Math.min(F.W, R.x + R.w + g) - x0, h = Math.min(F.H, R.y + R.h + g) - y0;
+  c.width = w * 2; c.height = h * 2; const x = c.getContext('2d'); x.drawImage(F.c, x0, y0, w, h, 0, 0, w * 2, h * 2); x.strokeStyle = color; x.lineWidth = 3; x.strokeRect((R.x - x0) * 2, (R.y - y0) * 2, R.w * 2, R.h * 2); return c.toDataURL('image/jpeg', .7); }
+function record(A, B, ev){
+  for(const e of ev){ const col = { take: '#e53e3e', put: '#2b6cb0', move: '#2f855a' }[e.kind] || '#888';
+    cases.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), kind: e.kind, guess: e.kind, conf: e.conf, v: e.v, box: e.box,
+      before: crop(A, e.box, col), after: crop(B, e.kind === 'move' ? e.to : e.box, col), fresh: true }); }
+  cases = cases.slice(0, 80); LS.set('basit_cases2', cases); render();
+  if(ev.some(e => e.kind === 'take')) beep();
 }
-// Gemini من Google: مفتاح مجاني من aistudio.google.com، يُرسل في ترويسة X-goog-api-key مع النموذج gemini-flash-latest
-let GM = null;
-async function gemini(content, schema){
-  const key = LS.get('basit_gkey', ''); if(!key) throw new Error('أدخل مفتاح Gemini في أول الصفحة');
-  const B = 'https://generativelanguage.googleapis.com/v1beta/';
-  GM = GM || 'models/gemini-flash-latest'; // الاسم الذي تعطيه Google في مثالها الرسمي
-  const parts = content.map(c => c.type === 'image' ? { inline_data: { mime_type: 'image/jpeg', data: c.source.data } } : { text: c.text });
-  parts.push({ text: 'أجب بـ JSON فقط بهذا الشكل: ' + JSON.stringify(Object.fromEntries(Object.entries(schema.properties).map(([k, v]) => [k, v.enum ? v.enum.join('|') : v.type]))) });
-  // عند الازدحام نتنقّل فوراً بين نماذج Gemini المتاحة لهذا المفتاح، ثم ننتظر قليلاً ونعيد الدورة
-  if(!gemini.list){ gemini.list = [GM, 'models/gemini-flash-lite-latest'];
-    try{ const l = await (await fetch(B + 'models?pageSize=200', { headers: { 'X-goog-api-key': key }, signal: AbortSignal.timeout(15000) })).json();
-      const more = (l.models || []).filter(m => /gemini/.test(m.name) && /flash|pro/.test(m.name) && !/image|tts|live|audio|embedding/.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name);
-      gemini.list = [...new Set([...gemini.list, ...more.sort().reverse()])].slice(0, 6); }catch(e){} }
-  const models = gemini.list, body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
-  let r, last = '';
-  for(let k = 0; k < models.length * 2; k++){
-    const m = models[k % models.length];
-    try{ r = await (await fetch(B + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key }, body, signal: AbortSignal.timeout(40000) })).json(); }
-    catch(e){ r = { error: { code: 503, message: e.name === 'TimeoutError' ? 'لا رد خلال 40 ثانية' : 'تعذّر الاتصال: ' + (e.message || e) } }; }
-    if(!r.error) break;
-    last = r.error.message; const busy = [429, 500, 503].includes(r.error.code) || /demand|overload|unavailable|exhausted/i.test(last);
-    if(!busy) throw new Error('Gemini: ' + last);
-    $('#ai').textContent = '🤖 ' + m.replace('models/', '') + ': ' + last.slice(0, 120) + ' — أجرّب نموذجاً آخر…'; await new Promise(ok => setTimeout(ok, k + 1 < models.length ? 500 : 5000));
-  }
-  if(r.error) throw new Error('Gemini: ' + last + ' — سيُعاد المحاولة تلقائياً');
-  return JSON.parse(r.candidates[0].content.parts.map(p => p.text || '').join(''));
+function resetBase(){ base = null; prev = null; pend = 0; stable = 0; }
+/* ---------- التعلّم من التصحيح ---------- */
+function teach(id, label){
+  const c = cases.find(x => x.id === id); if(!c) return; c.kind = label; c.fresh = false; c.taught = true;
+  mem = mem.filter(m => m.id !== id); mem.push({ id, label, v: c.v, t: Date.now() }); LS.set('basit_mem', mem); LS.set('basit_cases2', cases); render();
 }
-async function claude(content, schema){
-  const pv = LS.get('basit_prov', 'gemini'); if(pv === 'local') return local(content, schema); if(pv === 'gemini') return gemini(content, schema);
-  const key = LS.get('basit_key', ''); if(!key) throw new Error('أدخل مفتاح Claude في أول الصفحة');
-  SDK = SDK || (await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm')).default;
-  const client = new SDK({ apiKey: key, dangerouslyAllowBrowser: true });
-  const r = await client.beta.messages.create({ model: 'claude-opus-5-5', max_tokens: 4000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content }] });
-  if(r.stop_reason === 'refusal') throw new Error('رفض النموذج');
-  return JSON.parse(r.content.filter(b => b.type === 'text').map(b => b.text).join(''));
+function exportMem(){
+  const blob = new Blob([JSON.stringify({ app: 'basit', version: 1, saved: new Date().toISOString(), zone, mem }, null, 1)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'raqaba-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json'; document.body.appendChild(a); a.click(); a.remove();
 }
-const img = d => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: d.split(',')[1] } });
-async function countBase(){
-  asking = true; $('#ai').textContent = '🤖 جارٍ عدّ القطع…';
-  try{ const r = await claude([img(base.img), { type: 'text', text: 'هذه عارضة منتجات في محل. عُدّ القطع (العلب والأجهزة) الموجودة عليها بدقة، ولا تعدّ بطاقات الأسعار.' }],
-      { type: 'object', additionalProperties: false, required: ['count'], properties: { count: { type: 'integer' } } });
-    base.n = r.count; $('#cnt').textContent = r.count; $('#ai').textContent = ''; }
-  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); setTimeout(() => { if(base && base.n == null && !asking) countBase(); }, 30000); }
-  asking = false;
+async function importMem(f){
+  try{ const j = JSON.parse(await f.text()); if(!Array.isArray(j.mem)) throw 0;
+    const ids = new Set(mem.map(m => m.id)); const add = j.mem.filter(m => m && m.label && Array.isArray(m.v) && !ids.has(m.id));
+    mem = mem.concat(add); LS.set('basit_mem', mem); if(j.zone && !zone){ zone = j.zone; LS.set('basit_zone', zone); }
+    alert('تم استيراد ' + add.length + ' حالة. المجموع الآن ' + mem.length + '.'); render(); }
+  catch(e){ alert('ملف غير صالح'); }
 }
-async function judge(b, F){
-  asking = true; $('#ai').textContent = '🤖 جارٍ المقارنة…'; const after = zoneImg();
-  try{
-    const r = await claude([{ type: 'text', text: 'الصورة الأولى: العارضة قبل.' }, img(b.img), { type: 'text', text: 'الصورة الثانية: العارضة الآن.' }, img(after),
-      { type: 'text', text: 'عُدّ القطع (العلب والأجهزة، لا بطاقات الأسعار) في كل صورة، وقارن. verdict = missing إذا نقصت قطعة، changed إذا لم ينقص شيء لكن قطعة نُقلت أو أُضيفت أو تغيّر مكانها، none إذا لا تغيير حقيقي (إضاءة، اهتزاز). summary جملة عربية واحدة تحدد القطعة ومكانها.' }],
-      { type: 'object', additionalProperties: false, required: ['before', 'after', 'verdict', 'summary'], properties: { before: { type: 'integer' }, after: { type: 'integer' }, verdict: { type: 'string', enum: ['missing', 'changed', 'none'] }, summary: { type: 'string' } } });
-    if(b.n == null) b.n = r.before;
-    if(r.verdict !== 'none') alarm(r.verdict === 'missing' ? 'lack' : 'chg', { n: b.n, img: b.img }, after, Math.max(0, b.n - Math.max(0, r.before - r.after)), r.summary);
-    base = { F, n: r.verdict === 'missing' ? Math.max(0, b.n - Math.max(1, r.before - r.after)) : b.n, img: after }; $('#cnt').textContent = base.n; $('#ai').textContent = '';
-  }catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); base = { F, n: b.n, img: after }; }
-  asking = false;
-}
-function resetBase(){ base = null; pend = null; $('#cnt').textContent = '—'; }
-function alarm(kind, b, after, n, summary){
-  const c = { t: Date.now(), kind, from: b.n, to: n, before: b.img, after, summary };
-  cases.unshift(c); cases = cases.slice(0, 60); LS.set('basit_cases', cases); renderCases(); beep();
-  const el = document.createElement('div'); el.className = 'alarm' + (kind === 'chg' ? ' chg' : '');
-  el.innerHTML = `<div style="flex:1"><b>${kind === 'lack' ? '⚠️ نقص بالعدد' : '🔄 تغيّر بالعرض'}</b><div>${kind === 'lack' ? `كان ${b.n} وصار ${n}` : `العدد ${n}، لكن شكل العارضة تغيّر`}</div><div>🤖 ${summary || ''}</div></div><button class="btn">تم الاطلاع</button>`;
-  el.querySelector('button').onclick = () => el.remove(); $('#alarms').prepend(el);
-}
-function renderCases(){
-  $('#cases').innerHTML = cases.length ? cases.map(c => `<div class="case"><span class="tag" style="background:${c.kind === 'lack' ? 'var(--da)' : 'var(--wa)'}">${c.kind === 'lack' ? 'نقص بالعدد' : 'تغيّر'}</span>
-    <b> ${c.kind === 'lack' ? `${c.from} ← ${c.to}` : `العدد ${c.to}`}</b> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}</span><div>🤖 ${c.summary || ''}</div>
-    <div class="pics"><div><img src="${c.before}"><div class="mut">قبل</div></div><div><img src="${c.after}"><div class="mut">بعد</div></div></div></div>`).join('') : '<div class="mut">لا توجد حالات بعد.</div>';
+/* ---------- العرض ---------- */
+function render(){
+  $('#mem').textContent = 'تعلّم من ' + mem.length + ' حالة';
+  $('#cases').innerHTML = cases.length ? cases.map(c => `<div class="case ${c.fresh && c.kind === 'take' ? 'new' : ''}">
+    <span class="tag t-${c.kind}">${NAME[c.kind]}</span> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}${c.taught ? ' · صحّحتها ✓' : c.conf ? ' · ثقة ' + Math.round(c.conf * 100) + '%' : ''}</span>
+    <div class="pics"><div><img src="${c.before}"><div class="mut">قبل</div></div><div><img src="${c.after}"><div class="mut">${c.kind === 'move' ? 'المكان الجديد' : 'بعد'}</div></div></div>
+    <div class="mut" style="margin-bottom:4px">ماذا حدث فعلاً؟</div>
+    <div class="lbl">${['take', 'put', 'move', 'none'].map(k => `<button class="btn ${c.taught && c.kind === k ? 'on' : ''}" onclick="teach('${c.id}','${k}')">${NAME[k]}</button>`).join('')}</div></div>`).join('') : '<div class="mut">لا توجد حالات بعد.</div>';
 }
 function overlay(){
   const z = drawing ? { x: Math.min(drawing.x0, drawing.x1), y: Math.min(drawing.y0, drawing.y1), w: Math.abs(drawing.x1 - drawing.x0), h: Math.abs(drawing.y1 - drawing.y0) } : zone;
   if(!z){ $('#ov').innerHTML = ''; $('#st').textContent = 'ارسم مربعاً حول العارضة على الصورة'; return; }
-  $('#ov').innerHTML = `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="none" stroke="#38d0c0" stroke-width="2" vector-effect="non-scaling-stroke" stroke-dasharray="${drawing ? '6 4' : ''}"/>`
-    ;
+  $('#ov').innerHTML = `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="none" stroke="#38d0c0" stroke-width="2" vector-effect="non-scaling-stroke" stroke-dasharray="${drawing ? '6 4' : ''}"/>`;
 }
 let AC; function beep(){ try{ AC = AC || new AudioContext(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
-async function ping(){ $('#ai').textContent = '🤖 جارٍ اختبار الاتصال…'; const t = Date.now();
-  try{ const r = await claude([{ type: 'text', text: 'رد بكلمة: تمام' }], { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'string' } } }); $('#ai').textContent = '🤖 الاتصال يعمل ✓ (' + Math.round((Date.now() - t) / 1000) + ' ث)'; }
-  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); } }
-Object.assign(window, { ping, startCam, resetBase, state: () => ({ cases, base, zone }) });
+render();
 </script>
 </body>
 </html>
