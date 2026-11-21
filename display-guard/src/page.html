@@ -121,6 +121,8 @@ const DB = {
   clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
 };
 const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true, judge: true, judgeModel: 'claude-opus-5-5', judgeUrl: '', judgeKey: '', judgeMax: 400 };
+const SIMPLE = !!window.SIMPLE;
+if(SIMPLE) Object.assign(DEF, { test: true, testSec: 10 });
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -315,16 +317,22 @@ const ENG = {
     const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
     const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
     const B = DET.frameFromCanvas(wc);
+    // نفس قرار المراقبة العادي (يد، نقل، إضافة، شيل) على المرجع بعد مطابقته — حتى لا يضيع نقلٌ أو إضافة حدثا أثناء حركة الكاميرا أو لمس الشاشة
+    const old = this.base, cands = [], before = S.events.length; this.base = B;
     for(const z of S.zones){
       const r = DET.compareZone(B, F, z, [0, 0], { fine: fineOf(z) });
       if(r.changed > 0.5) continue; // تغيّر شامل للعارضة بعد الحركة: لا نستطيع الحكم بثقة
-      const opened = S.events.filter(e => e.zone === z.id && (e.status === 'pending' || e.status === 'incident'));
-      for(const reg of mergeNear(r.regions, 0.04)){
-        if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
-        if(reg.type === 'rem'){ if(!opened.some(e => DET.overlap(reg, e.box) > 0.5)){ this.newRemoval(z, reg, c, night); n++; } }
-        else opened.filter(e => DET.overlap(reg, e.box) > 0.35).forEach(e => this.returned(e, c));
+      const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+      for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, [0, 0], now() - 60)), reg => this.cand(z, reg, F, [0, 0], now() - 60))){
+        const reg = cd.reg; if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
+        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        if(m.length){ m.forEach(e => this.returned(e, c)); continue; }
+        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        cands.push(cd);
       }
     }
+    this.decide(cands, c, night); this.base = old;
+    n = S.events.slice(0, S.events.length - before).filter(e => e.kind === 'removal' || e.kind === 'night').length;
     this.rebaseAll(F, c);
     return n;
   },
@@ -829,7 +837,7 @@ function header(){
   $('#hdr').innerHTML = `<div><b>حارس العارضات</b><small>${esc(S.cfg.site)}</small></div><span class="sp"></span>
     ${S.running ? (isDemo() ? '<span class="badge amber">وضع تجريبي</span>' : '<span class="badge green">المراقبة تعمل</span>') : '<span class="badge red">المراقبة متوقفة</span>'}
     ${isTest() ? `<span class="badge amber">وضع الاختبار: مهلة ${fmtGrace()}</span>` : ''}${isNight() ? '<span class="badge">مراقبة ليلية</span>' : ''}${c.incident ? `<span class="badge red">${c.incident} تنبيه مفتوح</span>` : ''}`;
-  const T = [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'المناطق'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
+  const T = SIMPLE ? [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'الحالات']] : [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'المناطق'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
   $('#nav').innerHTML = T.map(([k, i, n]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')"><b>${i}</b>${n}${k === 'ev' && c.incident ? `<span class="cnt">${c.incident}</span>` : ''}</button>`).join('');
 }
 function go(t){ S.tab = t; window.scrollTo(0, 0); render(); }
@@ -909,7 +917,10 @@ function mountDraw(){
   cv.onpointermove = e => { if(!S.drawing) return; const [x, y] = pos(e); S.drawing.x1 = x; S.drawing.y1 = y; paint(); };
   cv.onpointerup = () => { const d = S.drawing; if(!d) return; S.drawing = null; paint();
     const r = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
-    if(r.w > 0.03 && r.h > 0.03){ window._afterZone = () => { S.drawMode = false; S.freeze = null; S.touchAt = now(); render(); }; zoneForm(null, r); }
+    if(r.w > 0.03 && r.h > 0.03 && SIMPLE){ // رسم مباشر بلا نموذج: العارضة تُحفظ فوراً وتبدأ مراقبتها
+      S.zones.push(Object.assign({ id: rid(), name: 'عارضة ' + (S.zones.length + 1), section: '' }, r)); saveZones(); S.drawMode = false; S.freeze = null; S.touchAt = now(); render(); toast('تم حفظ العارضة، والمراقبة تعمل عليها الآن'); }
+    else if(r.w > 0.03 && r.h > 0.03){ window._afterZone = () => { S.drawMode = false; S.freeze = null; S.touchAt = now(); render(); }; zoneForm(null, r); }
+    else if(SIMPLE){ const z = S.zones.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); if(z) confirmBox('حذف هذه العارضة؟', () => { S.zones = S.zones.filter(x => x.id !== z.id); saveZones(); render(); }); }
     else { const z = S.zones.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); if(z) zoneForm(z.id); } };
 }
 function updMon(){

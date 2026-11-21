@@ -1,193 +1,1499 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>رقابة العارضة</title>
 <style>
-:root{--bg:#f3f5f8;--fg:#14202e;--mut:#667;--da:#c53030;--wa:#d97706;--ok:#2f855a;--inf:#2b6cb0;--line:#dde3ea}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,Tahoma,sans-serif}
-header{background:#13233a;color:#fff;padding:12px 16px;font-weight:700;font-size:17px;display:flex;gap:8px;align-items:center}
-header .sp,.bar .sp{flex:1}header small{font-weight:400;opacity:.85}
-main{max-width:900px;margin:auto;padding:12px 16px 40px}
-.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font:inherit;font-weight:700;cursor:pointer}
-.btn.pri{background:#13233a;color:#fff;border-color:#13233a}
-.live{position:relative;border-radius:12px;overflow:hidden;background:#000;touch-action:none;user-select:none}
-.live canvas{display:block;width:100%}
-#ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
-.mut{color:var(--mut);font-size:13px}
-.case{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0}
-.case.new{border:2px solid var(--da)}
-.case .pics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}.case img{width:100%;border-radius:8px;background:#eee}
-.tag{display:inline-block;border-radius:8px;padding:1px 9px;color:#fff;font-size:13px;font-weight:700}
-.t-take{background:var(--da)}.t-put{background:var(--inf)}.t-move{background:var(--ok)}.t-none{background:#888}
-.lbl{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.lbl button{padding:8px 4px}.lbl button.on{outline:3px solid #13233a}
+:root{--bg:#f3f5f8;--card:#fff;--line:#e2e7ee;--line2:#eef1f5;--tx:#16202c;--mut:#6a7686;--nav:#0f2742;--pri:#0e6f7a;--pril:#e3f2f3;
+--ok:#1a7f4b;--okl:#e6f4ec;--wa:#a86412;--wal:#fdf2e2;--da:#b42f2f;--dal:#fbeaea;--inf:#2d5bb5;--infl:#e8eefa;--r:12px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:Tahoma,'Segoe UI','IBM Plex Sans Arabic',system-ui,sans-serif;font-size:14.5px;line-height:1.6}
+body{padding-bottom:78px}
+button{font-family:inherit;font-size:inherit;color:inherit;border:0;cursor:pointer;background:none}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--tx);background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 11px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--pri)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 14px}
+header{background:var(--nav);color:#fff;position:sticky;top:0;z-index:20}
+header .wrap{display:flex;align-items:center;gap:10px;min-height:56px;flex-wrap:wrap}
+header b{font-size:16px}header small{display:block;font-size:11.5px;opacity:.75;margin-top:-3px}
+.badge{font-size:11.5px;padding:3px 9px;border-radius:20px;background:#ffffff1f;white-space:nowrap}.badge.red{background:#c53030}.badge.amber{background:#b7791f}.badge.green{background:#1a7f4b}
+.sp{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:12px 0}.card h3{margin:0 0 10px;font-size:15px}
+h2{font-size:18px;margin:16px 0 6px}
+.mut{color:var(--mut)}.sm{font-size:12.5px}.xs{font-size:11.5px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 13px;border-radius:9px;font-weight:600;background:#fff;border:1px solid var(--line);white-space:nowrap}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}.btn.dan{color:var(--da);border-color:#e8bcbc}.btn.ok{color:var(--ok);border-color:#b9dcc8}
+.btn.big{padding:12px 16px;font-size:15px}.btn.sm{padding:5px 9px;font-size:12.5px}.btn.w{width:100%}.btn:disabled{opacity:.5}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:11px 12px}.kpi .v{font-size:23px;font-weight:700}.kpi .l{font-size:12px;color:var(--mut)}
+.live{position:relative;background:#111;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+.live video,.live canvas.v{width:100%;display:block}
+.live svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.lvw{position:relative}
+.live:fullscreen{display:flex;align-items:center;justify-content:center;border-radius:0;border:0}.live:fullscreen .lvw{width:min(100vw,calc(100vh * var(--ar,1.333)))}
+.live.flash{animation:lflash .45s ease-in-out 4}@keyframes lflash{50%{outline:6px solid #e53e3e;outline-offset:-6px}}
+.fsb{position:absolute;bottom:8px;left:8px;z-index:3;background:#000a;color:#fff;border:0;border-radius:8px;padding:5px 9px;font-size:15px;cursor:pointer}
+.alertbar{position:relative;z-index:4;display:flex;gap:10px;align-items:center;color:#fff;padding:8px 10px;animation:apulse .8s ease-in-out infinite alternate}
+@media (min-width:700px){.alertbar{position:absolute;top:8px;left:8px;right:8px;border-radius:12px;box-shadow:0 4px 18px #0007}}
+.live:fullscreen .alertbar{position:absolute;top:14px;left:14px;right:14px;border-radius:14px;box-shadow:0 4px 18px #0007;font-size:1.3em}
+.alertbar img{height:56px;max-width:90px;object-fit:cover;border-radius:8px;border:2px solid #fff9;flex:none}
+.alertbar .t{font-weight:700;font-size:15px}.alertbar .s{font-size:12px;opacity:.92}.alertbar .btns{display:flex;flex-direction:column;gap:5px;flex:none}
+@media (max-width:480px){.alertbar{gap:8px;padding:7px 8px}.alertbar img{height:42px;max-width:60px}.alertbar .t{font-size:13.5px}.alertbar button{padding:5px 8px;font-size:11.5px}}
+.alertbar button{background:#fff;color:#b91c1c;border:0;border-radius:8px;padding:7px 10px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;flex:none}.alertbar button.g{background:#ffffff30;color:#fff}
+@keyframes apulse{from{background:#b91c1c}to{background:#e53e3e}}
+.lbl{position:absolute;inset:0;pointer-events:none;direction:ltr}
+.lbl span{position:absolute;transform:translateY(-110%);font-size:12px;font-weight:700;padding:1px 7px;border-radius:6px;color:#fff;white-space:nowrap;direction:rtl;box-shadow:0 1px 4px #0006}.lbl span.in{transform:translateY(4px)}
+.feed .it{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line);cursor:pointer}.feed h3+.it{border-top:0}
+.feed img{width:64px;height:44px;object-fit:cover;border-radius:6px;flex:none;background:#eee}
+.card.hl{outline:3px solid var(--da);outline-offset:2px}
+.ai{background:#eef4ff;border:1px solid #c9dafc;border-radius:8px;padding:6px 9px;margin-top:6px;font-size:13px;line-height:1.6}.ai.bad{background:#fdecec;border-color:#f3c0c0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;padding:3px 4px 3px 10px;font-size:12.5px;background:#fff}
+.chip.p{border-color:#e9c98e;background:var(--wal)}.chip.i{border-color:#e8b4b4;background:var(--dal)}.chip.c{border-color:#b9c9ec;background:var(--infl)}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.t-ok{background:var(--okl);color:var(--ok)}.t-wa{background:var(--wal);color:var(--wa)}.t-da{background:var(--dal);color:var(--da)}.t-inf{background:var(--infl);color:var(--inf)}.t-mut{background:#eef1f5;color:var(--mut)}
+.seg{display:flex;background:#e9edf2;border-radius:10px;padding:3px;gap:3px;overflow-x:auto;margin:8px 0}
+.seg button{flex:1;padding:7px 10px;border-radius:8px;font-weight:600;font-size:13px;color:var(--mut);white-space:nowrap}.seg button.on{background:#fff;color:var(--tx)}
+.ev{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:760px){.ev{grid-template-columns:300px 1fr}}
+.ev img{width:100%;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1px solid var(--line);padding:4px 4px calc(6px + env(safe-area-inset-bottom))}
+nav.tabs .in{max-width:900px;margin:0 auto;display:flex}
+nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;font-size:11.5px;color:var(--mut);padding:5px 0;position:relative}
+nav.tabs button b{font-size:19px;line-height:1.3;font-weight:400}nav.tabs button.on{color:var(--pri);font-weight:700}
+nav.tabs .cnt{position:absolute;top:0;left:calc(50% - 22px);background:var(--da);color:#fff;border-radius:10px;font-size:10.5px;padding:0 6px;font-weight:700}
+.modal-bg{position:fixed;inset:0;background:#0b1520a6;z-index:50;display:flex;align-items:center;justify-content:center;padding:14px}
+.modal{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:18px}.modal.wide{max-width:1000px}.modal h2{margin:0 0 12px;font-size:17px}
+.fld{margin:9px 0}.fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:3px;font-weight:600}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:80;background:var(--nav);color:#fff;padding:9px 16px;border-radius:10px;font-size:13.5px;max-width:90vw;text-align:center}
+.note{background:var(--infl);border:1px solid #cbd8f2;border-radius:10px;padding:10px 12px;font-size:13px}.note.wa{background:var(--wal);border-color:#f0d6ad}.note.da{background:var(--dal);border-color:#e8b4b4}
+.note ol,.note ul{margin:6px 0 0;padding-inline-start:20px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 6px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}th{color:var(--mut);font-weight:600;background:#f8fafc}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+.bar{height:8px;background:var(--line2);border-radius:6px;overflow:hidden;display:flex}.bar i{display:block;height:100%}
+.editor{position:relative;background:#111;border-radius:10px;overflow:hidden;touch-action:none;user-select:none}
+.editor canvas{width:100%;display:block}.editor canvas.ov{position:absolute;inset:0;height:100%}
+.empty{text-align:center;color:var(--mut);padding:24px}
+.sw{width:42px;height:24px;border-radius:20px;background:#cfd6df;position:relative;flex:none}.sw.on{background:var(--pri)}
+.sw::after{content:'';position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}.sw.on::after{right:21px}
+.li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2)}.li:last-child{border:0}
+.src{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.src button{text-align:right;border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+.src button b{display:block;font-size:15px;margin-bottom:4px}.src button.on{border-color:var(--pri);background:var(--pril)}
 </style>
 </head>
 <body>
-<header><span>رقابة العارضة</span><span class="sp"></span><small id="mem"></small></header>
-<main>
-  <div id="start"><p>اضغط لتشغيل الكاميرا، ثم ارسم بإصبعك مربعاً حول العارضة. ثبّت الموبايل على حامل.</p>
-    <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
-  <div id="app" hidden>
-    <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
-    <div class="bar"><b id="st">—</b><span class="sp"></span><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button></div>
-    <div class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</div>
-  </div>
-  <div class="bar" style="margin-top:14px"><button class="btn" onclick="exportMem()">💾 حفظ نسخة مما تعلّمه</button>
-    <label class="btn">📂 استيراد نسخة<input type="file" accept=".json" hidden onchange="importMem(this.files[0])"></label></div>
-  <h3>الحالات <span class="mut">— صحّح أي حالة بزر، والنظام يتعلّم منها</span></h3>
-  <div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
-</main>
-<video id="vid" playsinline muted autoplay style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
-<script>/*__SEED__*/</script>
+<header><div class="wrap" id="hdr"></div></header>
+<main class="wrap" id="view"></main>
+<nav class="tabs"><div class="in" id="nav"></div></nav>
+<div id="modal"></div>
+<video id="vid" autoplay muted playsinline style="display:none"></video>
+<script>window.SIMPLE = true;</script>
 <script>
-/* رقابة عارضة تتعلّم من تصحيحك:
-   1) كشف مكان كل تغيّر بمقارنة الصورة الثابتة بالمرجع (يعمل بلا إنترنت).
-   2) لكل مكان: بصمة من صورة «قبل» و«بعد» (ألوان، ملمس، سطوع، وشبه كلٍّ منهما بالمحيط).
-   3) النقل: قطعة اختفت من مكان وظهرت هي نفسها في مكان آخر.
-   4) الباقي: يُصنَّف بأقرب الحالات التي صحّحتها أنت (سرقة / إضافة / لا شيء). كلما صحّحت أكثر صار أدق.
-   الذاكرة محفوظة على هذا الجهاز، وتُصدَّر وتُستورد كملف. */
-const $ = s => document.querySelector(s), LS = { get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ alert('الذاكرة ممتلئة: احفظ نسخة واحذف حالات قديمة'); } } };
-const NAME = { take: 'سرقة / شيل', put: 'إضافة', move: 'نقل', none: 'لا شيء' };
-const W = 320; // دقة التحليل
-const RP = { thr: 35, open: 2, grow: 5, min: 0.004 }; // حساسية كشف المناطق
-let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases2', []), mem = LS.get('basit_mem', null) || (window.SEED || []).slice();
-let base = null, prev = null, stable = 0, pend = 0, drawing = null;
-const cv = $('#cv'), vid = $('#vid');
-
-/* ---------- الكاميرا والمنطقة ---------- */
-async function startCam(){
-  try{ vid.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); await vid.play(); }
-  catch(e){ alert('تعذّر تشغيل الكاميرا. افتح الصفحة من رابط https أو من ملف على الكمبيوتر.'); return; }
-  $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); render();
-}
-function paint(){ if(!vid.videoWidth) return; const w = Math.min(960, vid.videoWidth); if(cv.width !== w){ cv.width = w; cv.height = Math.round(w * vid.videoHeight / vid.videoWidth); } cv.getContext('2d').drawImage(vid, 0, 0, cv.width, cv.height); }
-const pos = e => { const r = $('#live').getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
-$('#live').onpointerdown = e => { const [x, y] = pos(e); drawing = { x0: x, y0: y, x1: x, y1: y }; $('#live').setPointerCapture(e.pointerId); };
-$('#live').onpointermove = e => { if(!drawing) return; [drawing.x1, drawing.y1] = pos(e); overlay(); };
-$('#live').onpointerup = () => { const d = drawing; drawing = null; if(!d) return;
-  const z = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
-  if(z.w > 0.05 && z.h > 0.05){ zone = z; LS.set('basit_zone', zone); resetBase(); } overlay(); };
-
-/* ---------- قراءة صورة (من الكاميرا أو من أي canvas/صورة) ---------- */
-function frameOf(src, sx, sy, sw, sh){
-  const H = Math.max(16, Math.round(W * sh / sw)), c = document.createElement('canvas'); c.width = W; c.height = H;
-  const x = c.getContext('2d', { willReadFrequently: true }); x.filter = 'blur(1px)'; x.drawImage(src, sx, sy, sw, sh, 0, 0, W, H); x.filter = 'none';
-  const d = x.getImageData(0, 0, W, H).data; return { W, H, d, c };
-}
-const grab = () => zone && cv.width ? frameOf(cv, zone.x * cv.width, zone.y * cv.height, zone.w * cv.width, zone.h * cv.height) : null;
-// خريطة التغيّر بين صورتين متطابقتي الحجم (مع تعويض السطوع العام وسماح بإزاحة بكسل)
-function diff(A, B, thr = 70){
-  const n = A.W * A.H, m = new Uint8Array(n); let sa = 0, sb = 0; for(let i = 0; i < n * 4; i += 4){ sa += A.d[i + 1]; sb += B.d[i + 1]; } const k = sb / Math.max(1, sa);
-  for(let y = 2; y < A.H - 2; y++) for(let x = 2; x < A.W - 2; x++){ const i = y * A.W + x; let best = 1e9;
-    for(const o of [0, -1, 1, -A.W, A.W]){ const p = (i + o) * 4, q = i * 4; const v = Math.abs(A.d[p] * k - B.d[q]) + Math.abs(A.d[p + 1] * k - B.d[q + 1]) + Math.abs(A.d[p + 2] * k - B.d[q + 2]); if(v < best) best = v; }
-    if(best > thr) m[i] = 1; }
-  return m;
-}
-// مناطق التغيّر: تنعيم ثم مكوّنات متصلة كبيرة بما يكفي لتكون قطعة
-function regions(A, B){
-  const { W: w, H: h } = A, n = w * h; let m = diff(A, B, RP.thr);
-  const morph = (m, r, on) => { const o = new Uint8Array(n); for(let y = r; y < h - r; y++) for(let x = r; x < w - r; x++){ let s = 0, t = 0; for(let dy = -r; dy <= r; dy++) for(let dx = -r; dx <= r; dx++){ s += m[(y + dy) * w + x + dx]; t++; } o[y * w + x] = on ? (s > 0 ? 1 : 0) : (s === t ? 1 : 0); } return o; };
-  m = morph(morph(m, RP.open, false), RP.grow, true);
-  const lab = new Uint8Array(n), out = [];
-  for(let i = 0; i < n; i++){ if(!m[i] || lab[i]) continue; const q = [i]; lab[i] = 1; let a = 0, x0 = w, y0 = h, x1 = 0, y1 = 0;
-    while(q.length){ const c = q.pop(), x = c % w, y = (c / w) | 0; a++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-      for(const o of [c - 1, c + 1, c - w, c + w]) if(o >= 0 && o < n && m[o] && !lab[o] && Math.abs((o % w) - x) <= 1){ lab[o] = 1; q.push(o); } }
-    if(a > n * RP.min) out.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }); }
-  return out;
-}
-/* ---------- البصمة ---------- */
-function hsv(r, g, b){ r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0;
-  if(d){ h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if(h < 0) h += 360; } return [h, mx ? d / mx : 0, mx]; }
-function stats(F, R, ring){ // توزيع ألوان 12×4 + ملمس + سطوع، داخل المربع أو في المحيط حوله
-  const g = ring ? Math.round(Math.max(R.w, R.h) / 2) : 0, X0 = Math.max(1, R.x - g), Y0 = Math.max(1, R.y - g), X1 = Math.min(F.W - 2, R.x + R.w + g), Y1 = Math.min(F.H - 2, R.y + R.h + g);
-  const h = new Float32Array(48); let n = 0, tex = 0, br = 0, sat = 0;
-  for(let y = Y0; y < Y1; y++) for(let x = X0; x < X1; x++){
-    const inside = x >= R.x && x < R.x + R.w && y >= R.y && y < R.y + R.h; if(ring === inside) continue;
-    const p = (y * F.W + x) * 4, [H, S, V] = hsv(F.d[p], F.d[p + 1], F.d[p + 2]);
-    h[(S < 0.15 ? 0 : 1 + Math.min(10, (H / 36) | 0)) * 4 + Math.min(3, (V * 4) | 0)]++; n++; br += V; sat += S;
-    const q = p + 4, u = p + F.W * 4; tex += Math.abs(F.d[p + 1] - F.d[q + 1]) + Math.abs(F.d[p + 1] - F.d[u + 1]);
+"use strict";
+/* DETECTOR_START */
+// ===================== محرك كشف التغيّر (منقول من نسخة بايثون) =====================
+const DET = (() => {
+  function frameFromCanvas(c){
+    const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, n = w * h;
+    const raw = new Float32Array(n), ca = new Float32Array(n), cb = new Float32Array(n);
+    for(let i = 0, j = 0; i < n; i++, j += 4){ const R = d[j], G = d[j + 1], B = d[j + 2]; raw[i] = 0.299 * R + 0.587 * G + 0.114 * B; ca[i] = R - G; cb[i] = (R + G) / 2 - B; }
+    return build(raw, ca, cb, w, h);
   }
-  for(let k = 0; k < 48; k++) h[k] /= Math.max(1, n); return { h, tex: tex / Math.max(1, n), br: br / Math.max(1, n), sat: sat / Math.max(1, n) };
+  function build(raw, ca, cb, w, h){
+    const g = new Float32Array(w * h);
+    for(let y = 0; y < h; y++){ const y0 = y > 0 ? y - 1 : 0, y1 = y < h - 1 ? y + 1 : h - 1;
+      for(let x = 0; x < w; x++){ const x0 = x > 0 ? x - 1 : 0, x1 = x < w - 1 ? x + 1 : w - 1;
+        g[y * w + x] = (raw[y0 * w + x0] + raw[y0 * w + x] + raw[y0 * w + x1] + raw[y * w + x0] + raw[y * w + x] + raw[y * w + x1] + raw[y1 * w + x0] + raw[y1 * w + x] + raw[y1 * w + x1]) / 9; } }
+    const G = grad(g, w, h), W1 = w + 1, I = new Float64Array(W1 * (h + 1));
+    for(let y = 0; y < h; y++){ let row = 0; for(let x = 0; x < w; x++){ row += g[y * w + x]; I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + row; } }
+    return { w, h, g, ca, cb, G, I };
+  }
+  function grad(g, w, h){
+    const o = new Float32Array(w * h);
+    for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){ const i = y * w + x, gx = g[i + 1] - g[i - 1], gy = g[i + w] - g[i - w]; o[i] = Math.sqrt(gx * gx + gy * gy); }
+    return o;
+  }
+  function clone(F){ return { w: F.w, h: F.h, g: F.g.slice(), ca: F.ca.slice(), cb: F.cb.slice(), G: F.G.slice(), I: F.I.slice() }; }
+  // اهتزاز الكاميرا: إزاحة صغيرة بدقة ربع الصورة
+  function estimateShift(ref, cur){
+    const w4 = Math.floor(ref.w / 4), h4 = Math.floor(ref.h / 4), a = new Float32Array(w4 * h4), b = new Float32Array(w4 * h4);
+    for(let y = 0; y < h4; y++) for(let x = 0; x < w4; x++){ a[y * w4 + x] = ref.g[y * 4 * ref.w + x * 4]; b[y * w4 + x] = cur.g[y * 4 * cur.w + x * 4]; }
+    const ga = grad(a, w4, h4), gb = grad(b, w4, h4), m = 5;
+    let best = -2, bd = [0, 0];
+    for(let dy = -4; dy <= 4; dy++) for(let dx = -4; dx <= 4; dx++){
+      let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = m; y < h4 - m; y++) for(let x = m; x < w4 - m; x++){ const A = ga[y * w4 + x], B = gb[(y + dy) * w4 + x + dx]; n++; sa += A; sb += B; saa += A * A; sbb += B * B; sab += A * B; }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n, c = va > 0 && vb > 0 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : 0;
+      if(c > best){ best = c; bd = [dx * 4, dy * 4]; }
+    }
+    return bd;
+  }
+  // محاذاة خاصة بكل منطقة: تغيير التركيز في كاميرا الموبايل يقرّب الصورة قليلاً فتنزاح أجزاؤها بمقادير مختلفة
+  function zoneShift(ref, cur, z, base){
+    const W = ref.w, H = ref.h, x0 = Math.max(14, Math.floor(z.x * W)), y0 = Math.max(14, Math.floor(z.y * H)), x1 = Math.min(W - 14, Math.ceil((z.x + z.w) * W)), y1 = Math.min(H - 14, Math.ceil((z.y + z.h) * H));
+    const score = (dx, dy) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y1; y += 2){ const yy = y + dy; if(yy < 0 || yy >= H) continue; for(let x = x0; x < x1; x += 2){ const xx = x + dx; if(xx < 0 || xx >= W) continue;
+        const A = ref.G[y * W + x], B = cur.G[yy * W + xx]; n++; sa += A; sb += B; saa += A * A; sbb += B * B; sab += A * B; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return n > 50 && va > 0 && vb > 0 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    let best = score(base[0], base[1]), bd = base.slice();
+    for(let dy = -12; dy <= 12; dy += 3) for(let dx = -12; dx <= 12; dx += 3){ const s = score(dx, dy); if(s > best + 1e-6){ best = s; bd = [dx, dy]; } }
+    const c = bd.slice(); for(let dy = -2; dy <= 2; dy++) for(let dx = -2; dx <= 2; dx++){ if(!dx && !dy) continue; const s = score(c[0] + dx, c[1] + dy); if(s > best + 1e-6){ best = s; bd = [c[0] + dx, c[1] + dy]; } }
+    return bd;
+  }
+  // حركة الكاميرا الكاملة (إزاحة + دوران + تقريب): نقيس إزاحة 48 رقعة موزعة على الصورة (من الخشن للدقيق حتى لا تخدعنا
+  // الأنماط المتكررة مثل أزرار الكيبورد) ثم نطابقها بتحويل أفيني بطريقة RANSAC (تستبعد الرقع الشاذة مثل مكان قطعة مشالة).
+  // يرجع {a,b,c,d,e,f}: u = a·x + c·y + e ، v = b·x + d·y + f (بالبكسل، من المرجع إلى الحالي)، أو null إذا تعذّر القياس بثقة
+  function estimateAffine(ref, cur, base){
+    const W = ref.w, H = ref.h, w4 = Math.floor(W / 4), h4 = Math.floor(H / 4);
+    const down = F => { const o = new Float32Array(w4 * h4);
+      for(let y = 0; y < h4; y++) for(let x = 0; x < w4; x++){ let t = 0; for(let yy = 0; yy < 4; yy++){ const r = (y * 4 + yy) * W + x * 4; t += F.g[r] + F.g[r + 1] + F.g[r + 2] + F.g[r + 3]; } o[y * w4 + x] = t / 16; }
+      return grad(o, w4, h4); };
+    const A4 = down(ref), B4 = down(cur);
+    const ncc = (A, B, w, h, x0, y0, x1, y1, dx, dy, st) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y1; y += st){ const yy = y + dy; if(yy < 1 || yy >= h - 1) continue; for(let x = x0; x < x1; x += st){ const xx = x + dx; if(xx < 1 || xx >= w - 1) continue;
+        const a = A[y * w + x], b = B[yy * w + xx]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return n > 40 && va > n * 2 && vb > 0 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    const NX = 8, NY = 6, pts = [], b4 = [Math.round(base[0] / 4), Math.round(base[1] / 4)];
+    for(let j = 0; j < NY; j++) for(let i = 0; i < NX; i++){
+      const x0 = Math.round(i * w4 / NX), x1 = Math.round((i + 1) * w4 / NX), y0 = Math.round(j * h4 / NY), y1 = Math.round((j + 1) * h4 / NY);
+      let best = -1, bd = b4;
+      for(let dy = -8; dy <= 8; dy++) for(let dx = -8; dx <= 8; dx++){ const s = ncc(A4, B4, w4, h4, x0, y0, x1, y1, b4[0] + dx, b4[1] + dy, 1); if(s > best){ best = s; bd = [b4[0] + dx, b4[1] + dy]; } }
+      if(best < 0.5) continue;
+      const X0 = x0 * 4, X1 = x1 * 4, Y0 = y0 * 4, Y1 = y1 * 4; let fb = -1, fd = [bd[0] * 4, bd[1] * 4];
+      for(let dy = -4; dy <= 4; dy++) for(let dx = -4; dx <= 4; dx++){ const s = ncc(ref.G, cur.G, W, H, X0, Y0, X1, Y1, bd[0] * 4 + dx, bd[1] * 4 + dy, 2); if(s > fb){ fb = s; fd = [bd[0] * 4 + dx, bd[1] * 4 + dy]; } }
+      if(fb > 0.5) pts.push({ x: (X0 + X1) / 2, y: (Y0 + Y1) / 2, u: (X0 + X1) / 2 + fd[0], v: (Y0 + Y1) / 2 + fd[1] });
+    }
+    const fit = P => { // مربعات صغرى للتحويل الأفيني (حول المتوسط)
+      const n = P.length, mx = P.reduce((s, p) => s + p.x, 0) / n, my = P.reduce((s, p) => s + p.y, 0) / n, mu = P.reduce((s, p) => s + p.u, 0) / n, mv = P.reduce((s, p) => s + p.v, 0) / n;
+      let xx = 0, xy = 0, yy = 0, xu = 0, yu = 0, xv = 0, yv = 0;
+      for(const p of P){ const x = p.x - mx, y = p.y - my, u = p.u - mu, v = p.v - mv; xx += x * x; xy += x * y; yy += y * y; xu += x * u; yu += y * u; xv += x * v; yv += y * v; }
+      const det = xx * yy - xy * xy; if(Math.abs(det) < 1e-6 * (xx * yy + 1)) return null;
+      const a = (xu * yy - yu * xy) / det, c = (yu * xx - xu * xy) / det, b = (xv * yy - yv * xy) / det, d = (yv * xx - xv * xy) / det;
+      return { a, b, c, d, e: mu - a * mx - c * my, f: mv - b * mx - d * my }; };
+    const res = (T, p) => Math.hypot(T.a * p.x + T.c * p.y + T.e - p.u, T.b * p.x + T.d * p.y + T.f - p.v);
+    const sane = T => T && [T.a - 1, T.d - 1, T.b, T.c].every(v => Math.abs(v) < 0.12);
+    const n = pts.length; if(n < 8) return null;
+    let bestIn = null;
+    for(let i = 0; i < n; i++) for(let j = i + 1; j < n; j++) for(let k = j + 1; k < n; k++){ // كل الثلاثيات (عددها صغير)
+      const T = fit([pts[i], pts[j], pts[k]]); if(!sane(T)) continue;
+      const In = pts.filter(p => res(T, p) < 3); if(!bestIn || In.length > bestIn.length) bestIn = In;
+    }
+    if(!bestIn || bestIn.length < Math.max(8, 0.4 * n)) return null;
+    let T = fit(bestIn); if(!sane(T)) return null;
+    const In = pts.filter(p => res(T, p) < 3); if(In.length >= bestIn.length){ const T2 = fit(In); if(sane(T2)) T = T2; }
+    T.inliers = In.length; T.total = n; return T;
+  }
+  // صحة الصورة: متوسط السطوع ومتوسط قوة الحواف (الملمس). العدسة المغطاة أو المظلمة = ملمس شبه معدوم
+  function health(F){ let s = 0, t = 0, n = 0; for(let i = 0; i < F.g.length; i += 7){ s += F.g[i]; t += F.G[i]; n++; } return { mu: s / n, tex: t / n }; }
+  // بصمة القطعة (لا تعتمد على المكان ولا الزاوية): بكسلات A التي تختلف عن B داخل المربع = القطعة نفسها
+  // (عند الشيل: A = المرجع، B = الحالي؛ عند الظهور: العكس). البصمة = توزيع الألوان (4×4×4) + متوسط الملمس + المساحة
+  function itemSig(A, B, box, shift){
+    const W = A.w, H = A.h, sx = (shift && shift[0]) || 0, sy = (shift && shift[1]) || 0; // B عند (x+sx, y+sy)
+    const x0 = Math.max(2, Math.floor(box.x * W)), y0 = Math.max(2, Math.floor(box.y * H)), x1 = Math.min(W - 2, Math.ceil((box.x + box.w) * W)), y1 = Math.min(H - 2, Math.ceil((box.y + box.h) * H));
+    const h = new Float32Array(64); let n = 0, tex = 0;
+    const q = (v, lo, hi) => Math.max(0, Math.min(3, Math.floor((v - lo) / (hi - lo) * 4)));
+    for(let y = y0; y < y1; y += 2) for(let x = x0; x < x1; x += 2){
+      const i = y * W + x, j = Math.min(H - 1, Math.max(0, y + sy)) * W + Math.min(W - 1, Math.max(0, x + sx));
+      const dg = Math.abs(A.g[i] - B.g[j]), dc = Math.abs(A.ca[i] - B.ca[j]) + Math.abs(A.cb[i] - B.cb[j]);
+      if(dg < 22 && dc < 24) continue;
+      h[q(A.g[i], 0, 256) * 16 + q(A.ca[i], -80, 80) * 4 + q(A.cb[i], -80, 80)]++; tex += A.G[i]; n++;
+    }
+    if(n) for(let k = 0; k < 64; k++) h[k] /= n;
+    return { h: Array.from(h), n, tex: n ? tex / n : 0 };
+  }
+  // توزيع ألوان «الحلقة» المحيطة بالمربع (السطح حول القطعة) بنفس تكميم البصمة: نعرف به أي جانب (قبل/بعد) هو الخلفية وأيهما القطعة
+  function ringHist(F, box){
+    const W = F.w, H = F.h, gx = box.w * 0.5, gy = box.h * 0.5, h = new Float32Array(64); let n = 0;
+    const x0 = Math.max(2, Math.floor((box.x - gx) * W)), y0 = Math.max(2, Math.floor((box.y - gy) * H)), x1 = Math.min(W - 2, Math.ceil((box.x + box.w + gx) * W)), y1 = Math.min(H - 2, Math.ceil((box.y + box.h + gy) * H));
+    const bx0 = box.x * W, by0 = box.y * H, bx1 = (box.x + box.w) * W, by1 = (box.y + box.h) * H, q = (v, lo, hi) => Math.max(0, Math.min(3, Math.floor((v - lo) / (hi - lo) * 4)));
+    for(let y = y0; y < y1; y += 2) for(let x = x0; x < x1; x += 2){ if(x >= bx0 && x < bx1 && y >= by0 && y < by1) continue; const i = y * W + x; h[q(F.g[i], 0, 256) * 16 + q(F.ca[i], -80, 80) * 4 + q(F.cb[i], -80, 80)]++; n++; }
+    if(n) for(let k = 0; k < 64; k++) h[k] /= n;
+    return { h: Array.from(h), n };
+  }
+  // تشابه توزيعين (باتاشاريا) بلا شروط المساحة
+  function histSim(a, b){ if(!a || !b || !a.n || !b.n) return 0; let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc; }
+  // تشابه بصمتين (0..1): معامل باتاشاريا للألوان، بشرط تقارب المساحة والملمس
+  function sigSim(a, b){
+    if(!a || !b || a.n < 30 || b.n < 30) return 0;
+    // الملمس يُقاس عند بكسلات القطعة وحوافها، والحواف تتغيّر مع السطح الذي تحتها (خشب، قماش)، فالشرط متسامح
+    const ar = a.n / b.n, tr = (a.tex + 1) / (b.tex + 1);
+    if(ar < 0.4 || ar > 2.5 || tr < 0.4 || tr > 2.5) return 0;
+    let bc = 0; for(let k = 0; k < 64; k++) bc += Math.sqrt(a.h[k] * b.h[k]); return bc;
+  }
+  // «تراجع الصف» لرفوف البضاعة المتكررة (شيبس، شوكولا، علب): القطع متطابقة خلف بعضها، فأخذ القطعة الأمامية لا يُحدث
+  // «فراغاً» بل يُرجع واجهة الصف للخلف، فتظهر القطعة التالية أعلى قليلاً في الكاميرا المائلة من الأعلى.
+  // نقيس الإزاحة الرأسية لكل كتلة صغيرة: مجموعة كتل ارتفعت معاً = «التقاط» (pick)، ونزلت معاً = «تعبئة» (restock).
+  // الإضاءة والضجيج لا يُزيحان شيئاً، والأنماط المتكررة لا تخدعنا لأننا نشترط أن تكون المطابقة المُزاحة أفضل بوضوح من مكانها.
+  function recess(ref, cur, z, shift){
+    shift = zoneShift(ref, cur, z, shift);
+    const W = ref.w, H = ref.h, bs = Math.max(12, Math.min(28, Math.round(z.w * W / 26))), M = 40 + Math.max(Math.abs(shift[0]), Math.abs(shift[1])); // نبتعد عن حافة الصورة بمسافة البحث
+    const zx0 = Math.max(M, Math.floor(z.x * W)), zy0 = Math.max(M, Math.floor(z.y * H)), zx1 = Math.min(W - M, Math.ceil((z.x + z.w) * W)), zy1 = Math.min(H - M, Math.ceil((z.y + z.h) * H));
+    if(zx1 - zx0 < bs * 2 || zy1 - zy0 < bs * 2) return [];
+    const R = Math.max(10, Math.min(36, Math.round(bs * 1.3)));
+    const nx = Math.floor((zx1 - zx0) / bs), ny = Math.floor((zy1 - zy0) / bs), dyMap = new Float32Array(nx * ny);
+    const ncc = (x0, y0, dx, dy) => { let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+      for(let y = y0; y < y0 + bs; y += 2){ const yy = y + dy; if(yy < 1 || yy >= H - 1) return -1; for(let x = x0; x < x0 + bs; x += 2){ const xx = x + dx; if(xx < 1 || xx >= W - 1) return -1;
+        const a = ref.G[y * W + x], b = cur.G[yy * W + xx]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; } }
+      const va = saa - sa * sa / n, vb = sbb - sb * sb / n; return va > n * 20 && vb > n * 4 ? (sab - sa * sb / n) / Math.sqrt(va * vb) : -1; };
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+      const x0 = zx0 + i * bs, y0 = zy0 + j * bs;
+      let s0 = -1; for(const dx of [-2, 0, 2]) for(let dy = -2; dy <= 2; dy++){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > s0) s0 = v; }
+      if(s0 > 0.85) continue; // الكتلة في مكانها: لا شيء تغيّر
+      let best = -1, bd = 0;
+      for(let dy = -R; dy <= R; dy += 2){ if(Math.abs(dy) < 5) continue; for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } } }
+      for(const dy of [bd - 1, bd + 1]) for(const dx of [-2, 0, 2]){ const v = ncc(x0, y0, shift[0] + dx, shift[1] + dy); if(v > best){ best = v; bd = dy; } }
+      if(best > 0.7 && best - s0 > 0.15) dyMap[j * nx + i] = bd;
+    }
+    // تجميع الكتل المتجاورة بنفس الاتجاه وإزاحة متقاربة
+    const seen = new Uint8Array(nx * ny), out = [];
+    for(let k = 0; k < nx * ny; k++){
+      if(!dyMap[k] || seen[k]) continue;
+      const sg = Math.sign(dyMap[k]), q = [k], g = []; seen[k] = 1;
+      while(q.length){ const c = q.pop(); g.push(c); const ci = c % nx, cj = (c / nx) | 0;
+        for(const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){ const ii = ci + di, jj = cj + dj; if(ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; const n2 = jj * nx + ii;
+          if(!seen[n2] && dyMap[n2] && Math.sign(dyMap[n2]) === sg && Math.abs(dyMap[n2] - dyMap[c]) <= 6){ seen[n2] = 1; q.push(n2); } } }
+      if(g.length < 4) continue;
+      let i0 = 1e9, j0 = 1e9, i1 = -1, j1 = -1, sdy = 0; for(const c of g){ const ci = c % nx, cj = (c / nx) | 0; i0 = Math.min(i0, ci); i1 = Math.max(i1, ci); j0 = Math.min(j0, cj); j1 = Math.max(j1, cj); sdy += dyMap[c]; }
+      out.push({ type: sg < 0 ? 'pick' : 'restock', cells: g.length, dy: Math.round(sdy / g.length), x: (zx0 + i0 * bs) / W, y: (zy0 + j0 * bs) / H, w: (i1 - i0 + 1) * bs / W, h: (j1 - j0 + 1) * bs / H });
+    }
+    return out;
+  }
+  function zoneBox(F, z, fine){
+    const W = F.w, H = F.h;
+    let x0 = Math.round(z.x * W), y0 = Math.round(z.y * H);
+    const zw = Math.max(8, Math.round((z.x + z.w) * W) - x0), zh = Math.max(8, Math.round((z.y + z.h) * H) - y0);
+    const cs = fine ? Math.max(6, Math.min(30, Math.round(zw / 32))) : Math.max(10, Math.min(40, Math.round(zw / 20)));
+    let nx = Math.max(1, Math.floor(zw / cs)), ny = Math.max(1, Math.floor(zh / cs));
+    if(x0 + nx * cs > W) x0 = Math.max(0, W - nx * cs);
+    if(y0 + ny * cs > H) y0 = Math.max(0, H - ny * cs);
+    nx = Math.min(nx, Math.floor((W - x0) / cs)); ny = Math.min(ny, Math.floor((H - y0) / cs));
+    return { x0, y0, cs, nx, ny };
+  }
+  function compareZone(ref, cur, z, shift, opt){
+    const fine = !!(opt && opt.fine);
+    shift = zoneShift(ref, cur, z, shift);
+    const W = ref.w, H = ref.h, { x0, y0, cs, nx, ny } = zoneBox(ref, z, fine), C = nx * ny, N = cs * cs;
+    if(nx < 1 || ny < 1) return { st: [], regions: [], changed: 0, nx: 0, ny: 0 };
+    const rm = new Float32Array(C), tr = new Float32Array(C), ra = new Float32Array(C), rb = new Float32Array(C), rsg = new Float64Array(C), rsgg = new Float64Array(C), rsG = new Float64Array(C), rsGG = new Float64Array(C);
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+      const k = j * nx + i; let sg = 0, sgg = 0, sG = 0, sGG = 0, sa = 0, sb = 0;
+      for(let yy = 0; yy < cs; yy++){ const row = (y0 + j * cs + yy) * W + x0 + i * cs; for(let xx = 0; xx < cs; xx++){ const p = row + xx, a = ref.g[p], A = ref.G[p]; sg += a; sgg += a * a; sG += A; sGG += A * A; sa += ref.ca[p]; sb += ref.cb[p]; } }
+      rsg[k] = sg; rsgg[k] = sgg; rsG[k] = sG; rsGG[k] = sGG; rm[k] = sg / N; tr[k] = sG / N; ra[k] = sa / N; rb[k] = sb / N;
+    }
+    const best = new Float32Array(C).fill(-2), tmin = new Float32Array(C).fill(1e9), tmax = new Float32Array(C), tb = new Float32Array(C), cmb = new Float32Array(C), cab = new Float32Array(C), cbb2 = new Float32Array(C);
+    const step = Math.max(1, Math.floor(cs / 6)); let any = false;
+    const ncc = (sa, saa, sb, sbb, sab) => { const va = saa - sa * sa / N, vb = sbb - sb * sb / N, den = Math.sqrt(Math.max(0, va) * Math.max(0, vb));
+      if(va < 1e-3 && vb < 1e-3) return 1; return den > 1e-3 ? (sab - sa * sb / N) / den : 0; };
+    for(const dy of [-step, 0, step]) for(const dx of [-step, 0, step]){
+      const ox = dx + shift[0], oy = dy + shift[1];
+      if(x0 + ox < 0 || y0 + oy < 0 || x0 + nx * cs + ox > W || y0 + ny * cs + oy > H) continue;
+      any = true; const off = oy * W + ox;
+      for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){
+        const k = j * nx + i; let sb = 0, sbb = 0, sab = 0, SB = 0, SBB = 0, SAB = 0, ca = 0, cbb = 0;
+        for(let yy = 0; yy < cs; yy++){ const row = (y0 + j * cs + yy) * W + x0 + i * cs;
+          for(let xx = 0; xx < cs; xx++){ const p = row + xx, q = p + off, a = ref.g[p], b = cur.g[q], A = ref.G[p], B = cur.G[q];
+            sb += b; sbb += b * b; sab += a * b; SB += B; SBB += B * B; SAB += A * B; ca += cur.ca[q]; cbb += cur.cb[q]; } }
+        const sim = 0.45 * ncc(rsg[k], rsgg[k], sb, sbb, sab) + 0.55 * ncc(rsG[k], rsGG[k], SB, SBB, SAB), t = SB / N;
+        if(sim > best[k]){ tb[k] = t; best[k] = sim; cmb[k] = sb / N; cab[k] = ca / N; cbb2[k] = cbb / N; }
+        if(t < tmin[k]) tmin[k] = t; if(t > tmax[k]) tmax[k] = t;
+      }
+    }
+    if(!any) return { st: new Array(C).fill('same'), regions: [], changed: 0, nx, ny };
+    // تعويض تغيّر التعريض التلقائي وتوازن الأبيض في كاميرات الموبايل: نقارن بعد إزالة التغيّر العام في المنطقة
+    const med = arr => { const a = Array.from(arr).sort((p, q) => p - q); return a.length ? a[a.length >> 1] : 0; };
+    // نقدّر التغيّر العام من الخلايا التي لم تتغيّر بنيتها فقط (تشابه عالٍ)، حتى لا يؤثر الشيل نفسه على التقدير
+    const ratios = [], da = [], db = []; for(let k = 0; k < C; k++) if(best[k] >= 0.6){ if(rm[k] > 12) ratios.push(cmb[k] / rm[k]); da.push(cab[k] - ra[k]); db.push(cbb2[k] - rb[k]); }
+    const gain = ratios.length >= 4 ? med(ratios) : 1, dA = da.length >= 4 ? med(da) : 0, dB = db.length >= 4 ? med(db) : 0;
+    const md = new Float32Array(C), cd = new Float32Array(C);
+    for(let k = 0; k < C; k++){ md[k] = Math.abs(cmb[k] - gain * rm[k]); cd[k] = Math.hypot(cab[k] - ra[k] - dA, cbb2[k] - rb[k] - dB); }
+    const st = new Array(C).fill('same'), strong = new Array(C).fill(false);
+    for(let k = 0; k < C; k++){
+      const s = best[k], R = tr[k], tc = tb[k], lo = Math.max(R, tc) < (fine ? 3 : 4);
+      // الوضع الدقيق (قطع صغيرة): خلايا أصغر وشروط أخف، مع بقاء شرط انخفاض التشابه
+      const rem = fine ? (s < 0.5 && tmax[k] < 0.7 * R && R - tmax[k] > 3 && !lo) || (s < 0.4 && cd[k] > 15 && tmax[k] <= R && !lo)
+                       : s < 0.5 && tmax[k] < 0.55 * R && tmax[k] < 6 && R - tmax[k] > 5 && !lo;
+      const add = !rem && (fine ? (s < 0.5 && R < 0.7 * tmin[k] && tmin[k] - R > 3 && !lo) || (s < 0.4 && cd[k] > 15 && tmin[k] >= R && !lo)
+                       : s < 0.5 && R < 0.55 * tmin[k] && R < 6 && tmin[k] - R > 5 && !lo);
+      const textured = Math.max(R, tc) > 8, real = Math.abs(R - tc) / Math.max(1, Math.max(R, tc)) > 0.3 || cd[k] > 12 || md[k] > 20;
+      const chg = (!lo && !rem && !add && ((s < 0.3 && textured && real) || cd[k] > 24 || md[k] > 35)) || (lo && (md[k] > 20 || cd[k] > 15));
+      st[k] = rem ? 'rem' : add ? 'add' : chg ? 'chg' : 'same';
+      strong[k] = (rem && tmax[k] < 0.38 * R) || (add && R < 0.38 * tmin[k]);
+    }
+    // دمج المناطق المتقاربة من نفس النوع (قطعة واحدة قد تنقسم إلى جزأين)
+    const gs = group(st, strong, nx, ny, fine);
+    const gap = fine ? 2 : 1;
+    for(let changed = true; changed;){ changed = false;
+      for(let a = 0; a < gs.length && !changed; a++) for(let b = a + 1; b < gs.length && !changed; b++){
+        const A = gs[a], B = gs[b];
+        if(A.type === B.type && A.i0 <= B.i1 + gap && B.i0 <= A.i1 + gap && A.j0 <= B.j1 + gap && B.j0 <= A.j1 + gap){
+          gs[a] = { type: A.type, cells: A.cells + B.cells, i0: Math.min(A.i0, B.i0), j0: Math.min(A.j0, B.j0), i1: Math.max(A.i1, B.i1), j1: Math.max(A.j1, B.j1) }; gs.splice(b, 1); changed = true; } } }
+    // منطقة «تغيّر» عامة: نحدد اتجاهها من مجموع التفاصيل قبل وبعد (جسم داكن على سطح داكن مثلاً)
+    for(const g of gs){ if(g.type !== 'chg') continue; let a = 0, b = 0, dm = 0, n = 0;
+      for(let j = g.j0; j <= g.j1; j++) for(let i = g.i0; i <= g.i1; i++){ const k = j * nx + i; a += tr[k]; b += tb[k]; dm += md[k]; n++; }
+      if(a > 1.3 * b && a - b > 1.5 * n) g.type = 'rem'; else if(b > 1.3 * a && b - a > 1.5 * n) g.type = 'add'; }
+    const regions = gs.map(r => ({ type: r.type, cells: r.cells,
+      x: (x0 + r.i0 * cs) / W, y: (y0 + r.j0 * cs) / H, w: (r.i1 - r.i0 + 1) * cs / W, h: (r.j1 - r.j0 + 1) * cs / H }))
+      .map(r => Object.assign(r, { coarse: coarseSim(ref, cur, r, shift) })).filter(r => r.coarse < (opt && opt.keepAll ? 9 : 0.85));
+    return { st, regions, changed: st.filter(s => s !== 'same').length / C, nx, ny, x0, y0, cs, W, H, shift };
+  }
+  function group(st, strong, nx, ny, fine){
+    const lab = new Int32Array(nx * ny).fill(-1), comps = [];
+    const nb = k => { const i = k % nx, j = (k / nx) | 0, o = []; if(i < nx - 1) o.push(k + 1); if(i > 0) o.push(k - 1); if(j < ny - 1) o.push(k + nx); if(j > 0) o.push(k - nx); return o; };
+    const grow = (k, type, ok) => { const id = comps.length, q = [k], mem = []; lab[k] = id; while(q.length){ const c = q.pop(); mem.push(c); for(const n of nb(c)) if(lab[n] < 0 && ok(n)){ lab[n] = id; q.push(n); } } comps.push({ type, mem }); };
+    for(let k = 0; k < st.length; k++) if(lab[k] < 0 && strong[k]){ const t = st[k]; grow(k, t, n => strong[n] && st[n] === t); }
+    for(let k = 0; k < st.length; k++) if(lab[k] < 0 && (st[k] === 'rem' || st[k] === 'add') && !nb(k).some(n => lab[n] >= 0)){ const t = st[k]; grow(k, t, n => st[n] === t); }
+    for(let p = 0; p < 2; p++) for(let k = 0; k < st.length; k++) if(lab[k] < 0 && st[k] !== 'same'){ const n = nb(k).find(n => lab[n] >= 0); if(n !== undefined){ lab[k] = lab[n]; comps[lab[n]].mem.push(k); } }
+    for(let k = 0; k < st.length; k++) if(lab[k] < 0 && st[k] === 'chg') grow(k, 'chg', n => st[n] === 'chg' && lab[n] < 0);
+    const out = [];
+    for(const c of comps){
+      if(c.mem.length < (c.type === 'chg' ? (fine ? 3 : 4) : 2)) continue;
+      let i0 = 1e9, i1 = -1, j0 = 1e9, j1 = -1;
+      for(const m of c.mem){ const i = m % nx, j = (m / nx) | 0; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
+      if(!fine && (i1 === i0 || j1 === j0) && c.mem.length < 6) continue;   // شريط رفيع بعرض خلية واحدة: غالباً حافة انزاحت قليلاً
+      out.push({ type: c.type, cells: c.mem.length, i0, j0, i1, j1 });
+    }
+    return out;
+  }
+  // فحص سريع للحركة بين لقطتين (مربعات 16×16، مع تسامح ±2 بكسل وتجاهل تغيّر الإضاءة العام)
+  function motion(prev, cur, z, block = 16, thr = 14){
+    const W = prev.w, H = prev.h, W1 = W + 1;
+    let x0 = Math.max(2, Math.floor(z.x * W)), y0 = Math.max(2, Math.floor(z.y * H));
+    let nx = Math.floor(Math.min(W - 2 - x0, Math.floor(z.w * W)) / block), ny = Math.floor(Math.min(H - 2 - y0, Math.floor(z.h * H)) / block);
+    if(nx < 1 || ny < 1) return [0, 0];
+    const bm = (I, x, y) => (I[(y + block) * W1 + x + block] - I[y * W1 + x + block] - I[(y + block) * W1 + x] + I[y * W1 + x]) / (block * block);
+    const n = nx * ny, a = new Float32Array(n), bestd = new Float32Array(n).fill(1e9), diff = new Float32Array(n);
+    for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++) a[j * nx + i] = bm(prev.I, x0 + i * block, y0 + j * block);
+    const b = new Float32Array(n), rat = [];
+    for(const dy of [-2, 0, 2]) for(const dx of [-2, 0, 2]){
+      rat.length = 0;
+      for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){ const k = j * nx + i; b[k] = bm(cur.I, x0 + i * block + dx, y0 + j * block + dy); if(a[k] > 12) rat.push(b[k] / a[k]); }
+      rat.sort((p, q) => p - q); const gain = rat.length ? rat[rat.length >> 1] : 1;   // تغيّر التعريض العام
+      for(let k = 0; k < n; k++) diff[k] = b[k] - gain * a[k];
+      const med = Array.from(diff).sort((p, q) => p - q)[n >> 1];
+      for(let k = 0; k < n; k++) bestd[k] = Math.min(bestd[k], Math.abs(diff[k] - med) / Math.max(1, Math.max(thr, 0.1 * a[k]) / thr));
+    }
+    let c = 0; for(let k = 0; k < n; k++) if(bestd[k] > thr) c++;
+    return [c / n, c];
+  }
+  function rebase(base, F, z){
+    const W = F.w, H = F.h, x0 = Math.max(0, Math.floor(z.x * W)), y0 = Math.max(0, Math.floor(z.y * H));
+    const x1 = Math.min(W, Math.round((z.x + z.w) * W) + 1), y1 = Math.min(H, Math.round((z.y + z.h) * H) + 1);
+    for(let y = y0; y < y1; y++){ const a = y * W + x0, b = y * W + x1; for(const k of ['g', 'ca', 'cb', 'G']) base[k].set(F[k].subarray(a, b), a); }
+    return [x0, y0, x1 - x0, y1 - y0];
+  }
+  // تحقق بنيوي خشن: نقارن متوسطات مربعات كبيرة داخل المنطقة. تغيّر التركيز (ضبابية) أو تقريب العدسة البسيط لا يغيّر البنية الخشنة،
+  // أما شيل قطعة فيغيّرها. يرجع قيمة بين -1 و 1 (كلما ارتفعت كان التغيّر شكلياً لا حقيقياً)
+  function coarseSim(ref, cur, reg, shift){
+    const W = ref.w, H = ref.h, mx = reg.w * 0.12, my = reg.h * 0.12;
+    const x0 = Math.max(0, Math.floor((reg.x - mx) * W)), y0 = Math.max(0, Math.floor((reg.y - my) * H)), x1 = Math.min(W, Math.ceil((reg.x + reg.w + mx) * W)), y1 = Math.min(H, Math.ceil((reg.y + reg.h + my) * H));
+    const bw = Math.max(3, Math.round(Math.min(x1 - x0, y1 - y0) / 7)), nx = Math.floor((x1 - x0) / bw), ny = Math.floor((y1 - y0) / bw);
+    if(nx < 2 || ny < 2) return 0;
+    const means = (F, ox, oy) => { const out = new Float32Array(nx * ny);
+      for(let j = 0; j < ny; j++) for(let i = 0; i < nx; i++){ let s = 0, c = 0;
+        for(let y = y0 + j * bw + oy; y < y0 + (j + 1) * bw + oy; y++){ if(y < 0 || y >= H) continue; const row = y * W;
+          for(let x = x0 + i * bw + ox; x < x0 + (i + 1) * bw + ox; x++){ if(x < 0 || x >= W) continue; s += F.g[row + x]; c++; } }
+        out[j * nx + i] = c ? s / c : 0; } return out; };
+    const a = means(ref, 0, 0), n = a.length; let ma = 0; for(const v of a) ma += v; ma /= n;
+    let va = 0; for(const v of a) va += (v - ma) * (v - ma); va /= n;
+    let best = -1; const st = Math.max(1, Math.round(bw / 2));
+    for(const dy of [-st, 0, st]) for(const dx of [-st, 0, st]){
+      const b = means(cur, dx + shift[0], dy + shift[1]); let mb = 0; for(const v of b) mb += v; mb /= n;
+      let vb = 0, cv = 0; for(let k = 0; k < n; k++){ vb += (b[k] - mb) * (b[k] - mb); cv += (a[k] - ma) * (b[k] - mb); } vb /= n; cv /= n;
+      let s;
+      if(va < 4 && vb < 4) s = 1;                 // الاثنان شبه متجانسين: لا تغيّر بنيوي
+      else if(va < 4 || vb < 4) s = 0;            // أحدهما متجانس والآخر فيه تفاصيل: تغيّر حقيقي
+      else s = cv / Math.sqrt(va * vb);
+      if(s > best) best = s;
+    }
+    return best;
+  }
+  const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim };
+})();
+/* DETECTOR_END */
+/* =================== أدوات =================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const now = () => Date.now() / 1000;
+const LS = { get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} } };
+function toast(m, ms = 3000){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
+const tm = ts => ts ? new Date(ts * 1000).toLocaleString('ar-IQ', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' }) : '—';
+function ago(ts){ if(!ts) return '—'; const s = Math.round(now() - ts); if(s < 60) return 'منذ ' + s + ' ث'; const m = Math.round(s / 60); if(m < 60) return 'منذ ' + m + ' د'; const h = Math.round(m / 60); return h < 24 ? 'منذ ' + h + ' س' : 'منذ ' + Math.round(h / 24) + ' يوم'; }
+function openModal(h, wide){ $('#modal').innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal ${wide ? 'wide' : ''}">${h}</div></div>`; }
+function closeModal(){ $('#modal').innerHTML = ''; }
+function confirmBox(msg, fn){ window._cf = fn; openModal(`<h2>تأكيد</h2><p>${msg}</p><div class="f2"><button class="btn dan" onclick="closeModal();window._cf()">تأكيد</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`); }
+let AC = null;
+function beep(){ try{ AC = AC || new (window.AudioContext || window.webkitAudioContext)(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.25, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
+
+/* =================== التخزين (IndexedDB للأحداث والمبيعات، والباقي محلياً) =================== */
+const DB = {
+  db: null,
+  open(){ return new Promise(res => { try{ const r = indexedDB.open('haris_html', 1);
+    r.onupgradeneeded = () => { const d = r.result; if(!d.objectStoreNames.contains('events')) d.createObjectStore('events', { keyPath: 'id' }); if(!d.objectStoreNames.contains('sales')) d.createObjectStore('sales', { keyPath: 'id' }); };
+    r.onsuccess = () => { this.db = r.result; res(true); }; r.onerror = () => res(false); }catch(e){ res(false); } }); },
+  all(st){ return new Promise(res => { if(!this.db) return res([]); const r = this.db.transaction(st).objectStore(st).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); }); },
+  put(st, v){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).put(v); }catch(e){} },
+  del(st, id){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).delete(id); }catch(e){} },
+  clear(st){ if(!this.db) return; try{ this.db.transaction(st, 'readwrite').objectStore(st).clear(); }catch(e){} }
+};
+const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true, judge: true, judgeModel: 'claude-opus-5-5', judgeUrl: '', judgeKey: '', judgeMax: 400 };
+const SIMPLE = !!window.SIMPLE;
+if(SIMPLE) Object.assign(DEF, { test: true, testSec: 10 });
+const S = {
+  cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
+  events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
+  lastTick: 0, lastMs: 0, frames: 0, moving: {}, diag: {}, camState: 'ok', alertSeq: 0, drawing: null, snap: null, adminOk: false
+};
+const saveCfg = () => LS.set('haris_cfg', S.cfg), saveZones = () => LS.set('haris_zones', S.zones), saveCleaning = () => LS.set('haris_cleaning', S.cleaning);
+const isDemo = () => S.src === 'demo';
+const FAST = /[?&]fast/.test(location.search);
+const isTest = () => !isDemo() && !!S.cfg.test;
+const grace = () => isDemo() ? (FAST ? 0.25 : 0.5) : isTest() ? Math.max(3, +S.cfg.testSec || 10) / 60 : +S.cfg.grace || 20;
+const cleanMin = () => isDemo() ? (FAST ? 0.65 : 1.3) : isTest() ? 1 : +S.cfg.cleaning || 15;
+const saleWin = () => isDemo() ? 2 : isTest() ? 2 : +S.cfg.saleWin || 30;
+const pollSec = () => isDemo() ? 2 : isTest() ? 1 : Math.max(2, +S.cfg.poll || 10);
+const blindSec = () => isTest() ? Math.max(3, +S.cfg.testSec || 10) : 60; // مدة تغطية العدسة قبل التنبيه
+// حساسية كل عارضة: «دقيق» للقطع الصغيرة، «عادي»، أو «تلقائي» = الإعداد العام
+const fineOf = z => z.sens === 'fine' || (z.sens !== 'normal' && !!S.cfg.fine);
+const MOVE_SIM = 0.8; // حد تطابق بصمة القطعة لاعتبار الشيل «نقلاً»
+const PUT = 0.25; // قطبية التغيّر: فوقها = وُضع شيء بوضوح، وتحت سالبها = أُخذ شيء بوضوح
+const MOVE_SIM_HAND = 0.6; // أخفّ عندما تتبّعت اليد الأخذ ثم الوضع (الدليل من الترتيب لا من البصمة وحدها)
+const fmtGrace = () => { const s = Math.round(grace() * 60); return s < 60 ? s + ' ثانية' : Math.round(s / 60) + ' دقيقة'; };
+function isNight(){
+  if(!S.cfg.night || isDemo() || isTest()) return false;
+  const d = new Date(), cur = d.getHours() * 60 + d.getMinutes(), m = s => { const [h, mm] = String(s || '0:0').split(':'); return (+h) * 60 + (+mm); };
+  const o = m(S.cfg.open), c = m(S.cfg.close); if(o === c) return false;
+  return !(o < c ? (cur >= o && cur < c) : (cur >= o || cur < c));
 }
-const corr = (a, b) => { let s = 0; for(let k = 0; k < a.length; k++) s += Math.sqrt(a[k] * b[k]); return s; };
-function feat(A, B, R){
-  const ib = stats(A, R, false), ia = stats(B, R, false), rb = stats(A, R, true), ra = stats(B, R, true);
-  return { ib, ia, v: [corr(ib.h, rb.h), corr(ia.h, ra.h), corr(ib.h, rb.h) - corr(ia.h, ra.h), Math.log((ib.tex + 1) / (ia.tex + 1)), ib.br - ia.br, ib.sat - ia.sat, Math.log((ib.tex + 1) / (rb.tex + 1)) - Math.log((ia.tex + 1) / (ra.tex + 1))] };
+
+/* =================== طبقة الذكاء الاصطناعي المحلية (MediaPipe) ===================
+   نفس المكتبة والنماذج المستخدمة في ملف «تتبّع بعيني». تعمل داخل المتصفح بدون توكنات.
+   - كشف الأيادي والأشخاص: لا نحكم على العارضة وفيها يد أو شخص، ونحتفظ بصورة لحظة التفاعل.
+   - كشف الأجسام: تسمية القطعة التي اختفت (موبايل، لابتوب، تلفزيون...). */
+const MPV = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MPV}/vision_bundle.mjs`, MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MPV}/wasm`;
+const MP_MODELS = 'https://storage.googleapis.com/mediapipe-models/';
+const OBJ_AR = {person:'شخص',bicycle:'دراجة',car:'سيارة',motorcycle:'دراجة نارية',backpack:'حقيبة ظهر',umbrella:'مظلة',handbag:'حقيبة يد',tie:'ربطة عنق',suitcase:'حقيبة سفر','sports ball':'كرة',bottle:'قنينة','wine glass':'كأس',cup:'كوب',fork:'شوكة',knife:'سكين',spoon:'ملعقة',bowl:'صحن',chair:'كرسي',couch:'كنبة','potted plant':'نبتة',bed:'سرير','dining table':'طاولة',tv:'تلفزيون / شاشة',laptop:'لابتوب',mouse:'ماوس',remote:'ريموت',keyboard:'كيبورد','cell phone':'موبايل',microwave:'مايكرويف',oven:'فرن',toaster:'محمصة',sink:'مغسلة',refrigerator:'ثلاجة',book:'كتاب',clock:'ساعة',vase:'مزهرية',scissors:'مقص','teddy bear':'دمية','hair drier':'مجفف شعر',toothbrush:'فرشاة أسنان'};
+const MP = { state: 'off', err: '', obj: null, hand: null, ms: 0, boxes: [] };
+async function loadMP(){
+  if(MP.state === 'loading' || MP.state === 'ready' || !S.cfg.ai) return;
+  MP.state = 'loading'; MP.err = ''; refreshSoon();
+  const to = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('انتهت المهلة')), ms))]);
+  try{
+    const mp = await to(import(MP_URL), 30000);
+    const fs = await to(mp.FilesetResolver.forVisionTasks(MP_WASM), 30000);
+    MP.mp = mp; MP.fs = fs;
+    const make = MP.make = async (Cls, opts) => { let last; for(const delegate of ['GPU', 'CPU']){ try{ return await to(Cls.createFromOptions(fs, Object.assign({}, opts, { baseOptions: Object.assign({}, opts.baseOptions, { delegate }) })), 45000); }catch(e){ last = e; } } throw last; };
+    MP.obj = await make(mp.ObjectDetector, { baseOptions: { modelAssetPath: MP_MODELS + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite' }, runningMode: 'IMAGE', scoreThreshold: 0.35, maxResults: 25 });
+    try{ MP.hand = await make(mp.GestureRecognizer, { baseOptions: { modelAssetPath: MP_MODELS + 'gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task' }, runningMode: 'IMAGE', numHands: 4, minHandDetectionConfidence: 0.45, minHandPresenceConfidence: 0.45 }); }catch(e){ MP.hand = null; }
+    MP.state = 'ready';
+    // تسخين: أول استدعاء للنماذج بطيء جداً (ثوانٍ). نستهلكه الآن حتى لا يتأخر الحكم لحظة أول حركة عند العارضة
+    try{ const w = document.createElement('canvas'); w.width = 320; w.height = 240; const x = w.getContext('2d'); x.fillStyle = '#888'; x.fillRect(0, 0, 320, 240); mpPeople(w); }catch(e){}
+    loadPose();
+  }catch(e){ MP.state = 'error'; MP.err = (e && e.message) || String(e); }
+  refreshSoon();
 }
-// أقرب الحالات المُعلَّمة (k=3، بأوزان المسافة)
-function knn(v, pool){
-  const L = (pool || mem).filter(m => m.label !== 'move'); if(!L.length) return { label: v[2] > 0 ? 'take' : 'put', conf: 0, n: 0 };
-  const sc = v.map((_, i) => { const xs = L.map(m => m.v[i]), mu = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - mu) ** 2, 0) / xs.length) || 1; });
-  const d = L.map(m => ({ m, d: Math.sqrt(v.reduce((s, x, i) => s + ((x - m.v[i]) / sc[i]) ** 2, 0)) })).sort((a, b) => a.d - b.d).slice(0, 3), w = {};
-  d.forEach(({ m, d }) => w[m.label] = (w[m.label] || 0) + 1 / (d + 0.05)); const tot = Object.values(w).reduce((a, b) => a + b, 0), best = Object.keys(w).sort((a, b) => w[b] - w[a])[0];
-  return { label: best, conf: w[best] / tot, n: L.length };
+// نموذج وضعية الجسم (للكشف التجريبي عن حركة الإخفاء): يُحمَّل فقط إذا فُعّل الخيار
+async function loadPose(){
+  if(!S.cfg.conceal || MP.pose || MP.poseLoading || MP.state !== 'ready' || !MP.make) return;
+  MP.poseLoading = true;
+  try{ MP.pose = await MP.make(MP.mp.PoseLandmarker, { baseOptions: { modelAssetPath: MP_MODELS + 'pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task' }, runningMode: 'IMAGE', numPoses: 2 });
+    try{ const w = document.createElement('canvas'); w.width = 256; w.height = 256; MP.pose.detect(w); }catch(e){} }
+  catch(e){ MP.pose = null; MP.poseErr = (e && e.message) || String(e); }
+  MP.poseLoading = false; refreshSoon();
 }
-// تحليل كامل لزوج صور: المناطق، ثم النقل، ثم التصنيف بالتعلّم
-function analyse(A, B, pool){
-  const R = regions(A, B), F = R.map(r => ({ r, f: feat(A, B, r) })), out = [], used = new Set();
-  F.forEach((p, i) => { if(used.has(i)) return; let best = -1, bs = 0.8;
-    F.forEach((q, j) => { if(j === i || used.has(j)) return; const s = corr(p.f.ib.h, q.f.ia.h); if(s > bs){ bs = s; best = j; } });
-    if(best >= 0){ used.add(i); used.add(best); out.push({ kind: 'move', box: p.r, to: F[best].r, conf: bs, v: p.f.v }); } });
-  F.forEach((p, i) => { if(used.has(i)) return; const k = knn(p.f.v, pool); out.push({ kind: k.label, box: p.r, conf: k.conf, v: p.f.v }); });
+// يرجع مربعات الأيادي والأشخاص (نسب 0..1) في الصورة
+function mpPeople(c){
+  if(MP.state !== 'ready') return [];
+  const t0 = performance.now(), out = [], W = c.width, H = c.height;
+  try{
+    const r = MP.obj.detect(c);
+    for(const d of r.detections || []){ const k = d.categories && d.categories[0], b = d.boundingBox; if(!k || !b || k.categoryName !== 'person') continue;
+      out.push({ kind: 'شخص', x: b.originX / W, y: b.originY / H, w: b.width / W, h: b.height / H }); }
+  }catch(e){}
+  if(MP.hand){
+    try{
+      const r = MP.hand.recognize ? MP.hand.recognize(c) : MP.hand.detect(c);
+      for(const lm of r.landmarks || []){ let l = 1, t = 1, rr = 0, b = 0; for(const q of lm){ l = Math.min(l, q.x); t = Math.min(t, q.y); rr = Math.max(rr, q.x); b = Math.max(b, q.y); }
+        const px = (rr - l) * 0.35 + 0.01, py = (b - t) * 0.35 + 0.01; out.push({ kind: 'يد', x: Math.max(0, l - px), y: Math.max(0, t - py), w: Math.min(1, rr - l + 2 * px), h: Math.min(1, b - t + 2 * py) }); }
+    }catch(e){}
+  }
+  MP.ms = Math.round(performance.now() - t0); MP.boxes = out; logHands(out);
   return out;
 }
-/* ---------- المراقبة ---------- */
-function tick(){
-  const F = grab(); if(!F) return overlay();
-  const moving = prev && prev.H === F.H && diff(prev, F, 90).reduce((s, v) => s + v, 0) > F.W * F.H * 0.01; prev = F;
-  if(moving){ stable = 0; pend = 0; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
-  if(++stable < 2) return;
-  if(!base || base.H !== F.H){ base = F; $('#st').textContent = 'تراقب ✓'; return overlay(); }
-  const ev = analyse(base, F).filter(e => e.kind !== 'none');
-  if(!ev.length){ pend = 0; $('#st').textContent = 'تراقب ✓'; return overlay(); }
-  if(++pend < 2){ $('#st').textContent = 'تغيّر… جارٍ التأكد'; return; }
-  pend = 0; record(base, F, ev); base = F; overlay();
+// تسمية القطعة: نبحث في الصورة "قبل" عن جسم معروف داخل مكان النقص
+function mpName(src, box){
+  if(MP.state !== 'ready') return '';
+  try{
+    const W = src.width, H = src.height, r = MP.obj.detect(src); let best = null, bs = 0;
+    for(const d of r.detections || []){ const k = d.categories && d.categories[0], b = d.boundingBox; if(!k || !b || k.categoryName === 'person') continue;
+      const db = { x: b.originX / W, y: b.originY / H, w: b.width / W, h: b.height / H }, ov = DET.overlap(db, box) * k.score;
+      if(ov > bs){ bs = ov; best = k.categoryName; } }
+    return bs > 0.2 ? (OBJ_AR[best] || best) : '';
+  }catch(e){ return ''; }
 }
-function crop(F, R, color){ const c = document.createElement('canvas'), g = Math.round(Math.max(R.w, R.h) * 0.6), x0 = Math.max(0, R.x - g), y0 = Math.max(0, R.y - g), w = Math.min(F.W, R.x + R.w + g) - x0, h = Math.min(F.H, R.y + R.h + g) - y0;
-  c.width = w * 2; c.height = h * 2; const x = c.getContext('2d'); x.drawImage(F.c, x0, y0, w, h, 0, 0, w * 2, h * 2); x.strokeStyle = color; x.lineWidth = 3; x.strokeRect((R.x - x0) * 2, (R.y - y0) * 2, R.w * 2, R.h * 2); return c.toDataURL('image/jpeg', .7); }
-function record(A, B, ev){
-  for(const e of ev){ const col = { take: '#e53e3e', put: '#2b6cb0', move: '#2f855a' }[e.kind] || '#888';
-    cases.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), kind: e.kind, guess: e.kind, conf: e.conf, v: e.v, box: e.box,
-      before: crop(A, e.box, col), after: crop(B, e.kind === 'move' ? e.to : e.box, col), fresh: true }); }
-  cases = cases.slice(0, 80); LS.set('basit_cases2', cases); render();
-  if(ev.some(e => e.kind === 'take')) beep();
+
+/* =================== مصادر الفيديو =================== */
+const AW = 960;
+const frameCv = document.createElement('canvas');
+async function startScreen(){
+  try{
+    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    useStream(st, 'screen');
+  }catch(e){ toast('لم تتم مشاركة الشاشة: ' + (e.message || e)); }
 }
-function resetBase(){ base = null; prev = null; pend = 0; stable = 0; }
-/* ---------- التعلّم من التصحيح ---------- */
-function teach(id, label){
-  const c = cases.find(x => x.id === id); if(!c) return; c.kind = label; c.fresh = false; c.taught = true;
-  mem = mem.filter(m => m.id !== id); mem.push({ id, label, v: c.v, t: Date.now() }); LS.set('basit_mem', mem); LS.set('basit_cases2', cases); render();
+async function startCamera(deviceId, facing){
+  if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('الكاميرا تحتاج فتح الصفحة من رابط HTTPS (على الموبايل) أو من ملف على الكمبيوتر.', 7000); return; }
+  try{
+    const v = deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : facing ? { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    const st = await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
+    useStream(st, 'camera');
+  }catch(e){ toast('تعذّر فتح الكاميرا: ' + (e.message || e)); }
 }
-function exportMem(){
-  const blob = new Blob([JSON.stringify({ app: 'basit', version: 1, saved: new Date().toISOString(), zone, mem }, null, 1)], { type: 'application/json' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'raqaba-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json'; document.body.appendChild(a); a.click(); a.remove();
+function clearDemo(){
+  if(S.zones.some(z => z.demo)){ S.zones = S.zones.filter(z => !z.demo); saveZones(); }
+  S.events.filter(e => e.demo).forEach(e => DB.del('events', e.id)); S.events = S.events.filter(e => !e.demo);
+  S.sales.filter(s => s.demo).forEach(s => DB.del('sales', s.id)); S.sales = S.sales.filter(s => !s.demo);
 }
-async function importMem(f){
-  try{ const j = JSON.parse(await f.text()); if(!Array.isArray(j.mem)) throw 0;
-    const ids = new Set(mem.map(m => m.id)); const add = j.mem.filter(m => m && m.label && Array.isArray(m.v) && !ids.has(m.id));
-    mem = mem.concat(add); LS.set('basit_mem', mem); if(j.zone && !zone){ zone = j.zone; LS.set('basit_zone', zone); }
-    alert('تم استيراد ' + add.length + ' حالة. المجموع الآن ' + mem.length + '.'); render(); }
-  catch(e){ alert('ملف غير صالح'); }
+function useStream(st, kind){
+  stopSource(true); clearDemo(); S.snap = null;
+  S.stream = st; S.src = kind; S.demo = null;
+  const v = $('#vid'); v.srcObject = st; v.play().catch(() => {});
+  st.getVideoTracks()[0].addEventListener('ended', () => { if(S.stream === st){ stopSource(); sourceLost(); } });
+  // تثبيت التركيز بعد ما تستقر الكاميرا، حتى لا «يتنفس» العدسة وتتغير الصورة (يعمل على الأجهزة التي تدعمه)
+  setTimeout(() => { try{ const tr = st.getVideoTracks()[0], cap = tr.getCapabilities ? tr.getCapabilities() : {};
+    if(cap.focusMode && cap.focusMode.includes('manual')) tr.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => { S.focusLocked = true; }).catch(() => {});
+    else if(cap.focusMode && cap.focusMode.includes('single-shot')) tr.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).then(() => { S.focusLocked = true; }).catch(() => {}); }catch(e){} }, 3000);
+  startLoop(); loadMP(); render();
 }
-/* ---------- العرض ---------- */
+function startDemo(){ stopSource(true); S.snap = null; S.src = 'demo'; S.demo = new DemoSource(); S.demo.ensureZones(); startLoop(); render(); }
+function stopSource(silent){
+  if(S.stream){ S.stream.getTracks().forEach(t => t.stop()); S.stream = null; }
+  S.src = null; S.demo = null; S.running = false; ENG.reset();
+  if(!silent) render();
+}
+function sourceLost(){
+  beep(); toast('⚠️ انقطعت الكاميرا؛ المراقبة متوقفة', 6000);
+  notifyAll('⚠️ توقفت المراقبة في ' + S.cfg.site + ': انقطعت الكاميرا (فُصلت أو أُغلقت أو أُطفئ الجهاز).');
+}
+function grabFrame(){
+  let src, w, h;
+  if(isDemo()){ src = S.demo.render(); w = src.width; h = src.height; }
+  else { const v = $('#vid'); if(!v.videoWidth) return null; src = v; w = v.videoWidth; h = v.videoHeight; }
+  frameCv.width = AW; frameCv.height = Math.round(AW * h / w);
+  frameCv.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0, frameCv.width, frameCv.height);
+  return frameCv;
+}
+// مؤقّت داخل Worker حتى لا يتباطأ التحليل عندما لا تكون الصفحة في الواجهة
+let ticker = null;
+function startLoop(){
+  S.running = true;
+  if(ticker) return;
+  try{
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),500)'], { type: 'text/javascript' })));
+    w.onmessage = loop; ticker = w;
+  }catch(e){ ticker = setInterval(loop, 500); }
+  try{ navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); }catch(e){}
+}
+let busy = false;
+function loop(){
+  ENG.deadlines();
+  if(!S.running || busy) return;
+  // كشف الإخفاء يحتاج قراءات سريعة (الحركة تستغرق ثانية أو ثانيتين): كل 0.4ث أثناء وجود أشخاص أو حركة، وكل 2ث في الهدوء
+  if(S.cfg.conceal && MP.pose && !isDemo() && now() - (S.poseAt || 0) >= (now() - (S.activeAt || 0) < 8 ? 0.4 : 2)){
+    busy = true; S.poseAt = now(); try{ const c = grabFrame(); if(c) CONCEAL.tick(c); }catch(e){ console.error(e); } busy = false;
+  }
+  // تتبّع الأيدي بسرعة (كل نصف ثانية) عند وجود حركة في العارضات: نعرف أين أخذت اليد وأين وضعت
+  if(S.cfg.ai && MP.state === 'ready' && !isDemo() && S.zones.length && now() - (S.handAt || 0) >= 0.5){
+    busy = true; S.handAt = now(); try{ const c = grabFrame(); if(c && quickMotion(c)) mpPeople(c); }catch(e){ console.error(e); } busy = false;
+  }
+  if(now() - S.lastTick < pollSec() - 0.05) return;
+  busy = true;
+  try{
+    const c = grabFrame();
+    if(c){ const t0 = performance.now(); ENG.process(c, (S.cfg.ai && !isDemo()) ? () => mpPeople(c) : null); S.lastMs = Math.round(performance.now() - t0); S.lastTick = now(); S.frames++; if(S.tab === 'mon') updMon(); }
+  }catch(e){ console.error(e); }
+  busy = false;
+}
+
+/* =================== المحرك =================== */
+const ENG = {
+  base: null, prev: null, baseCv: null, zst: {},
+  camMove: 0, camBump: 0, settle: 0, hb: null, blindSince: 0, blindEv: null,
+  reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; this.hb = null; this.blindSince = 0; this.blindEv = null; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
+  rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; this.hb = DET.health(F); },
+  // قبل إعادة ضبط المرجع كاملاً (بعد حركة الكاميرا): نقارن كل عارضة بالمرجع القديم بعد محاذاته بالإزاحة المقاسة،
+  // حتى لا تُخفى سرقة حدثت مع حركة الموبايل (دفعه وأخذ القطعة في نفس اللحظة). نفتح فقط حالات «نقص» واضحة، ونغلق ما رجع.
+  realign(F, c, sh, ppl, night, gb){
+    let n = 0;
+    const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
+    // نطابق المرجع القديم على الصورة الحالية (إزاحة + دوران + تقريب). إذا تعذّر القياس بثقة لا نفتح حالات (تفادياً للإنذار الكاذب)
+    const T = DET.estimateAffine(this.base, F, sh);
+    if(!T){ if(gb > 0.5) this.newTamper('turn', c); this.rebaseAll(F, c); return 0; } // المشهد كله تغيّر ولا يمكن مطابقته: الكاميرا وُجّهت لمكان آخر
+    const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
+    const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
+    const B = DET.frameFromCanvas(wc);
+    // نفس قرار المراقبة العادي (يد، نقل، إضافة، شيل) على المرجع بعد مطابقته — حتى لا يضيع نقلٌ أو إضافة حدثا أثناء حركة الكاميرا أو لمس الشاشة
+    const old = this.base, cands = [], before = S.events.length; this.base = B;
+    for(const z of S.zones){
+      const r = DET.compareZone(B, F, z, [0, 0], { fine: fineOf(z) });
+      if(r.changed > 0.5) continue; // تغيّر شامل للعارضة بعد الحركة: لا نستطيع الحكم بثقة
+      const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+      for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, [0, 0], now() - 60)), reg => this.cand(z, reg, F, [0, 0], now() - 60))){
+        const reg = cd.reg; if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
+        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        if(m.length){ m.forEach(e => this.returned(e, c)); continue; }
+        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        cands.push(cd);
+      }
+    }
+    this.decide(cands, c, night); this.base = old;
+    n = S.events.slice(0, S.events.length - before).filter(e => e.kind === 'removal' || e.kind === 'night').length;
+    this.rebaseAll(F, c);
+    return n;
+  },
+  process(c, pplFn){
+    // كشف الأشخاص والأيادي (MediaPipe) مكلف: لا نشغّله إلا عند الحاجة (حركة، أو تغيّر، أو شخص كان موجوداً) ومرة واحدة لكل قراءة
+    let pc = null; const P = () => pc || (pc = typeof pplFn === 'function' ? (S.mpCalls = (S.mpCalls || 0) + 1, pplFn() || []) : (pplFn || []));
+    const F = DET.frameFromCanvas(c);
+    if(!this.base || this.base.w !== F.w || this.base.h !== F.h){
+      this.hb = DET.health(F); this.base = DET.clone(F); this.prev = F; this.baseCv = document.createElement('canvas'); this.baseCv.width = c.width; this.baseCv.height = c.height; this.baseCv.getContext('2d').drawImage(c, 0, 0); return;
+    }
+    const sh = DET.estimateShift(this.base, F), night = isNight(), FULL = { x: 0, y: 0, w: 1, h: 1 };
+    // 0) لمس الشاشة يحرّك الموبايل: نوقف الحكم حتى يثبت، ثم نعيد الضبط تلقائياً
+    if(now() - (S.touchAt || 0) < 2.5){ S.camState = 'touch'; S.zones.forEach(z => S.diag[z.id] = { state: 'touch' }); this.settle = 2; this.prev = F; return; }
+    // العبث: العدسة مغطاة أو الصورة مظلمة. لا نحكم ولا نعيد ضبط المرجع (حتى لا تُخفى سرقة تحت الغطاء)،
+    // وعند رجوع الرؤية نقارن بالمرجع القديم (عبر التثبيت ثم realign). التغطية أطول من المهلة = تنبيه، إلا الظلام ليلاً (إطفاء الأضواء)
+    const hl = DET.health(F), hb = this.hb || hl;
+    if(hl.tex < Math.max(1.5, 0.3 * hb.tex) || hl.mu < 12){
+      const t = now(); if(!this.blindSince) this.blindSince = t;
+      S.camState = 'blind'; S.zones.forEach(z => S.diag[z.id] = { state: 'blind' });
+      if(!this.blindEv && !(night && hl.mu < 12) && t - this.blindSince >= blindSec()) this.blindEv = this.newTamper('cover', c);
+      this.settle = Math.max(this.settle, 2); this.prev = F; return;
+    }
+    if(this.blindSince){
+      const e = this.blindEv; if(e){ e.img_r = this.shot(c, { x: 0, y: 0, w: 1, h: 1 }, '#38a169'); e.t_end = now(); e.note = (e.note + ' عادت الرؤية بعد ' + Math.round(now() - this.blindSince) + ' ثانية.').trim(); putEvent(e); }
+      this.blindSince = 0; this.blindEv = null;
+    }
+    // 1) هل الكاميرا نفسها تتحرك الآن؟
+    const gm = DET.motion(this.prev, F, FULL)[0];
+    if(gm > 0.45){ this.camMove++; S.camState = 'moving'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' }); this.settle = Math.max(this.settle, 2); this.prev = F; return; }
+    this.camMove = 0;
+    // 2) بعد اللمس أو الاهتزاز: ننتظر قراءتين مستقرتين ثم نعتمد الصورة الحالية مرجعاً (إذا تغيّرت الصورة عموماً)
+    if(this.settle > 0){
+      S.camState = 'settle'; S.zones.forEach(z => S.diag[z.id] = { state: 'settle' });
+      if(gm < 0.03 && --this.settle === 0){ const gb = DET.motion(this.base, F, FULL)[0]; if(gb > 0.04){ const n = this.realign(F, c, sh, P(), night, gb); toast(n ? 'تحرك الموبايل؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'تحرك الموبايل؛ أُعيد ضبط الصورة تلقائياً', 3500); } S.camState = 'ok'; }
+      this.prev = F; return;
+    }
+    S.camState = 'ok';
+    // 3) انزياح الكاميرا بدون لمس: الصورة كلها اختلفت عن المرجع مع إزاحة واضحة (الشيل يغيّر جزءاً صغيراً فقط)
+    const gBase = DET.motion(this.base, F, FULL)[0], moved = Math.abs(sh[0]) >= 4 || Math.abs(sh[1]) >= 4;
+    if(gBase > 0.22 && (moved || gBase > 0.6) && gm < 0.03 && !P().length){
+      S.camState = 'bumped'; S.zones.forEach(z => S.diag[z.id] = { state: 'camera' });
+      if(++this.camBump >= 2){ const n = this.realign(F, c, sh, P(), night, gBase); this.camBump = 0; S.camState = 'ok'; toast(n ? 'انزاحت الكاميرا؛ أُعيد ضبط الصورة، ورُصد نقص في ' + n + ' موضع' : 'انزاحت الكاميرا قليلاً؛ أُعيد ضبط الصورة تلقائياً بدون احتسابها شيلاً', 4000); }
+      this.prev = F; return;
+    }
+    this.camBump = 0;
+    const cands = [], toRebase = [];
+    for(const z of S.zones){
+      const zs = this.zst[z.id] = this.zst[z.id] || { big: 0 };
+      const ez = { x: Math.max(0, z.x - 0.04), y: Math.max(0, z.y - 0.04) }; ez.w = Math.min(1 - ez.x, z.w + 0.08); ez.h = Math.min(1 - ez.y, z.h + 0.08);
+      const [frac, cnt] = DET.motion(this.prev, F, ez);
+      // كشف الأشخاص فقط إذا تحرك شيء في العارضة أو كان فيها شخص في القراءة السابقة (توفير المعالج والبطارية)
+      const ppl = (frac > 0 || cnt > 0 || zs.busy || zs.still) ? P() : [];
+      // اليد داخل العارضة تمنع الحكم دائماً؛ الشخص يمنعه فقط إذا غطّى جزءاً كبيراً منها
+      const hands = ppl.filter(b => b.kind === 'يد' && ix(b, ez)), persons = ppl.filter(b => b.kind === 'شخص' && coverage(b, z) > 0.35);
+      if(!hands.length && persons.length && frac < 0.01 && cnt < 3){ zs.still = (zs.still || 0) + 1; } else zs.still = 0;
+      const who = [...hands, ...(zs.still >= 3 ? [] : persons)].map(b => b.kind);
+      if(who.length){
+        S.diag[z.id] = { state: hands.length ? 'hand' : 'person' };
+        // يد أو شخص داخل العارضة: نحتفظ بصورة اللحظة ونعدّ التفاعل، ولا نحكم الآن
+        if(!zs.busy){ zs.busy = true; countInteraction(z.id); }
+        zs.lastBusy = { t: now(), who: [...new Set(who)].join(' و'), img: this.shot(c, z, '#5b8def', 640) };
+        S.moving[z.id] = true; continue;
+      }
+      zs.busy = false;
+      if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
+      if(frac > 0.01 || cnt >= 3){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
+      S.moving[z.id] = false;
+      const r = DET.compareZone(this.base, F, z, sh, { fine: fineOf(z) });
+      S.diag[z.id] = { state: 'ok', changed: r.changed, r };
+      if(r.changed > 0.5){
+        // تغيّر كبير في المنطقة (قطعة تملأ أغلب المربع، أو حجب): ننتظر 3 قراءات مستقرة ثم نعامله كالمعتاد
+        if(++zs.big < 3){ S.diag[z.id] = { state: 'confirm', changed: r.changed, r }; continue; }
+        if(!r.regions.some(g => g.type === 'rem' || g.type === 'add')){
+          const full = { x: z.x, y: z.y, w: z.w, h: z.h };
+          if(night) this.newRemoval(z, full, c, true); else this.newInfo(z, full, 'major', c);
+          zs.big = 0; this.rebase(z, F, c); continue;
+        }
+      }
+      zs.big = 0;
+      // إذا كان شخص أو يد يلامس مكان التغيّر نؤجّل الحكم (قد يكون ذراعاً تغطي القطعة لا شيلاً)
+      const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
+      if(r.regions.length && P().length && r.regions.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
+      if(z.mode === 'stock'){ // رف بضاعة متكررة: أحداث «التقاط/تعبئة» للعدّ والمطابقة مع المبيعات، بلا مهلة ولا إنذار (إلا ليلاً)
+        const regs = stockRegions(r, DET.recess(this.base, F, z, sh));
+        if(regs.length && P().length && regs.some(reg => P().some(b => ix(grow(b, 0.08), grow(reg, 0.1))))){ S.diag[z.id] = { state: 'person', r }; S.moving[z.id] = true; continue; }
+        S.diag[z.id].stock = regs;
+        // «لا يوجد بيع حالياً»: كل التقاط = حالة شيل عادية (مهلة ثم تنبيه)، والقطعة التي ترجع لنفس الصف تُغلقها
+        const strict = night || S.cfg.noSales, opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+        for(const reg of regs){
+          if(strict && reg.type === 'pick'){ if(!opened.some(e => DET.overlap(reg, e.box) > 0.5)) this.newRemoval(z, reg, c, night); continue; }
+          if(strict && reg.type === 'restock'){ const col = e => Math.min(reg.x + reg.w, e.box.x + e.box.w) - Math.max(reg.x, e.box.x) > 0.5 * Math.min(reg.w, e.box.w);
+            const m = opened.filter(col).sort((a, b) => b.t_start - a.t_start)[0]; if(m){ this.returned(m, c); opened.splice(opened.indexOf(m), 1); continue; } }
+          this.newStock(z, reg, c);
+        }
+        toRebase.push(z); continue;
+      }
+      const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
+      const handled = new Set(), since = (zs.judged || 0) - 3;
+      for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, sh, since)), reg => this.cand(z, reg, F, sh, since))){
+        const reg = cd.reg;
+        // رجوع قطعة لمكان حالة مفتوحة: بيد، أو بتغيّر ليس «نقصاً»، أو بنفس بصمة القطعة المشالة
+        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (cd.hT || reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c); } }); continue; }
+        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        cands.push(cd);
+      }
+      zs.judged = now(); toRebase.push(z);
+    }
+    this.decide(cands, c, night);
+    toRebase.forEach(z => this.rebase(z, F, c));
+    // انزياح بسيط مستقر بدون أي تغيّر في العارضات: نعيد المحاذاة بهدوء حتى لا تتراكم الإزاحة
+    if(moved && gm < 0.03 && S.zones.every(z => { const d = S.diag[z.id]; return d && d.state === 'ok' && d.r && !d.r.regions.length; }) && !P().length) this.rebaseAll(F, c);
+    this.prev = F;
+  },
+  extras(z, e){
+    const zs = this.zst[z.id] || {};
+    if(zs.lastBusy && now() - zs.lastBusy.t < 90){ e.img_p = zs.lastBusy.img; e.who = zs.lastBusy.who; e.note = ((e.note || '') + ' رُصد ' + zs.lastBusy.who + ' عند العارضة قبل الشيل.').trim(); }
+    const nm = mpName(this.baseCv, e.box); if(nm) e.name = nm;
+  },
+  rebase(z, F, c){ const [x, y, w, h] = DET.rebase(this.base, F, z); if(w > 0 && h > 0) this.baseCv.getContext('2d').drawImage(c, x, y, w, h, x, y, w, h); },
+  shot(src, box, color, W = 560){
+    const c = document.createElement('canvas'); c.width = W; c.height = Math.round(W * src.height / src.width);
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0, c.width, c.height); x.lineWidth = 3; x.strokeStyle = color;
+    x.strokeRect(box.x * c.width, box.y * c.height, box.w * c.width, box.h * c.height);
+    x.fillStyle = '#000a'; x.fillRect(0, 0, c.width, 20); x.fillStyle = '#fff'; x.font = '12px sans-serif'; x.fillText(new Date().toLocaleString('en-GB'), 6, 14);
+    return c.toDataURL('image/jpeg', 0.7);
+  },
+  crop(before, after, box){
+    const W = before.width, H = before.height, px = box.w * 0.35, py = box.h * 0.35;
+    const x0 = Math.max(0, (box.x - px) * W), y0 = Math.max(0, (box.y - py) * H), x1 = Math.min(W, (box.x + box.w + px) * W), y1 = Math.min(H, (box.y + box.h + py) * H);
+    const cw = x1 - x0, ch = y1 - y0, h = 260, w = Math.max(1, Math.round(cw * h / Math.max(1, ch)));
+    const c = document.createElement('canvas'); c.width = w * 2 + 10; c.height = h + 24; const x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(before, x0, y0, cw, ch, w + 10, 24, w, h); x.drawImage(after, x0, y0, cw, ch, 0, 24, w, h);
+    x.fillStyle = '#222'; x.font = 'bold 14px Tahoma'; x.textAlign = 'right'; x.fillText('قبل', c.width - 6, 17); x.fillStyle = '#c53030'; x.fillText('بعد', w - 6, 17);
+    return c.toDataURL('image/jpeg', 0.75);
+  },
+  newRemoval(z, reg, c, night, sig, why){
+    const t = now(), cu = S.cleaning[z.id] || 0;
+    let deadline = t + grace() * 60; if(cu > t) deadline = Math.max(deadline, cu + 60);
+    const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
+      img_b: this.shot(this.baseCv, reg, '#e53e3e'), img_a: this.shot(c, reg, '#e53e3e'), img_c: this.crop(this.baseCv, c, reg), note: night ? 'رُصد بعد ساعات العمل' : '' };
+    if(why) e.note = ((e.note || '') + ' ' + why).trim();
+    if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
+    this.extras(z, e);
+    addEvent(e);
+    if(!night) trySale(e);
+    if(night) alertEv(e);
+  },
+  // القرار في كل التغيّرات المحسومة في هذه القراءة (كل العارضات معاً).
+  // 1) ما لمسته يد: يُرتَّب حسب وقت اللمس — الأسبق مكان الأخذ، واللاحق مكان الوضع. إذا كانت القطعة الموضوعة هي نفسها المأخوذة
+  //    (بالبصمة) = «نقل» مهما بدا التغيّر (إضافة أو نقصاً). وما لمسته يد ولم يُفسَّر بنقل أو رجوع = أخذ (شيل بمهلة)،
+  //    إلا إذا كان وضعاً واضحاً على سطح فارغ (القطعة جديدة والخلفية كانت ظاهرة) = إضافة.
+  // 2) بلا يد: مطابقة النقل في الاتجاهين بالبصمة، والاتجاه من «أي جانب هو القطعة»؛ والباقي بالطريقة القديمة.
+  // ليلاً لا مطابقة: أي تغيّر ينبّه. والمطابقة واحد لواحد حتى لا تُخفي حركة قطعة سرقة قطعة أخرى.
+  // لكل تغيّر: هل لمسته يد (ومتى)، وما كان فيه قبل وما فيه الآن، ومقارنة كلٍّ منهما بالسطح المحيط
+  cand(z, reg, F, sh, since){
+    const cd = { z, reg, hT: handTouch(reg, since), before: DET.itemSig(this.base, F, reg, sh), after: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) };
+    cd.pol = (1 - DET.histSim(cd.after, DET.ringHist(F, reg))) - (1 - DET.histSim(cd.before, DET.ringHist(this.base, reg))); // موجب = وُضع شيء، سالب = أُخذ شيء
+    return cd;
+  },
+  decide(cands, c, night){
+    // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
+    const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
+    const used = new Set(), Hd = cands.filter(a => a.hT).sort((a, b) => a.hT - b.hT), Nd = cands.filter(a => !a.hT);
+    if(!night) for(let i = 0; i < Hd.length; i++){ if(used.has(Hd[i]) || !src(Hd[i])) continue; let best = null, bs = MOVE_SIM_HAND;
+      for(let j = i + 1; j < Hd.length; j++){ if(used.has(Hd[j]) || !dst(Hd[j])) continue; const v = DET.sigSim(Hd[i].before, Hd[j].after); if(v > bs){ bs = v; best = Hd[j]; } }
+      if(best){ used.add(Hd[i]); used.add(best); this.newMoved(Hd[i], best, c, bs, true); } }
+    for(const a of Hd){ if(used.has(a)) continue;
+      if(!night && a.pol > PUT && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c, MOVE_SIM_HAND)) continue;
+      if(!night && a.pol > PUT) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
+      else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
+    }
+    const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && dst(b)){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
+    P2.sort((x, y) => y[0] - x[0]);
+    if(!night) for(const [, v, a, b] of P2){ if(used.has(a) || used.has(b)) continue; used.add(a); used.add(b); this.newMoved(a, b, c, v); }
+    for(const a of Nd){ if(used.has(a)) continue;
+      // وضعٌ واضح (حدّ القطعة الجديدة أمام ما خلفها) ليس سرقة أبداً، حتى لو غطّت زخرفة فبدا «نقصاً» بالملمس
+      if(a.pol > PUT){ if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue; this.newInfo(a.z, a.reg, 'added', c, 'ظهرت قطعة جديدة أمام ما خلفها.'); continue; }
+      if(a.reg.type === 'rem' || a.pol < -PUT) this.newRemoval(a.z, a.reg, c, night, a.before);
+      else if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue;
+      else this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c);
+    }
+  },
+  // رف بضاعة: «التقاط» (أُخذت قطعة من مقدمة الصف) أو «تعبئة» — معلوماتي، يُعدّ في التقارير ويُقارن بالمبيعات
+  newStock(z, reg, c){
+    const kind = reg.type === 'restock' ? 'restock' : 'pick';
+    const e = { id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
+      img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, kind === 'pick' ? '#e0a020' : '#38a169'), img_c: this.crop(this.baseCv, c, reg),
+      note: kind === 'pick' ? (reg.gap ? 'أُخذت آخر قطعة في الصف.' : 'أُخذت قطعة من مقدمة الصف.') : 'أُضيفت قطع للصف.' };
+    this.extras(z, e); addEvent(e); S.lastPick = kind === 'pick' ? { zone: z.id, t: now(), id: e.id } : S.lastPick;
+  },
+  // قطعة نُقلت في نفس القراءة: حدث معلوماتي فيه صورة المكان القديم والجديد، بلا مهلة ولا تنبيه
+  newMoved(rm, ad, c, sim, byHand){
+    const zf = rm.z, zt = ad.z, u = { x: Math.min(rm.reg.x, ad.reg.x), y: Math.min(rm.reg.y, ad.reg.y) }; u.w = Math.max(rm.reg.x + rm.reg.w, ad.reg.x + ad.reg.w) - u.x; u.h = Math.max(rm.reg.y + rm.reg.h, ad.reg.y + ad.reg.h) - u.y;
+    const e = { id: rid(), zone: zf.id, kind: 'moved', status: 'info', t_start: now(), t_end: now(), box: { x: rm.reg.x, y: rm.reg.y, w: rm.reg.w, h: rm.reg.h }, to: { zone: zt.id, box: { x: ad.reg.x, y: ad.reg.y, w: ad.reg.w, h: ad.reg.h } },
+      img_b: this.shot(this.baseCv, rm.reg, '#e0a020'), img_a: this.shot(c, ad.reg, '#38a169'), img_c: this.crop(this.baseCv, c, u),
+      note: (zf.id === zt.id ? 'نُقلت القطعة أو تغيّرت زاويتها داخل نفس العارضة' : 'نُقلت القطعة إلى «' + zt.name + '»') + ' (تطابق ' + Math.round(sim * 100) + '%' + (byHand ? '، وتتبّعت اليد الأخذ ثم الوضع' : '') + ').' };
+    this.extras(zf, e); addEvent(e);
+  },
+  // قطعة ظهرت الآن وتطابق قطعة شيلت قبل قليل (الموظف حملها ثوانٍ ثم وضعها في مكان آخر): نغلق حالة الشيل «نُقلت»
+  movedLater(a, c, thr){
+    const late = now() - 24 * 3600; let best = null, bs = thr || MOVE_SIM;
+    for(const e of S.events){ if(e.kind !== 'removal' || !e.sig || !(e.status === 'pending' || (e.status === 'incident' && e.t_start >= late))) continue;
+      const v = DET.sigSim(e.sig, a.sig); if(v > bs){ bs = v; best = e; } }
+    if(!best) return false;
+    best.img_r = this.shot(c, a.reg, '#38a169'); best.t_end = now(); best.to = { zone: a.z.id, box: { x: a.reg.x, y: a.reg.y, w: a.reg.w, h: a.reg.h } };
+    const where = a.z.id === best.zone ? 'مكان آخر في نفس العارضة' : '«' + a.z.name + '»';
+    if(best.status === 'pending'){ best.status = 'moved'; best.note = ((best.note || '') + ' نُقلت إلى ' + where + ' (تطابق ' + Math.round(bs * 100) + '%).').trim(); }
+    else { best.status = 'resolved'; best.resolution = 'moved'; best.resolved_by = 'النظام'; best.t_resolved = now(); best.note = ((best.note || '') + ' وُجدت بعد التنبيه في ' + where + '.').trim(); }
+    putEvent(best); return true;
+  },
+  // عبث بالكاميرا (تغطية العدسة أو توجيهها لمكان آخر): تنبيه فوري على مستوى الكاميرا كلها
+  newTamper(sub, c){
+    const full = { x: 0, y: 0, w: 1, h: 1 };
+    const e = { id: rid(), zone: '_cam', kind: 'tamper', sub, status: 'incident', t_start: now(), deadline: now(), box: full,
+      img_b: this.shot(this.baseCv, full, '#e53e3e'), img_a: this.shot(c, full, '#e53e3e'),
+      note: sub === 'cover' ? 'العدسة مغطاة أو الصورة مظلمة.' : 'تغيّر المشهد كله: وُجّهت الكاميرا لمكان آخر. أُعيد ضبط الصورة المرجعية على المشهد الجديد.' };
+    addEvent(e); alertEv(e); return e;
+  },
+  newInfo(z, reg, kind, c, note){
+    addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h }, note: note || '',
+      img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, '#38a169'), img_c: this.crop(this.baseCv, c, reg) });
+  },
+  returned(e, c){
+    e.img_r = this.shot(c, e.box, '#38a169'); e.t_end = now();   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
+    if(e.status === 'pending') e.status = 'returned';
+    else { e.status = 'resolved'; e.resolution = 'returned'; e.resolved_by = 'النظام'; e.t_resolved = now(); e.note = ((e.note || '') + ' عاد المنتج إلى مكانه بعد التنبيه').trim(); }
+    putEvent(e);
+  },
+  deadlines(){
+    const t = now();
+    for(const e of S.events){
+      if(e.status !== 'pending' || e.deadline > t) continue;
+      if(e.aiPending && t < e.deadline + 45) continue; // ننتظر حكم Claude قليلاً قبل التنبيه
+      if(trySale(e)) continue;
+      const cu = S.cleaning[e.zone] || 0;
+      if(cu > t){ e.deadline = cu + 60; putEvent(e); continue; }
+      e.status = 'incident'; putEvent(e); alertEv(e);
+    }
+  }
+};
+function addEvent(e){ if(isDemo()) e.demo = true; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); }
+function putEvent(e){ DB.put('events', e); refreshSoon(); }
+function trySale(e){
+  const w = saleWin() * 60, s = S.sales.filter(s => s.zone === e.zone && s.remaining > 0 && s.t >= e.t_start - w).sort((a, b) => a.t - b.t)[0];
+  if(!s) return false;
+  s.remaining--; DB.put('sales', s);
+  e.status = 'sold'; e.t_end = now(); e.sale = s.id; putEvent(e); return true;
+}
+function addSale(zid, qty, ref, source){
+  qty = Math.max(1, Math.min(100, parseInt(qty) || 1));
+  const s = { id: rid(), zone: zid, qty, remaining: qty, t: now(), ref: ref || '', source: source || 'يدوي', demo: isDemo() };
+  const late = now() - 24 * 3600;
+  const evs = S.events.filter(e => e.zone === zid && (e.kind === 'removal') && (e.status === 'pending' || (e.status === 'incident' && e.t_start >= late))).sort((a, b) => a.t_start - b.t_start);
+  for(const e of evs.slice(0, qty)){ if(e.status === 'incident') e.note = ((e.note || '') + ' بيع متأخر بعد التنبيه').trim(); e.status = 'sold'; e.t_end = now(); e.sale = s.id; putEvent(e); s.remaining--; }
+  S.sales.unshift(s); DB.put('sales', s); refreshSoon();
+}
+function startCleaning(zid, minutes){
+  const end = now() + (+minutes || cleanMin()) * 60;
+  S.cleaning[zid] = Math.max(S.cleaning[zid] || 0, end); saveCleaning();
+  S.events.filter(e => e.zone === zid && e.status === 'pending').forEach(e => { e.deadline = Math.max(e.deadline, end + 60); putEvent(e); });
+  refreshSoon();
+}
+function resolveEv(id, res, note, who){
+  const e = S.events.find(e => e.id === id); if(!e) return;
+  e.status = 'resolved'; e.resolution = res; e.resolved_by = who || ''; e.t_resolved = now(); if(note) e.note = ((e.note || '') + ' ' + note).trim();
+  putEvent(e);
+}
+/* =================== الحكم الذكي (Claude) عند كل حدث ===================
+   المحرك على الجهاز ينبّه مجاناً 24 ساعة، وعند كل حدث تُرسل صوره الصغيرة (قبل / لحظة اليد / بعد / مقارنة) إلى
+   دالة على خادم Firebase تسأل Claude: ماذا حدث فعلاً؟ الحكم الواثق (≥70%) يصحّح قرار المحرك في الاتجاهين:
+   شيل كان نقلاً أو رجوعاً = يُغلق، و«إضافة/نقل» كان أخذاً = يصبح شيلاً بمهلة. بدون إنترنت يبقى قرار المحرك كما هو.
+   المفتاح على الخادم فقط؛ الجهاز يحمل «رمز ربط» يحدده المشرف. */
+const AIV = { taken: 'أُخذت', moved: 'نُقلت', returned: 'رجعت', added: 'أُضيفت', rearranged: 'رُتّبت', concealed: 'إخفاء', no_change: 'لا تغيير حقيقي', unclear: 'غير واضح' };
+const judgeUrl = () => S.cfg.judgeUrl || (location.protocol === 'https:' && !/claude|anthropic/.test(location.host) ? location.origin + '/api/judge' : '');
+const JUDGE = { busy: 0, queue: [],
+  ready(){ return S.cfg.judge && !isDemo() && judgeUrl() && S.cfg.judgeKey; },
+  left(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); return (+S.cfg.judgeMax || 400) - (u.d === d ? u.n : 0); },
+  count(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); LS.set('haris_judge', { d, n: (u.d === d ? u.n : 0) + 1 }); },
+  ask(e){
+    if(!this.ready() || !['removal', 'night', 'moved', 'added', 'swap', 'major', 'conceal'].includes(e.kind) || e.ai || e.aiPending) return;
+    if(this.left() <= 0){ e.aiErr = 'انتهى الحد اليومي للحكم الذكي'; return; }
+    e.aiPending = true; this.queue.push(e); this.pump();
+  },
+  pump(){ while(this.busy < 2 && this.queue.length){ const e = this.queue.shift(); this.busy++; this.send(e, 0).finally(() => { this.busy--; this.pump(); }); } },
+  async send(e, tries){
+    const b64 = d => (d || '').split(',')[1] || '', im = [];
+    if(e.kind === 'conceal'){ if(e.img_b) im.push({ label: 'before', data: b64(e.img_b) }); if(e.img_a) im.push({ label: 'hand', data: b64(e.img_a) }); }
+    else { for(const [label, d] of [['compare', e.img_c], ['before', e.img_b], ['hand', e.img_p], [e.kind === 'moved' ? 'dest' : 'after', e.img_a]]) if(d) im.push({ label, data: b64(d) }); }
+    const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: im.slice(0, 4), ctx: { zone: z.name, mode: z.mode || '', guess: KIND[e.kind] || e.kind, hand: /يد/.test(e.note || '') || !!e.img_p, note: e.note || '', noSales: !!S.cfg.noSales } };
+    try{
+      const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if(r.ok && j.verdict){ this.count(); this.apply(e, j); return; }
+      if((r.status === 429 || r.status >= 500) && tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); }
+      e.aiErr = j.error || ('خطأ ' + r.status);
+    }catch(err){ if(tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); } e.aiErr = 'تعذّر الاتصال بالحكم الذكي'; }
+    e.aiPending = false; putEvent(e);
+  },
+  apply(e, v){
+    e.aiPending = false; e.ai = { verdict: v.verdict, item: v.item, summary: v.summary, confidence: v.confidence, risk: v.risk, model: v.model, t: now() };
+    if(v.item && !e.name) e.name = v.item;
+    const strong = v.confidence >= 0.7, clear = ['moved', 'returned', 'added', 'rearranged', 'no_change'].includes(v.verdict), took = v.verdict === 'taken' || v.verdict === 'concealed';
+    if(strong && clear && (e.status === 'pending' || (e.kind === 'conceal' && e.status === 'incident'))){
+      // المحرك ظنّه شيلاً، وClaude واثق أنه ليس كذلك: نغلقه مع السبب
+      if(v.verdict === 'moved' || v.verdict === 'rearranged'){ e.status = 'moved'; }
+      else if(v.verdict === 'returned'){ e.status = 'returned'; }
+      else { e.status = 'resolved'; e.resolution = 'false'; e.resolved_by = 'Claude'; e.t_resolved = now(); }
+      e.t_end = now(); e.note = ((e.note || '') + ' أغلقها حكم Claude.').trim();
+    } else if(strong && took && e.status === 'info' && ['moved', 'added', 'swap', 'major'].includes(e.kind)){
+      // المحرك ظنّه نقلاً أو إضافة، وClaude واثق أن قطعة أُخذت: يصبح شيلاً عادياً (مهلة ثم تنبيه)
+      const night = isNight(); e.was = e.kind; e.kind = night ? 'night' : 'removal'; e.status = night ? 'incident' : 'pending'; e.deadline = now() + grace() * 60; e.t_end = undefined;
+      e.note = ((e.note || '') + ' صحّحه حكم Claude: أُخذت قطعة.').trim(); if(night) alertEv(e);
+    }
+    putEvent(e); refreshSoon();
+  },
+  async ping(){ if(!judgeUrl()) return 'لا يوجد رابط للخادم'; if(!S.cfg.judgeKey) return 'أدخل رمز الربط';
+    try{ const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify({ ping: true }) }); const j = await r.json().catch(() => ({}));
+      return r.ok && j.ok ? 'متصل ✓' : (j.error || 'خطأ ' + r.status); }catch(e){ return 'تعذّر الاتصال: ' + (e.message || e); } }
+};
+const aiLine = e => e.ai ? `<div class="ai ${e.ai.verdict === 'taken' || e.ai.verdict === 'concealed' ? 'bad' : ''}">🤖 <b>Claude:</b> ${esc(e.ai.summary)} <span class="xs mut">(${AIV[e.ai.verdict] || e.ai.verdict} · ثقة ${Math.round(e.ai.confidence * 100)}%)</span></div>`
+  : e.aiPending ? '<div class="xs mut" style="margin-top:4px">🤖 Claude يحلل الصور…</div>' : e.aiErr ? `<div class="xs mut" style="margin-top:4px">🤖 ${esc(e.aiErr)}</div>` : '';
+
+/* =================== كشف حركة الإخفاء (تجريبي) ===================
+   يد (معصم من MediaPipe Pose) تلمس عارضة أو رفاً، ثم تذهب مباشرة إلى منطقة الجيب/الخصر/داخل الملابس وتبقى لحظة
+   = «اشتباه إخفاء» يحتاج مراجعة المشرف. إذا ذهبت اليد أولاً لمكان آخر (السلة، العربة) يُلغى الاشتباه.
+   لا يعرف المنتج: يكشف الحركة نفسها، فيصلح للشيبس والشوكولا وأي قطعة صغيرة. */
+const CONCEAL = { st: {}, last: {},
+  tick(c){
+    let r; try{ r = MP.pose.detect(c); }catch(e){ return; }
+    const L = (r && r.landmarks) || [], t = now(); if(L.length) S.activeAt = t;
+    L.forEach((lm, p) => {
+      const v = i => lm[i] && (lm[i].visibility === undefined || lm[i].visibility > 0.5) ? lm[i] : null;
+      const a = v(11), b = v(12), h1 = v(23), h2 = v(24); if(!a || !b || !h1 || !h2) return;
+      const sw = Math.abs(a.x - b.x), sy = (a.y + b.y) / 2, hy = (h1.y + h2.y) / 2, th = hy - sy; if(th <= 0.02) return;
+      // منطقة الجسم: من أسفل الصدر حتى الجيوب تحت الورك، بعرض الجسم وهامش
+      const body = { x: Math.min(a.x, b.x, h1.x, h2.x) - 0.25 * sw, y: sy + 0.15 * th }; body.w = Math.max(a.x, b.x, h1.x, h2.x) + 0.25 * sw - body.x; body.h = hy + 0.35 * th - body.y;
+      for(const wi of [15, 16]){
+        const w = v(wi), key = p + '_' + wi, s = this.st[key] = this.st[key] || { n: 0, out: 0 }; if(!w) continue;
+        const inZone = S.zones.find(z => w.x >= z.x - 0.02 && w.x <= z.x + z.w + 0.02 && w.y >= z.y - 0.02 && w.y <= z.y + z.h + 0.02);
+        const inBody = !inZone && w.x >= body.x && w.x <= body.x + body.w && w.y >= body.y && w.y <= body.y + body.h;
+        if(inZone){ if(!s.zone || s.zone.id !== inZone.id || t - s.tTouch > 3) s.img = ENG.shot(c, inZone, '#e0a020'); s.zone = inZone; s.tTouch = t; s.n = 0; s.out = 0; }
+        else if(inBody && s.zone && t - s.tTouch <= 6){ s.out = 0; if(++s.n >= 2){ this.raise(c, s, body, t); s.zone = null; s.n = 0; } }
+        else if(!inBody){ s.n = 0; if(++s.out >= 2) s.zone = null; } // ذهبت اليد لمكان آخر أولاً (السلة/العربة): لا اشتباه
+      }
+    });
+  },
+  raise(c, s, body, t){
+    const z = s.zone; if(t - (this.last[z.id] || 0) < 20) return; this.last[z.id] = t;
+    const pk = S.lastPick && S.lastPick.zone === z.id && t - S.lastPick.t < 15, bx = { x: Math.max(0, body.x), y: Math.max(0, body.y) }; bx.w = Math.min(1, body.x + body.w) - bx.x; bx.h = Math.min(1, body.y + body.h) - bx.y;
+    const e = { id: rid(), zone: z.id, kind: 'conceal', status: 'incident', t_start: t, deadline: t, box: { x: z.x, y: z.y, w: z.w, h: z.h }, img_b: s.img, img_a: ENG.shot(c, bx, '#e53e3e'),
+      note: 'يد لمست «' + z.name + '» ثم ذهبت مباشرة إلى منطقة الجيب أو الخصر خلال ' + Math.max(1, Math.round(t - s.tTouch)) + ' ثانية' + (pk ? '، وتزامن ذلك مع التقاط قطعة من الرف' : '') + '. راجع الصور: قد تكون حركة عادية (إخراج الموبايل مثلاً).' };
+    addEvent(e); alertEv(e);
+  }
+};
+/* ----- تتبّع الأيدي: سجل أماكن الأيدي بالوقت (آخر 3 دقائق) ----- */
+function logHands(boxes){ const h = boxes.filter(b => b.kind === 'يد'); if(!h.length) return; (S.handLog = S.handLog || []).push({ t: now(), b: h });
+  const lim = now() - 180; while(S.handLog.length && S.handLog[0].t < lim) S.handLog.shift(); }
+// آخر وقت لمست فيه يدٌ هذا المكان منذ «since» (0 = لم تلمسه)
+function handTouch(reg, since){ const g = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) }); let t = 0;
+  for(const h of S.handLog || []) if(h.t >= since && h.b.some(b => ix(g(b, 0.2), g(reg, 0.1)))) t = h.t; return t; }
+// فحص حركة رخيص على صورة مصغّرة: نشغّل كاشف الأيدي فقط عند حركة داخل عارضة (أو يد رُصدت قبل لحظات)
+const QW = 160; let qPrev = null;
+function quickMotion(c){
+  const qc = quickMotion.cv || (quickMotion.cv = document.createElement('canvas')), H = Math.round(QW * c.height / c.width); if(qc.width !== QW || qc.height !== H){ qc.width = QW; qc.height = H; qPrev = null; }
+  const x = qc.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0, QW, H); const d = x.getImageData(0, 0, QW, H).data, g = new Uint8Array(QW * H);
+  for(let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = (d[j] * 3 + d[j + 1] * 6 + d[j + 2]) / 10;
+  let hit = false;
+  if(qPrev) for(const z of S.zones){ const x0 = Math.max(0, Math.floor((z.x - 0.06) * QW)), x1 = Math.min(QW, Math.ceil((z.x + z.w + 0.06) * QW)), y0 = Math.max(0, Math.floor((z.y - 0.06) * H)), y1 = Math.min(H, Math.ceil((z.y + z.h + 0.06) * H)); let n = 0, m = 0;
+    for(let y = y0; y < y1; y++) for(let xx = x0; xx < x1; xx++){ const i = y * QW + xx; n++; if(Math.abs(g[i] - qPrev[i]) > 18) m++; } if(n && m / n > 0.004){ hit = true; break; } }
+  qPrev = g; const h = S.handLog || []; return hit || (h.length && now() - h[h.length - 1].t < 2);
+}
+// مناطق رف البضاعة: تراجع/تقدّم الصف (recess) + فراغ واضح (آخر قطعة: rem) أو قطع جديدة في مكان فارغ (add).
+// إذا تعارض «التقاط» و«تعبئة» في نفس الصف (أثر جانبي لتغيّر الحجم بالمنظور) يفوز الأكبر
+function stockRegions(r, rc){
+  const regs = rc.map(g => ({ type: g.type, cells: g.cells, x: g.x, y: g.y, w: g.w, h: g.h }));
+  for(const g of r.regions) if((g.type === 'rem' || g.type === 'add') && !regs.some(q => DET.overlap(g, q) > 0.2)) regs.push({ type: g.type === 'rem' ? 'pick' : 'restock', gap: g.type === 'rem', cells: g.cells, x: g.x, y: g.y, w: g.w, h: g.h });
+  const colOv = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5 * Math.min(a.w, b.w);
+  const keep = regs.filter(a => !regs.some(b => b !== a && b.type !== a.type && colOv(a, b) && b.cells > a.cells));
+  return mergeNear(keep, 0.01);
+}
+// أجزاء نفس القطعة قد تظهر منطقتين متلاصقتين بنوعين مختلفين بالملمس (أعلاها كشف علبة خلفها، وأسفلها كشف الخشب).
+// ندمج المتلاصقة التي لها نفس الاتجاه (أخذ مع أخذ، وضع مع وضع) في تغيّر واحد، ونعيد حساب بصمته على المربع الموحّد
+function mergeCands(cs, remake){
+  const cls = a => a.pol > PUT ? 1 : a.pol < -PUT ? -1 : 0, g = 0.02;
+  for(let ch = true; ch;){ ch = false;
+    for(let i = 0; i < cs.length && !ch; i++) for(let j = i + 1; j < cs.length && !ch; j++){
+      const A = cs[i], B = cs[j], a = A.reg, b = B.reg; if(!cls(A) || cls(A) !== cls(B)) continue;
+      if(a.x <= b.x + b.w + g && b.x <= a.x + a.w + g && a.y <= b.y + b.h + g && b.y <= a.y + a.h + g){
+        const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), u = { type: a.type === 'rem' || b.type === 'rem' ? 'rem' : a.type, cells: a.cells + b.cells, x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+        const m = remake(u); m.hT = Math.max(A.hT, B.hT); if(cls(m) !== cls(A)) m.pol = (A.pol + B.pol) / 2; cs.splice(j, 1); cs[i] = m; ch = true; } } }
+  return cs;
+}
+// دمج مناطق النقص المتقاربة في نفس اللحظة (قطعة واحدة قد تظهر كجزأين)
+function mergeNear(regs, g){
+  const out = regs.map(r => Object.assign({}, r));
+  for(let ch = true; ch;){ ch = false;
+    for(let i = 0; i < out.length && !ch; i++) for(let j = i + 1; j < out.length && !ch; j++){
+      const A = out[i], B = out[j]; if(A.type !== B.type) continue;
+      if(A.x <= B.x + B.w + g && B.x <= A.x + A.w + g && A.y <= B.y + B.h + g && B.y <= A.y + A.h + g){
+        const x = Math.min(A.x, B.x), y = Math.min(A.y, B.y); out[i] = { type: A.type, cells: A.cells + B.cells, x, y, w: Math.max(A.x + A.w, B.x + B.w) - x, h: Math.max(A.y + A.h, B.y + B.h) - y }; out.splice(j, 1); ch = true; } } }
+  return out;
+}
+function coverage(b, z){ const w = Math.max(0, Math.min(b.x + b.w, z.x + z.w) - Math.max(b.x, z.x)), h = Math.max(0, Math.min(b.y + b.h, z.y + z.h) - Math.max(b.y, z.y)); return w * h / Math.max(1e-9, z.w * z.h); }
+function ix(a, b){ return Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) && Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y); }
+function countInteraction(zid){ const d = new Date().toLocaleDateString('en-CA'), all = LS.get('haris_inter', {}); all[d] = all[d] || {}; all[d][zid] = (all[d][zid] || 0) + 1;
+  const keys = Object.keys(all).sort(); while(keys.length > 60) delete all[keys.shift()]; LS.set('haris_inter', all); }
+const interToday = zid => ((LS.get('haris_inter', {})[new Date().toLocaleDateString('en-CA')] || {})[zid] || 0);
+const zoneOf = id => id === '_cam' ? { name: 'الكاميرا', section: '' } : S.zones.find(z => z.id === id) || { name: 'منطقة محذوفة', section: '' };
+function alertEv(e){
+  S.alertSeq++; beep(); S.beepAt = now();
+  const lv = $('#live'); if(lv){ lv.classList.remove('flash'); void lv.offsetWidth; lv.classList.add('flash'); }
+  const z = zoneOf(e.zone);
+  const txt = `${e.kind === 'conceal' ? '👁 اشتباه إخفاء: ' + e.note : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ ' + (e.kind === 'night' ? 'تنبيه ليلي' : 'اختفاء غير مبرر')}${e.name ? ' — ' + e.name : ''}\nالفرع: ${S.cfg.site}\nالعارضة: ${z.name}${z.section ? ' (' + z.section + ')' : ''}\nالوقت: ${new Date(e.t_start * 1000).toLocaleString('ar-IQ')}\n${e.kind === 'conceal' ? 'راجع الصور وتسجيل الكاميرات.' : e.kind === 'tamper' ? 'راجع العارضات القريبة من الكاميرا.' : 'منتج اختفى ولم يُسجَّل بيعه ولم يرجع خلال المهلة.'}`;
+  toast(e.kind === 'conceal' ? '👁 اشتباه إخفاء عند ' + z.name : e.kind === 'tamper' ? '🚫 عبث بالكاميرا: ' + e.note : '⚠️ تنبيه جديد: ' + z.name, 6000);
+  notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : '') + (e.ai ? '\n🤖 Claude: ' + e.ai.summary : ''), e.img_p || e.img_c);
+}
+function notifyAll(text, img){
+  if(S.cfg.notify && 'Notification' in window && Notification.permission === 'granted'){ try{ new Notification('حارس العارضات', { body: text }); }catch(e){} }
+  tgSend(text, img);
+}
+async function tgSend(text, dataUrl){
+  const t = S.cfg.tgToken, c = S.cfg.tgChat; if(!t || !c) return false;
+  try{
+    const fd = new FormData(); fd.append('chat_id', c);
+    if(dataUrl){ fd.append('caption', text.slice(0, 1000)); fd.append('photo', await (await fetch(dataUrl)).blob(), 'alert.jpg');
+      await fetch(`https://api.telegram.org/bot${t}/sendPhoto`, { method: 'POST', body: fd, mode: 'no-cors' }); }
+    else { fd.append('text', text); await fetch(`https://api.telegram.org/bot${t}/sendMessage`, { method: 'POST', body: fd, mode: 'no-cors' }); }
+    return true;
+  }catch(e){ return false; }
+}
+
+/* =================== الكاميرا التجريبية =================== */
+class DemoSource {
+  constructor(){
+    this.W = 1280; this.H = 720; this.present = new Array(12).fill(true); this.person = null; this.t0 = performance.now() / 1000; this.done = new Set(); this.cycle = 0;
+    this.slots = []; for(let r = 0; r < 2; r++) for(let c = 0; c < 6; c++) this.slots.push([70 + c * 200, 70 + r * 320]);
+    this.cols = ['#19191e', '#be282d', '#285aaf', '#ebebeb', '#378c50', '#a07d28', '#782d8c', '#d2781e', '#464650', '#1e788c', '#c83c78', '#64963c'];
+    this.cv = document.createElement('canvas'); this.cv.width = this.W; this.cv.height = this.H;
+    this.zonesReady = false;
+  }
+  ensureZones(){
+    if(this.zonesReady) return; this.zonesReady = true;
+    if(S.zones.some(z => z.demo)) return;
+    const W = this.W, H = this.H;
+    [['رف علوي - يمين', 'الهواتف', 40, 50], ['رف علوي - يسار', 'الهواتف', 640, 50], ['رف سفلي - يمين', 'الحاسبات', 40, 370], ['رف سفلي - يسار', 'الحاسبات', 640, 370]]
+      .forEach(([n, s, x, y]) => S.zones.push({ id: rid(), name: n, section: s, x: x / W, y: y / H, w: 600 / W, h: 270 / H, demo: true }));
+    saveZones();
+  }
+  zoneIdx(i){ const [x, y] = this.slots[i]; return (x < 640 ? 0 : 1) + (y < 300 ? 0 : 2); }
+  zoneId(i){ const dz = S.zones.filter(z => z.demo); return (dz[this.zoneIdx(i)] || {}).id; }
+  step(){
+    const g = grace() * 60, t = performance.now() / 1000 - this.t0, L = 10 * g + 40;
+    if(t > L){ this.t0 += L; this.cycle++; this.done = new Set(); this.present.fill(true); return this.step(); }
+    const a = (this.cycle * 5) % 12, b = (a + 3) % 12, cc = (a + 7) % 12, d1 = (a + 1) % 12, d2 = (a + 8) % 12;
+    const plan = [[5, 'pin'], [9, 'pout'], [12, 'rm', a], [12 + .5 * g, 'ret', a], [2 * g, 'rm', b], [2 * g + 6, 'sale', b],
+      [3.5 * g, 'clean', d1], [3.5 * g + 3, 'rm', d1], [3.5 * g + 4, 'rm', d2], [5 * g, 'ret', d1], [5.1 * g, 'ret', d2],
+      [6.5 * g, 'rm', cc], [8.5 * g, 'ret', cc], [8.5 * g + 6, 'ret', b]];
+    plan.forEach(([at, act, k], i) => {
+      if(t < at || this.done.has(i)) return; this.done.add(i);
+      if(act === 'pin') this.person = 900; else if(act === 'pout') this.person = null;
+      else if(act === 'rm') this.present[k] = false; else if(act === 'ret') this.present[k] = true;
+      else if(act === 'sale'){ const z = this.zoneId(k); if(z) addSale(z, 1, 'محاكاة كاشير', 'تجريبي'); }
+      else if(act === 'clean'){ [d1, d2].forEach(i => { const z = this.zoneId(i); if(z) startCleaning(z, cleanMin()); }); }
+    });
+    if(this.person !== null) this.person = 900 - Math.floor((t - 5) * 120) % 700;
+  }
+  render(){
+    this.ensureZones(); this.step();
+    const x = this.cv.getContext('2d', { willReadFrequently: true }), W = this.W, H = this.H, j = () => Math.round(Math.random() * 2 - 1);
+    x.save(); x.translate(j(), j());
+    x.fillStyle = '#cdcac3'; x.fillRect(-2, -2, W + 4, H + 4); x.fillStyle = '#736455'; x.fillRect(0, 310, W, 22); x.fillRect(0, 630, W, 22); x.fillStyle = '#3c3c46'; x.fillRect(0, 0, W, 30);
+    this.slots.forEach(([px, py], k) => {
+      if(!this.present[k]) return;
+      const col = this.cols[k]; x.fillStyle = col; x.strokeStyle = '#0a0a0a'; x.lineWidth = 5;
+      x.beginPath(); x.roundRect ? x.roundRect(px, py, 150, 230, 16) : x.rect(px, py, 150, 230); x.fill(); x.stroke();
+      x.fillStyle = `rgb(${80 + k * 13 % 120},150,${200 - k * 11 % 120})`; x.fillRect(px + 18, py + 18, 114, 112);
+      x.fillStyle = k === 3 ? '#000' : '#fff'; x.font = '11px monospace'; for(let r = 0; r < 5; r++) x.fillText('MODEL-' + String(k).padStart(2, '0') + '  2026', px + 22, py + 152 + r * 16);
+    });
+    if(this.person !== null){ const p = this.person; x.fillStyle = '#5a463c'; x.beginPath(); x.ellipse(p + 70, 190, 70, 70, 0, 0, 7); x.fill(); x.fillStyle = '#283c6e'; x.fillRect(p - 40, 250, 220, H); }
+    x.restore();
+    const im = x.getImageData(0, 0, W, H), d = im.data, f = 0.97 + Math.random() * 0.06;
+    for(let i = 0; i < d.length; i += 4){ const n = (Math.random() - .5) * 8; d[i] = d[i] * f + n; d[i + 1] = d[i + 1] * f + n; d[i + 2] = d[i + 2] * f + n; }
+    x.putImageData(im, 0, 0);
+    return this.cv;
+  }
+}
+
+/* =================== الواجهة =================== */
+const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
+const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], moved: ['نُقل لمكان آخر', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
+const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه', moved: 'نُقل لمكان آخر' };
+let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
+function counts(){
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0); const T = t0.getTime() / 1000, E = S.events, rem = E.filter(e => (e.kind === 'removal' || e.kind === 'night') && e.t_start >= T);
+  return { pending: E.filter(e => e.status === 'pending').length, incident: E.filter(e => e.status === 'incident').length, today: rem.length,
+    returned: rem.filter(e => e.status === 'returned').length, sold: rem.filter(e => e.status === 'sold').length, inc: rem.filter(e => e.status === 'incident' || e.status === 'resolved').length };
+}
+function header(){
+  const c = counts();
+  $('#hdr').innerHTML = `<div><b>حارس العارضات</b><small>${esc(S.cfg.site)}</small></div><span class="sp"></span>
+    ${S.running ? (isDemo() ? '<span class="badge amber">وضع تجريبي</span>' : '<span class="badge green">المراقبة تعمل</span>') : '<span class="badge red">المراقبة متوقفة</span>'}
+    ${isTest() ? `<span class="badge amber">وضع الاختبار: مهلة ${fmtGrace()}</span>` : ''}${isNight() ? '<span class="badge">مراقبة ليلية</span>' : ''}${c.incident ? `<span class="badge red">${c.incident} تنبيه مفتوح</span>` : ''}`;
+  const T = SIMPLE ? [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'الحالات']] : [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'المناطق'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
+  $('#nav').innerHTML = T.map(([k, i, n]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')"><b>${i}</b>${n}${k === 'ev' && c.incident ? `<span class="cnt">${c.incident}</span>` : ''}</button>`).join('');
+}
+function go(t){ S.tab = t; window.scrollTo(0, 0); render(); }
 function render(){
-  $('#mem').textContent = 'تعلّم من ' + mem.length + ' حالة';
-  $('#cases').innerHTML = cases.length ? cases.map(c => `<div class="case ${c.fresh && c.kind === 'take' ? 'new' : ''}">
-    <span class="tag t-${c.kind}">${NAME[c.kind]}</span> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}${c.taught ? ' · صحّحتها ✓' : c.conf ? ' · ثقة ' + Math.round(c.conf * 100) + '%' : ''}</span>
-    <div class="pics"><div><img src="${c.before}"><div class="mut">قبل</div></div><div><img src="${c.after}"><div class="mut">${c.kind === 'move' ? 'المكان الجديد' : 'بعد'}</div></div></div>
-    <div class="mut" style="margin-bottom:4px">ماذا حدث فعلاً؟</div>
-    <div class="lbl">${['take', 'put', 'move', 'none'].map(k => `<button class="btn ${c.taught && c.kind === k ? 'on' : ''}" onclick="teach('${c.id}','${k}')">${NAME[k]}</button>`).join('')}</div></div>`).join('') : '<div class="mut">لا توجد حالات بعد.</div>';
+  header();
+  const v = $('#view');
+  if(S.tab === 'mon') v.innerHTML = vMon(), mountMon();
+  else if(S.tab === 'ev') v.innerHTML = vEv();
+  else if(S.tab === 'zones') v.innerHTML = vZones(), mountZones();
+  else if(S.tab === 'sales') v.innerHTML = vSales();
+  else if(S.tab === 'rep') v.innerHTML = vRep();
+  else if(S.tab === 'set') v.innerHTML = vSet();
 }
-function overlay(){
-  const z = drawing ? { x: Math.min(drawing.x0, drawing.x1), y: Math.min(drawing.y0, drawing.y1), w: Math.abs(drawing.x1 - drawing.x0), h: Math.abs(drawing.y1 - drawing.y0) } : zone;
-  if(!z){ $('#ov').innerHTML = ''; $('#st').textContent = 'ارسم مربعاً حول العارضة على الصورة'; return; }
-  $('#ov').innerHTML = `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="none" stroke="#38d0c0" stroke-width="2" vector-effect="non-scaling-stroke" stroke-dasharray="${drawing ? '6 4' : ''}"/>`;
+
+/* ----- المراقبة ----- */
+function vMon(){
+  if(!S.src) return `<h2>بدء المراقبة</h2>
+    ${!window.isSecureContext ? `<div class="note da">الكاميرا لا تعمل من هذا الرابط. على الموبايل افتح الصفحة من رابط يبدأ بـ <b>https://</b>، وعلى الكمبيوتر افتح الملف مباشرة بـ Chrome أو Edge.</div>` : ''}
+    <div class="src" style="margin-top:12px">
+      <button class="on" onclick="startCamera(null,'environment')"><b>📷 تشغيل الكاميرا</b><span class="sm mut">على الموبايل تُفتح الكاميرا الخلفية، وعلى الكمبيوتر كاميرا الويب. وجّهها نحو العارضة وثبّتها.</span></button>
+      <button onclick="startDemo()"><b>🧪 تجربة بدون كاميرا</b><span class="sm mut">كاميرا افتراضية تُحاكي زبوناً يمر، وعرضاً لزبون، وبيعاً، وتنظيفاً، واختفاءً بدون بيع.</span></button>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" onclick="pickCamera()">اختيار كاميرا أخرى (كاميرا USB موصولة بالكمبيوتر)</button></div>
+    <div class="card"><h3>قبل أن تبدأ</h3><ul class="sm" style="margin:0;padding-inline-start:18px">
+      <li><b>ثبّت الكاميرا</b> على حامل أو اسندها على شيء ثابت؛ أي حركة للكاميرا تربك المقارنة.</li>
+      <li>اجعل العارضة واضحة وتملأ جزءاً كبيراً من الصورة، بإضاءة المحل المعتادة.</li><li><b>لا تضع أشياء قريبة جداً من العدسة</b> (مثل علبة على طرف الصورة)؛ تجعل الكاميرا تغيّر التركيز باستمرار.</li>
+      <li>إذا كانت الكاميرا موبايلاً: صِله بالشاحن، واترك الصفحة مفتوحة والشاشة تعمل.</li>
+      <li>لمس الشاشة أو تحريك الموبايل لا يُحسب شيلاً: يتوقف الحكم لحظات ثم تُعاد معايرة الصورة تلقائياً.</li></ul></div>`;
+  const c = counts();
+  return `    <div class="row" style="margin:12px 0 8px"><b>${S.src === 'camera' ? 'الكاميرا' : 'كاميرا تجريبية'}</b><span class="xs mut" id="mstat"></span><span class="xs" id="aistat"></span><span class="sp"></span>${S.src === 'camera' ? '<button class="btn sm" onclick="flipCam()">تبديل الكاميرا</button>' : ''}<button class="btn sm dan" onclick="confirmBox('إيقاف المراقبة؟', () => stopSource())">إيقاف</button></div>
+    <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
+    <div class="live" id="live"><div id="abar"></div><div class="lvw"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="lbl" id="lbl"></div>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>${S.drawMode ? '' : '<button class="fsb" onclick="fullLive()" title="ملء الشاشة">⛶</button>'}</div>
+    <div class="chips" id="chips"></div>
+    <div class="card feed" id="feed"></div>
+    ${!S.zones.length && !S.drawMode ? `<div class="note wa" style="margin-top:10px"><b>الخطوة التالية:</b> اضغط «✏️ رسم عارضة على الصورة» وارسم مربعاً حول العارضة، حتى تبدأ المراقبة.</div>` : ''}
+    ${!isDemo() ? `<div class="card" style="padding:10px 14px"><div class="row" style="justify-content:space-between"><div><b class="sm">وضع الاختبار السريع</b><div class="xs mut">${isTest() ? 'مفعّل: المهلة ' + fmtGrace() + '، والتحليل كل ثانية. أطفئه قبل التشغيل الفعلي.' : 'للتجربة فقط: مهلة قصيرة جداً وتحليل كل ثانية.'}</div></div>
+      <div class="row">${isTest() ? `<select style="width:auto" onchange="S.cfg.testSec=+this.value;saveCfg();render()">${[5, 10, 15, 30].map(s => `<option value="${s}" ${+S.cfg.testSec === s ? 'selected' : ''}>${s} ثانية</option>`).join('')}</select>` : ''}<button class="sw ${isTest() ? 'on' : ''}" onclick="S.cfg.test=!S.cfg.test;saveCfg();render()"></button></div></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">دقة عالية للقطع الصغيرة</b><div class="xs mut">علكة، شاحن، إكسسوارات صغيرة. ارسم المربع ضيقاً حول مكانها.</div></div><button class="sw ${S.cfg.fine ? 'on' : ''}" onclick="S.cfg.fine=!S.cfg.fine;saveCfg();render()"></button></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">إظهار ما يراه النظام</b><div class="xs mut">يلوّن المربعات الصغيرة التي تغيّرت داخل العارضة ويعرض حالة كل عارضة.</div></div><button class="sw ${S.cfg.debug ? 'on' : ''}" onclick="S.cfg.debug=!S.cfg.debug;saveCfg();render()"></button></div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" onclick="ENG.reset();toast('ستُعتمد الصورة الحالية كمرجع جديد')">إعادة ضبط الصورة المرجعية</button><span class="xs mut">استخدمه بعد ما تثبّت الكاميرا وترتّب العارضة.</span></div></div>` : ''}
+    <div id="camwarn"></div>
+    ${isTest() && S.zones.length ? `<div class="note"><b>طريقة التجربة:</b><ol><li>ثبّت الكاميرا ولا تحركها (اسندها على شيء ثابت).</li><li>شِل قطعة من العارضة وابعد يدك عن الصورة.</li><li>خلال ثانيتين يظهر مربع برتقالي، ويبدأ العد التنازلي (${fmtGrace()}).</li><li>إذا أرجعتها قبل انتهاء العد تختفي الحالة بصمت. وإذا لم ترجعها يصبح المربع أحمر ويصدر صوت التنبيه.</li><li>جرّب أيضاً زر «تنظيف/عرض» قبل الشيل، أو سجّل بيعاً من تبويب المبيعات.</li></ol><div class="xs" style="margin-top:6px">انتبه لحالة العارضة تحت الصورة: «تراقب ✓» يعني جاهزة. إذا بقيت «تنتظر: حركة» أو «تنتظر: شخص» فالكاميرا غير ثابتة أو جسمك ظاهر فوق العارضة.</div></div>` : ''}
+    ${isDemo() ? '<div class="note" style="margin-top:12px"><b>وضع تجريبي:</b> كل بضع دقائق يمر زبون، ويُعرض منتج ويرجع، ويُباع منتج، ويُنظَّف رف، ويختفي منتج بدون بيع. راقب الألوان على الصورة وقسم «التنبيهات».</div>' : ''}
+    <div class="kpis">${[['نواقص ضمن المهلة', c.pending, 'var(--wa)'], ['تنبيهات مفتوحة', c.incident, c.incident ? 'var(--da)' : 'var(--ok)'], ['حالات شيل اليوم', c.today], ['رجعت خلال المهلة', c.returned, 'var(--ok)'], ['مُباعة', c.sold, 'var(--ok)'], ['اختفاء غير مبرر اليوم', c.inc, c.inc ? 'var(--da)' : '']].map(([l, n, col]) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="${col ? 'color:' + col : ''}">${n}</div></div>`).join('')}</div>`;
 }
-let AC; function beep(){ try{ AC = AC || new AudioContext(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
-render();
+let liveRaf = 0;
+function mountMon(){
+  cancelAnimationFrame(liveRaf);
+  if(!S.src) return;
+  const draw = () => {
+    const cv = $('#liveCv'); if(!cv || S.tab !== 'mon') return;
+    if(S.drawMode && S.freeze){ if(cv.width !== S.freeze.width){ cv.width = S.freeze.width; cv.height = S.freeze.height; } cv.getContext('2d').drawImage(S.freeze, 0, 0); liveRaf = requestAnimationFrame(draw); return; }
+    const src = isDemo() ? S.demo.cv : $('#vid');
+    const w = isDemo() ? src.width : src.videoWidth, h = isDemo() ? src.height : src.videoHeight;
+    if(w){ const W = Math.min(1280, w); if(cv.width !== W){ cv.width = W; cv.height = Math.round(W * h / w); const lv = $('#live'); if(lv) lv.style.setProperty('--ar', w / h); } cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height); }
+    liveRaf = requestAnimationFrame(draw);
+  };
+  if(isDemo()){ const cv = $('#liveCv'); const id = setInterval(() => { if(S.tab !== 'mon' || !$('#liveCv')){ clearInterval(id); return; } const c = S.demo.cv; cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0); }, 500); }
+  else draw();
+  mountDraw();
+  updMon();
+}
+function toggleDraw(){
+  S.drawMode = !S.drawMode;
+  if(S.drawMode){ const src = isDemo() ? S.demo.cv : $('#vid'), w = isDemo() ? src.width : src.videoWidth, h = isDemo() ? src.height : src.videoHeight;
+    if(w){ const c = document.createElement('canvas'); c.width = Math.min(1280, w); c.height = Math.round(c.width * h / w); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); S.freeze = c; } }
+  else { S.freeze = null; S.touchAt = now(); }
+  render();
+}
+function mountDraw(){
+  const cv = $('#drawCv'); if(!cv) return;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+  const paint = () => { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height);
+    const d = S.drawing; if(!d) return; x.setLineDash([8, 5]); x.lineWidth = 3 * devicePixelRatio; x.strokeStyle = '#fff'; x.fillStyle = '#ffffff22';
+    const X = Math.min(d.x0, d.x1) * cv.width, Y = Math.min(d.y0, d.y1) * cv.height, W = Math.abs(d.x1 - d.x0) * cv.width, H = Math.abs(d.y1 - d.y0) * cv.height; x.fillRect(X, Y, W, H); x.strokeRect(X, Y, W, H); };
+  cv.onpointerdown = e => { const [x, y] = pos(e); S.drawing = { x0: x, y0: y, x1: x, y1: y }; cv.setPointerCapture(e.pointerId); e.preventDefault(); };
+  cv.onpointermove = e => { if(!S.drawing) return; const [x, y] = pos(e); S.drawing.x1 = x; S.drawing.y1 = y; paint(); };
+  cv.onpointerup = () => { const d = S.drawing; if(!d) return; S.drawing = null; paint();
+    const r = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+    if(r.w > 0.03 && r.h > 0.03 && SIMPLE){ // رسم مباشر بلا نموذج: العارضة تُحفظ فوراً وتبدأ مراقبتها
+      S.zones.push(Object.assign({ id: rid(), name: 'عارضة ' + (S.zones.length + 1), section: '' }, r)); saveZones(); S.drawMode = false; S.freeze = null; S.touchAt = now(); render(); toast('تم حفظ العارضة، والمراقبة تعمل عليها الآن'); }
+    else if(r.w > 0.03 && r.h > 0.03){ window._afterZone = () => { S.drawMode = false; S.freeze = null; S.touchAt = now(); render(); }; zoneForm(null, r); }
+    else if(SIMPLE){ const z = S.zones.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); if(z) confirmBox('حذف هذه العارضة؟', () => { S.zones = S.zones.filter(x => x.id !== z.id); saveZones(); render(); }); }
+    else { const z = S.zones.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); if(z) zoneForm(z.id); } };
+}
+function updMon(){
+  if(S.tab !== 'mon' || !$('#chips')) return;
+  const kp = $('.kpis'); if(kp){ const c = counts(); const vals = [c.pending, c.incident, c.today, c.returned, c.sold, c.inc]; kp.querySelectorAll('.v').forEach((el, i) => el.textContent = vals[i]); const iv = kp.querySelectorAll('.v')[1]; if(iv) iv.style.color = c.incident ? 'var(--da)' : 'var(--ok)'; }
+  const st = $('#mstat'); if(st) st.textContent = S.lastTick ? ` · آخر تحليل ${ago(S.lastTick)} (${S.lastMs} ms)` : ' · بانتظار أول صورة…';
+  const cw = $('#camwarn'); if(cw) cw.innerHTML = (S.camState === 'touch' || S.camState === 'settle') ? '<div class="note" style="margin-top:8px">✋ لمست الشاشة: المراقبة متوقفة لحظات حتى يثبت الموبايل، ثم تُعاد معايرة الصورة تلقائياً.</div>' : S.camState === 'moving' ? '<div class="note da" style="margin-top:8px">⚠️ الكاميرا تتحرك أو تهتز. ثبّتها على حامل حتى يبدأ النظام بالحكم.</div>' : S.camState === 'bumped' ? '<div class="note wa" style="margin-top:8px">الصورة كلها اختلفت (انزاحت الكاميرا أو تغيّرت الإضاءة). جارٍ إعادة الضبط…</div>' : S.camState === 'blind' ? '<div class="note da" style="margin-top:8px">🚫 العدسة مغطاة أو الصورة مظلمة. المراقبة متوقفة، وإذا استمر ذلك يصدر تنبيه «عبث بالكاميرا». عند رجوع الرؤية تُقارن العارضات بالصورة قبل التغطية.</div>' : '';
+  const ai = $('#aistat'); if(ai){ const m = { off: '', loading: ' · ⏳ تحميل الذكاء الاصطناعي…', ready: ` · 🤖 الذكاء الاصطناعي يعمل${MP.hand ? ' (أيادٍ + أشخاص + أجسام)' : ' (أشخاص + أجسام)'}`, error: ' · الذكاء الاصطناعي غير متاح (يحتاج إنترنت أول مرة)' };
+    ai.textContent = isDemo() || !S.cfg.ai ? '' : m[MP.state] || ''; ai.style.color = MP.state === 'error' ? 'var(--wa)' : 'var(--ok)'; }
+  const t = now();
+  $('#ov').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.some(e => e.status === 'incident'), pen = ev.some(e => e.status === 'pending'), cl = (S.cleaning[z.id] || 0) > t;
+    const col = inc ? '#e53e3e' : pen ? '#f0a020' : cl ? '#5b8def' : '#38d0c0';
+    return `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="${col}" fill-opacity="${inc || pen || cl ? .12 : .04}" stroke="${col}" style="stroke-width:2px" vector-effect="non-scaling-stroke" ${S.moving[z.id] ? 'stroke-dasharray="5 4"' : ''}/>`
+      + ev.filter(e => e.status === 'incident' || e.status === 'pending').map(e => { const c2 = e.status === 'incident' ? '#e53e3e' : '#f0a020';
+        return `<rect x="${e.box.x * 100}" y="${e.box.y * 100}" width="${e.box.w * 100}" height="${e.box.h * 100}" fill="${c2}" fill-opacity=".3" stroke="${c2}" style="stroke-width:3px" vector-effect="non-scaling-stroke"/>`; }).join(''); }).join('')
+    + (S.cfg.debug ? S.zones.map(z => { const d = S.diag[z.id]; if(!d || !d.r || !d.r.st) return ''; const r = d.r, col = { rem: '#e53e3e', add: '#38a169', chg: '#f0a020' };
+        return r.st.map((s, k) => s === 'same' ? '' : `<rect x="${(r.x0 + (k % r.nx) * r.cs) / r.W * 100}" y="${(r.y0 + ((k / r.nx) | 0) * r.cs) / r.H * 100}" width="${r.cs / r.W * 100}" height="${r.cs / r.H * 100}" fill="${col[s]}" fill-opacity=".45" stroke="none"/>`).join(''); }).join('') : '')
+    + (S.cfg.ai && !isDemo() && MP.state === 'ready' && now() - S.lastTick < 3 ? MP.boxes.map(b => `<rect x="${b.x * 100}" y="${b.y * 100}" width="${b.w * 100}" height="${b.h * 100}" fill="none" stroke="#fff" stroke-dasharray="3 3" style="stroke-width:1.5px" vector-effect="non-scaling-stroke"/>`).join('') : '');
+  alertBar(); liveLabels(); liveFeed();
+  $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
+    const pe = ev.filter(e => e.status === 'pending').sort((a, b) => a.deadline - b.deadline)[0], left = pe ? Math.max(0, Math.ceil(pe.deadline - t)) : 0;
+    const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>', blind: '<b style="color:var(--da)">الكاميرا مغطاة أو مظلمة</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
+    return `<span class="chip ${inc ? 'i' : pen ? 'p' : cl ? 'c' : ''}">${esc(z.name)} · ${dtx}${inc ? ` · <b style="color:var(--da)">${inc} تنبيه</b>` : ''}${pen ? ` · ${pen} ضمن المهلة (${left < 120 ? left + ' ث' : Math.ceil(left / 60) + ' د'})` : ''}${cl ? ' · تنظيف جارٍ' : ''}${interToday(z.id) ? ' · ' + interToday(z.id) + ' تفاعل اليوم' : ''}
+      <button class="btn sm" onclick="startCleaning('${z.id}');toast('لن تُعدّ «${esc(z.name)}» حالة اختفاء لمدة ${cleanMin()} دقيقة')">تنظيف/عرض</button></span>`; }).join('');
+}
+/* ----- التنبيهات على شاشة المراقبة نفسها ----- */
+const ALERT_T = e => e.kind === 'tamper' ? '🚫 عبث بالكاميرا' : e.kind === 'conceal' ? '👁 اشتباه إخفاء' : e.kind === 'night' ? '🌙 نقص بعد الدوام' : '⚠️ اختفاء بلا بيع';
+const evT = e => Math.max(e.t_start || 0, e.t_end || 0, e.t_resolved || 0);
+const evStatus = e => ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'];
+// شريط أحمر فوق الصورة: أحدث تنبيه لم يُطّلع عليه، ويبقى حتى «تم الاطلاع» أو المعالجة
+function alertBar(){
+  const el = $('#abar'); if(!el) return;
+  const L = S.events.filter(e => e.status === 'incident' && !e.ack).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id + (e.ai ? 'a' : '')).join(',');
+  if(el.dataset.k === key){ const a = el.querySelector('.ago'); if(a && L[0]) a.textContent = ago(L[0].t_start); return; }
+  el.dataset.k = key; if(!L.length){ el.innerHTML = ''; return; }
+  const e = L[0], z = zoneOf(e.zone), img = e.img_p || e.img_c || e.img_a;
+  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div>${e.ai ? `<div class="s">🤖 ${esc(e.ai.summary)}</div>` : ''}</div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button><button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
+}
+// ملصقات فوق أماكن الأحداث في الصورة: عدّ تنازلي للمعلّقة، «سرقة؟» للتنبيه، ونتيجة الأحداث الأخيرة لثوانٍ
+function liveLabels(){
+  const el = $('#lbl'); if(!el) return; const t = now();
+  el.innerHTML = S.events.filter(e => e.box && e.zone !== '_cam' && (e.status === 'pending' || e.status === 'incident' || t - evT(e) < 12)).slice(0, 30).map(e => {
+    let tx, bg;
+    if(e.status === 'pending'){ const l = Math.max(0, Math.ceil(e.deadline - t)); tx = '⏳ ' + (l < 120 ? l + ' ث' : Math.ceil(l / 60) + ' د'); bg = '#d97706'; }
+    else if(e.status === 'incident'){ tx = e.kind === 'conceal' ? '👁 اشتباه إخفاء' : '⚠ سرقة؟'; bg = '#c53030'; }
+    else { tx = { returned: 'رجعت ✓', sold: 'مُباعة ✓', moved: 'نُقلت ✓', resolved: 'عولجت' }[e.status] || { pick: 'التقاط', restock: 'تعبئة', moved: 'نُقلت ✓', added: 'إضافة', swap: 'تبديل', major: 'تغيّر' }[e.kind] || KIND[e.kind] || ''; bg = '#2f855a'; }
+    return `<span class="${e.box.y < 0.07 ? 'in' : ''}" style="left:${(e.box.x * 100).toFixed(2)}%;top:${(e.box.y * 100).toFixed(2)}%;background:${bg}">${esc(tx)}</span>`; }).join('');
+}
+// آخر الأحداث تحت الكاميرا (كل الأنواع)، يُعاد بناؤها فقط عند تغيّر الأحداث
+function liveFeed(){
+  const el = $('#feed'); if(!el) return;
+  const L = S.events.slice().sort((a, b) => evT(b) - evT(a)).slice(0, 6), key = L.map(e => e.id + e.status + (e.ack ? 1 : 0) + (e.ai ? 'a' : e.aiPending ? 'p' : '')).join(',');
+  if(el.dataset.k !== key){ el.dataset.k = key;
+    el.innerHTML = '<h3 style="margin:0 0 4px">آخر الأحداث</h3>' + (L.length ? L.map(e => { const st = evStatus(e);
+      return `<div class="it" onclick="openEv('${e.id}')">${e.img_a || e.img_c ? `<img src="${e.img_a || e.img_c}">` : '<img>'}<div style="flex:1;min-width:0"><div class="row" style="gap:6px"><b class="sm">${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''}</b><span class="tag ${st[1]}">${st[0]}</span></div><div class="xs mut">${esc(zoneOf(e.zone).name)} · <span data-t="${evT(e)}"></span></div>${e.ai ? `<div class="xs" style="margin-top:2px">🤖 ${esc(e.ai.summary)}</div>` : e.aiPending ? '<div class="xs mut">🤖 يحلل…</div>' : ''}</div></div>`; }).join('') : '<div class="xs mut">لا أحداث بعد. أي شيل أو نقل أو تنبيه يظهر هنا فوراً.</div>'); }
+  el.querySelectorAll('[data-t]').forEach(x => x.textContent = ago(+x.dataset.t));
+}
+function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
+function openEv(id){ const e = S.events.find(x => x.id === id); S.evf = e && e.status === 'incident' ? 'incident' : 'all'; go('ev');
+  setTimeout(() => { const c = document.getElementById('ev_' + id); if(c){ c.scrollIntoView({ block: 'center' }); c.classList.add('hl'); } }, 120); }
+function fullLive(){ const el = $('#live'); if(!el) return;
+  if(document.fullscreenElement) return document.exitFullscreen();
+  const f = el.requestFullscreen || el.webkitRequestFullscreen; if(f) f.call(el); else toast('ملء الشاشة غير مدعوم في هذا المتصفح'); }
+let facingNow = 'environment';
+function flipCam(){ facingNow = facingNow === 'environment' ? 'user' : 'environment'; startCamera(null, facingNow); }
+async function pickCamera(){
+  try{
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true }); tmp.getTracks().forEach(t => t.stop());
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    if(devs.length <= 1) return startCamera(devs[0] && devs[0].deviceId);
+    openModal(`<h2>اختر الجهاز</h2>${devs.map((d, i) => `<button class="btn w" style="margin:4px 0;justify-content:flex-start" onclick="closeModal();startCamera('${d.deviceId}')">${esc(d.label || 'جهاز فيديو ' + (i + 1))}</button>`).join('')}`);
+  }catch(e){ toast('تعذّر الوصول للكاميرا: ' + (e.message || e)); }
+}
+
+/* ----- التنبيهات ----- */
+function vEv(){
+  const F = [['open', 'مفتوحة'], ['incident', 'تنبيهات'], ['pending', 'ضمن المهلة'], ['rem', 'كل حالات الشيل'], ['info', 'إضافات وتبديل'], ['all', 'الكل']];
+  const f = { open: e => e.status === 'pending' || e.status === 'incident', incident: e => e.status === 'incident', pending: e => e.status === 'pending', rem: e => e.kind === 'removal' || e.kind === 'night', info: e => e.status === 'info', all: () => true }[S.evf];
+  const L = S.events.filter(f).slice(0, 120);
+  return `<h2>التنبيهات والأحداث</h2><div class="seg">${F.map(([k, n]) => `<button class="${S.evf === k ? 'on' : ''}" onclick="S.evf='${k}';render()">${n}</button>`).join('')}</div>
+    <div class="note sm">عند شيل منتج تبدأ مهلة ${fmtGrace()}. إذا رجع المنتج أو سُجّل بيعه تُغلق الحالة تلقائياً. وإذا انتهت المهلة بدون ذلك تصبح «اختفاء غير مبرر» ويصدر تنبيه.</div>
+    ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
+}
+function evCard(e){
+  const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
+  return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
+    <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
+    <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
+    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${aiLine(e)}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
+    ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' || e.kind === 'conceal' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
+    ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="addSale('${e.zone}',1,'','يدوي');toast('سُجّل البيع')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="startCleaning('${e.zone}');toast('مُدّدت المهلة')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
+}
+function zoom(src){ openModal(`<img src="${src}" style="width:100%;border-radius:10px"><div style="height:8px"></div><button class="btn w" onclick="closeModal()">إغلاق</button>`, true); }
+function resForm(id, res){
+  if(S.cfg.pin && !S.adminOk) return pinGate(() => resForm(id, res));
+  openModal(`<h2>معالجة الحالة: ${RES[res]}</h2><div class="fld"><label>ملاحظة (اختياري)</label><input id="rn"></div><div class="fld"><label>اسمك</label><input id="rw" value="${esc(LS.get('haris_who', ''))}"></div>
+    <button class="btn pri w" onclick="LS.set('haris_who',$('#rw').value.trim());resolveEv('${id}','${res}',$('#rn').value.trim(),$('#rw').value.trim());closeModal();render();toast('تم الحفظ')">حفظ</button>`);
+}
+function pinGate(fn){ openModal(`<h2>رمز الإدارة</h2><input id="pg" type="password" inputmode="numeric"><div style="height:10px"></div><button class="btn pri w" id="pgb">متابعة</button>`); $('#pgb').onclick = () => { if($('#pg').value === String(S.cfg.pin)){ S.adminOk = true; closeModal(); fn(); } else toast('الرمز غير صحيح'); }; }
+
+/* ----- المناطق ----- */
+function vZones(){
+  return `<h2>مناطق العارضات</h2><div class="note sm">اسحب بالماوس أو بإصبعك مربعاً حول كل عارضة أو رف في صورة الكاميرا. لا حاجة لتحديد المنتجات؛ النظام يراقب أي شيل أو إضافة داخل المربع. اضغط على مربع موجود لتعديله.</div>
+    ${S.src ? `<div class="row" style="margin:10px 0"><button class="btn sm" onclick="takeSnap();drawEd()">تحديث الصورة</button><span class="xs mut">${S.zones.length} منطقة</span></div>
+    <div class="editor" id="ed"><canvas id="edimg"></canvas><canvas class="ov" id="edov"></canvas></div>` : `<div class="card empty">ابدأ مصدر الفيديو من «المراقبة» أولاً حتى تظهر الصورة.<div style="height:10px"></div><button class="btn pri" onclick="go('mon')">المراقبة</button></div>`}
+    <div class="card">${S.zones.map(z => `<div class="li"><b class="sp">${esc(z.name)}</b><span class="sm mut">${esc(z.section || '')}</span><button class="btn sm" onclick="zoneForm('${z.id}')">تعديل</button><button class="btn sm dan" onclick="confirmBox('حذف هذه المنطقة؟',()=>{S.zones=S.zones.filter(x=>x.id!=='${z.id}');saveZones();render()})">حذف</button></div>`).join('') || '<div class="empty">لا توجد مناطق.</div>'}</div>`;
+}
+function takeSnap(){ const c = grabFrame(); if(!c) return; S.snap = document.createElement('canvas'); S.snap.width = c.width; S.snap.height = c.height; S.snap.getContext('2d').drawImage(c, 0, 0); }
+function mountZones(){
+  if(!S.src) return;
+  if(!S.snap) takeSnap();
+  drawEd();
+  const cv = $('#edov'); if(!cv) return;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
+  cv.onpointerdown = e => { const [x, y] = pos(e); S.drawing = { x0: x, y0: y, x1: x, y1: y }; cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => { if(!S.drawing) return; const [x, y] = pos(e); S.drawing.x1 = x; S.drawing.y1 = y; drawEd(); };
+  cv.onpointerup = () => { const d = S.drawing; if(!d) return; S.drawing = null; const r = { x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) };
+    if(r.w > 0.02 && r.h > 0.02) zoneForm(null, r); else { const z = S.zones.find(z => r.x >= z.x && r.x <= z.x + z.w && r.y >= z.y && r.y <= z.y + z.h); if(z) zoneForm(z.id); } drawEd(); };
+}
+function drawEd(){
+  const im = $('#edimg'), ov = $('#edov'); if(!im || !S.snap) return;
+  im.width = S.snap.width; im.height = S.snap.height; im.getContext('2d').drawImage(S.snap, 0, 0);
+  ov.width = S.snap.width; ov.height = S.snap.height; const x = ov.getContext('2d'), W = ov.width, H = ov.height;
+  x.lineWidth = 2; x.font = 'bold 14px Tahoma';
+  S.zones.forEach(z => { x.strokeStyle = '#38d0c0'; x.fillStyle = '#38d0c022'; x.fillRect(z.x * W, z.y * H, z.w * W, z.h * H); x.strokeRect(z.x * W, z.y * H, z.w * W, z.h * H);
+    const tw = x.measureText(z.name).width + 12; x.fillStyle = '#0e6f7a'; x.fillRect(z.x * W, z.y * H, tw, 20); x.fillStyle = '#fff'; x.textAlign = 'left'; x.fillText(z.name, z.x * W + 6, z.y * H + 15); });
+  if(S.drawing){ const d = S.drawing; x.setLineDash([6, 4]); x.strokeStyle = '#fff'; x.strokeRect(Math.min(d.x0, d.x1) * W, Math.min(d.y0, d.y1) * H, Math.abs(d.x1 - d.x0) * W, Math.abs(d.y1 - d.y0) * H); x.setLineDash([]); }
+}
+function zoneForm(id, rect){
+  const z = id ? S.zones.find(z => z.id === id) : Object.assign({ name: '', section: '' }, rect); window._pz = Object.assign({}, z);
+  const secs = [...new Set(S.zones.map(z => z.section).filter(Boolean))];
+  openModal(`<h2>${id ? 'تعديل منطقة' : 'منطقة جديدة'}</h2><div class="fld"><label>اسم العارضة / الرف</label><input id="zn" value="${esc(z.name)}" placeholder="مثال: عارضة آيفون — الرف العلوي"></div>
+    <div class="fld"><label>القسم</label><input id="zs" list="secs" value="${esc(z.section || '')}"><datalist id="secs">${secs.map(s => `<option value="${esc(s)}">`).join('')}</datalist></div>
+    <div class="fld"><label>نوع المنطقة</label><select id="zm"><option value="">عارضة: أجهزة وقطع منفردة (الشيل يُنذر بعد المهلة إذا لم يُسجَّل بيع)</option><option value="stock" ${z.mode === 'stock' ? 'selected' : ''}>رف بضاعة متكررة: شيبس، شوكولا، علب (يعدّ الالتقاطات ويقارنها بالمبيعات)</option></select><div class="xs mut" style="margin-top:4px">«عارضة» لما يأخذه الموظف فقط (موبايلات، إكسسوارات غالية): كل شيل بلا بيع مسجّل يصبح تنبيهاً. «رف بضاعة» لما يأخذه الزبون بنفسه (سوبر ماركت): الشيل يُعدّ فقط ولا يُنذر. ثبّت كاميرا رف البضاعة مائلة من الأعلى لترى مقدمة الصفوف.</div></div>
+    <div class="fld"><label>الحساسية</label><select id="zf"><option value="">تلقائي (حسب الإعداد العام)</option><option value="normal" ${z.sens === 'normal' ? 'selected' : ''}>عادي: قطع متوسطة وكبيرة</option><option value="fine" ${z.sens === 'fine' ? 'selected' : ''}>دقيق: قطع صغيرة (علكة، شاحن، سماعة)</option></select></div>
+    <div class="f2"><button class="btn pri" onclick="saveZone()">حفظ</button><button class="btn" onclick="closeModal();window._afterZone=null;drawEd()">إلغاء</button></div>`);
+  setTimeout(() => $('#zn') && $('#zn').focus(), 50);
+}
+function saveZone(){
+  const z = window._pz, name = $('#zn').value.trim(); if(!name) return toast('اكتب اسم المنطقة');
+  z.name = name; z.section = $('#zs').value.trim(); z.sens = $('#zf').value || undefined; z.mode = $('#zm').value || undefined;
+  if(z.id){ const i = S.zones.findIndex(x => x.id === z.id); S.zones[i] = z; } else { z.id = rid(); S.zones.push(z); }
+  saveZones(); closeModal(); if(window._afterZone){ const f = window._afterZone; window._afterZone = null; f(); } else render(); toast('تم حفظ العارضة؛ المراقبة تعمل عليها الآن');
+}
+
+/* ----- المبيعات ----- */
+function vSales(){
+  return `<h2>المبيعات</h2><div class="note sm">كل بيع يُسجَّل لعارضة يبرّر شيل قطعة منها. البيع المسجّل بعد رصد النقص يغلقه تلقائياً أيضاً.</div>
+    <div class="card"><h3>تسجيل بيع</h3><div class="f2"><div class="fld"><label>العارضة</label><select id="sz">${S.zones.map(z => `<option value="${z.id}">${esc(z.name)}${z.section ? ' — ' + esc(z.section) : ''}</option>`).join('')}</select></div>
+    <div class="fld"><label>عدد القطع</label><input id="sq" type="number" min="1" value="1"></div></div><div class="fld"><label>رقم الفاتورة (اختياري)</label><input id="sr"></div>
+    <button class="btn pri" ${S.zones.length ? '' : 'disabled'} onclick="addSale($('#sz').value,$('#sq').value,$('#sr').value.trim(),'يدوي');toast('سُجّل البيع');render()">تسجيل</button></div>
+    <div class="card"><h3>استيراد من تقرير الكاشير</h3><p class="sm mut" style="margin-top:0">الصق سطراً لكل بيع بالشكل: <b>اسم العارضة، العدد، رقم الفاتورة</b>.</p><textarea id="simp" rows="4"></textarea><div style="height:8px"></div><button class="btn" onclick="importSales()">استيراد</button></div>
+    <div class="card"><h3>آخر المبيعات</h3><div class="tw"><table><tr><th>الوقت</th><th>العارضة</th><th>العدد</th><th>غير مستخدم</th><th>المصدر</th><th>الفاتورة</th></tr>${S.sales.slice(0, 80).map(s => `<tr><td>${tm(s.t)}</td><td>${esc(zoneOf(s.zone).name)}</td><td>${s.qty}</td><td>${s.remaining}</td><td>${esc(s.source)}</td><td>${esc(s.ref)}</td></tr>`).join('')}</table></div></div>`;
+}
+function importSales(){
+  let n = 0; const bad = [];
+  $('#simp').value.split(/\r?\n/).forEach(line => { const p = line.replace(/،/g, ',').replace(/\t/g, ',').split(',').map(x => x.trim()); if(!p[0]) return;
+    const z = S.zones.find(z => z.name === p[0] || z.id === p[0]); if(!z){ bad.push(p[0]); return; } addSale(z.id, /^\d+$/.test(p[1] || '') ? p[1] : 1, p[2] || '', 'استيراد'); n++; });
+  toast(`استُورد ${n} بيع${bad.length ? '، وتعذّر: ' + bad.join('، ') : ''}`, 5000); render();
+}
+
+/* ----- التقارير ----- */
+function report(days = 14){
+  const out = [], today = new Date(); today.setHours(0, 0, 0, 0);
+  for(let i = days - 1; i >= 0; i--){
+    const a = today.getTime() / 1000 - i * 86400, b = a + 86400, R = S.events.filter(e => (e.kind === 'removal' || e.kind === 'night') && e.t_start >= a && e.t_start < b);
+    out.push({ day: new Date(a * 1000).toLocaleDateString('en-CA'), removals: R.length, returned: R.filter(e => e.status === 'returned').length, sold: R.filter(e => e.status === 'sold' || e.resolution === 'sold').length,
+      incidents: R.filter(e => e.status === 'incident' || e.status === 'resolved').length, theft: R.filter(e => e.resolution === 'theft').length, false: R.filter(e => e.resolution === 'false').length, late: R.filter(e => e.resolution === 'returned').length });
+  }
+  return out;
+}
+function vRep(){
+  const D = report(), T = D.reduce((a, d) => { for(const k in d) if(k !== 'day') a[k] = (a[k] || 0) + d[k]; return a; }, {});
+  const since = now() - 14 * 86400, zm = {};
+  S.events.filter(e => (e.kind === 'removal' || e.kind === 'night') && e.t_start >= since).forEach(e => { const o = zm[e.zone] = zm[e.zone] || { total: 0, inc: 0, theft: 0 }; o.total++; if(e.status === 'incident' || e.status === 'resolved') o.inc++; if(e.resolution === 'theft') o.theft++; });
+  const Z = Object.entries(zm).sort((a, b) => b[1].inc - a[1].inc || b[1].total - a[1].total);
+  return `<h2>التقارير — آخر 14 يوماً</h2><div class="kpis">${[['حالات شيل', T.removals], ['رجعت خلال المهلة', T.returned], ['مُباعة', T.sold], ['تنبيهات', T.incidents], ['رجعت بعد التنبيه', T.late], ['سرقة مؤكدة', T.theft], ['خطأ في الكشف', T.false]].map(([l, n]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${n || 0}</div></div>`).join('')}</div>
+    <div class="card"><h3>يومياً</h3><div class="tw"><table><tr><th>اليوم</th><th>شيل</th><th>رجع</th><th>مُباع</th><th>تنبيه</th><th>سرقة مؤكدة</th><th style="width:40%">التوزيع</th></tr>${D.slice().reverse().map(d => { const t = Math.max(1, d.removals);
+      return `<tr><td>${d.day}</td><td>${d.removals}</td><td>${d.returned}</td><td>${d.sold}</td><td>${d.incidents}</td><td>${d.theft}</td><td><div class="bar"><i style="width:${100 * d.returned / t}%;background:#38a169"></i><i style="width:${100 * d.sold / t}%;background:#2d5bb5"></i><i style="width:${100 * d.incidents / t}%;background:#c53030"></i></div></td></tr>`; }).join('')}</table></div>
+    <div class="xs mut" style="margin-top:6px">أخضر: رجع · أزرق: مُباع · أحمر: تنبيه</div></div>
+    <div class="card"><h3>العارضات الأكثر تنبيهات</h3><div class="tw"><table><tr><th>العارضة</th><th>القسم</th><th>تفاعلات (14 يوم)</th><th>حالات الشيل</th><th>تنبيهات</th><th>سرقة مؤكدة</th></tr>${Z.map(([id, o]) => { const z = zoneOf(id), I = LS.get('haris_inter', {}), it = Object.values(I).reduce((a, d) => a + (d[id] || 0), 0); return `<tr><td>${esc(z.name)}</td><td>${esc(z.section || '')}</td><td>${it}</td><td>${o.total}</td><td>${o.inc}</td><td>${o.theft}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">لا توجد بيانات</td></tr>'}</table></div>
+    <div class="row" style="margin-top:10px"><button class="btn" onclick="exportCsv()">تنزيل سجل الأحداث (CSV)</button></div></div>${vStockRep(since)}`;
+}
+// رفوف البضاعة المتكررة: الالتقاطات مقابل المبيعات المسجّلة لنفس الرف. الفرق الكبير المستمر = بضاعة تخرج بلا بيع
+function vStockRep(since){
+  const Z = S.zones.filter(z => z.mode === 'stock'); if(!Z.length) return '';
+  const rows = Z.map(z => { const E = S.events.filter(e => e.zone === z.id && e.t_start >= since), pk = E.filter(e => e.kind === 'pick' || e.kind === 'removal' || e.kind === 'night').length, rs = E.filter(e => e.kind === 'restock').length, cn = E.filter(e => e.kind === 'conceal').length;
+    const sl = S.sales.filter(x => x.zone === z.id && x.t >= since).reduce((a, x) => a + x.qty, 0); return { z, pk, rs, cn, sl, gap: Math.max(0, pk - sl) }; }).sort((a, b) => (b.sl ? b.gap : 0) - (a.sl ? a.gap : 0) || b.cn - a.cn || b.pk - a.pk);
+  return `<div class="card"><h3>رفوف البضاعة: الالتقاطات مقابل المبيعات</h3><p class="sm mut" style="margin-top:0">«التقاط» يعني أن قطعة أُخذت من مقدمة صف، <b>وليس سرقة</b>: أغلب الالتقاطات زبائن يشترون. المقارنة تصبح مفيدة فقط إذا سُجّلت مبيعات الرف (مجموع اليوم من تقرير الكاشير يكفي، من تبويب «المبيعات»). بدون مبيعات، مؤشر السرقة الوحيد هو «اشتباه إخفاء».</p>
+    <div class="tw"><table><tr><th>الرف</th><th>القسم</th><th>التقاطات</th><th>تعبئة</th><th>مبيعات مسجّلة</th><th>التقاطات بلا بيع</th><th>اشتباه إخفاء</th></tr>${rows.map(o => `<tr><td>${esc(o.z.name)}</td><td>${esc(o.z.section || '')}</td><td>${o.pk}</td><td>${o.rs}</td><td>${o.sl}</td><td style="${o.sl && o.gap ? 'color:var(--da);font-weight:700' : ''}">${o.sl ? o.gap : '<span class="mut">لا مبيعات مسجّلة</span>'}</td><td>${o.cn}</td></tr>`).join('')}</table></div></div>`;
+}
+function download(name, text, type){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+function exportCsv(){
+  const rows = [['الوقت', 'العارضة', 'القسم', 'النوع', 'الحالة', 'المعالجة', 'ملاحظة', 'عالجها']].concat(S.events.map(e => { const z = zoneOf(e.zone); return [new Date(e.t_start * 1000).toLocaleString('en-GB'), z.name, z.section || '', KIND[e.kind] || e.kind, (STA[e.status] || [e.status])[0], RES[e.resolution] || '', e.note || '', e.resolved_by || '']; }));
+  download('haris-events.csv', rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv;charset=utf-8');
+}
+
+/* ----- الإعدادات ----- */
+function vSet(){
+  if(S.cfg.pin && !S.adminOk) return `<div class="card"><h3>الإعدادات محمية</h3><button class="btn pri" onclick="pinGate(render)">إدخال رمز الإدارة</button></div>`;
+  const c = S.cfg, f = (k, l, t = 'text', ex = '') => `<div class="fld"><label>${l}</label><input id="c_${k}" type="${t}" value="${esc(c[k])}" ${ex}></div>`;
+  return `<h2>الإعدادات</h2>
+    <div class="card"><h3>عام</h3>${f('site', 'اسم الفرع')}<div class="f2">${f('open', 'بداية الدوام', 'time')}${f('close', 'نهاية الدوام', 'time')}</div>
+      <div class="f2">${f('grace', 'مهلة رجوع المنتج (دقيقة)', 'number', 'min="1"')}${f('cleaning', 'مدة التنظيف/العرض (دقيقة)', 'number', 'min="1"')}</div>
+      <div class="f2">${f('saleWin', 'نافذة مطابقة البيع (دقيقة)', 'number')}${f('poll', 'تحليل الصورة كل (ثانية)', 'number', 'min="2"')}</div>
+      <div class="row" style="justify-content:space-between;margin:10px 0"><div><b class="sm">التنبيه الفوري خارج ساعات العمل</b><div class="xs mut">أي شيل بعد الإغلاق يُنبَّه عنه مباشرة بدون مهلة.</div></div><button class="sw ${c.night ? 'on' : ''}" id="c_night" onclick="this.classList.toggle('on')"></button></div>
+      <div class="row" style="justify-content:space-between;margin:10px 0"><div><b class="sm">لا يوجد بيع حالياً (كل التقاط باليد = سرقة)</b><div class="xs mut">في رفوف البضاعة أيضاً: كل قطعة تُؤخذ تفتح حالة شيل بمهلة؛ إذا رجعت لنفس الصف تُغلق، وإلا يصدر تنبيه. أطفئه عند بدء البيع.</div></div><button class="sw ${c.noSales ? 'on' : ''}" id="c_noSales" onclick="this.classList.toggle('on')"></button></div>
+      ${f('pin', 'رمز الإدارة (لحماية الإعدادات ومعالجة التنبيهات؛ اتركه فارغاً لإلغائه)', 'password')}</div>
+    <div class="card"><h3>الذكاء الاصطناعي المحلي</h3><div class="row" style="justify-content:space-between"><div><b class="sm">كشف الأيادي والأشخاص وتسمية القطع (MediaPipe)</b>
+      <div class="xs mut">يعمل داخل الجهاز بدون توكنات. يحتاج إنترنت أول مرة لتنزيل النماذج (حوالي 10 ميغابايت). يمنع الحكم أثناء وجود يد في العارضة، ويحفظ صورة لحظة الشيل، ويسمّي القطعة (موبايل، لابتوب، تلفزيون...).</div></div>
+      <button class="sw ${c.ai ? 'on' : ''}" id="c_ai" onclick="this.classList.toggle('on')"></button></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><div><b class="sm">كشف حركة الإخفاء (تجريبي)</b><div class="xs mut">ينبّه إذا لمست يدٌ رفاً أو عارضة ثم ذهبت مباشرة إلى الجيب أو الخصر أو داخل الملابس. يصلح للقطع الصغيرة (شيبس، شوكولا). يحتاج كاميرا ترى جسم الزبون (من زاوية الممر)، ويستهلك المعالج أكثر أثناء وجود أشخاص. تجريبي: كل تنبيه «اشتباه» يحتاج مراجعة، وقد ينبّه لحركة عادية مثل إخراج الموبايل.</div></div>
+      <button class="sw ${c.conceal ? 'on' : ''}" id="c_conceal" onclick="this.classList.toggle('on')"></button></div>${c.conceal ? `<div class="xs" style="margin-top:6px">نموذج وضعية الجسم: ${MP.pose ? 'يعمل ✓' : MP.poseLoading ? 'جارٍ التحميل…' : MP.poseErr ? 'تعذّر التحميل: ' + esc(MP.poseErr) : 'يُحمَّل عند تشغيل الكاميرا'}</div>` : ''}<div class="xs" style="margin-top:6px">الحالة: ${{ off: 'لم يُحمَّل بعد (يُحمَّل عند تشغيل الكاميرا)', loading: 'جارٍ التحميل…', ready: 'يعمل ✓', error: 'تعذّر التحميل: ' + esc(MP.err) }[MP.state]}</div></div>
+    <div class="card"><h3>الحكم الذكي (Claude)</h3>
+      <div class="row" style="justify-content:space-between"><div><b class="sm">تحليل صور كل حدث بـ Claude</b><div class="xs mut">عند كل شيل أو نقل أو إضافة تُرسل 3 إلى 4 صور صغيرة، فيحكم Claude ماذا حدث فعلاً ويصحّح قرار المحرك: النقل والرجوع لا يُنذران، والأخذ المتخفّي يُنذر. يعمل عند الأحداث فقط لا لكل إطار، ويحتاج إنترنت. بدونه يبقى النظام يعمل كما هو.</div></div>
+      <button class="sw ${c.judge ? 'on' : ''}" id="c_judge" onclick="this.classList.toggle('on')"></button></div>
+      <div class="fld" style="margin-top:8px"><label>النموذج</label><select id="c_judgeModel"><option value="claude-opus-5-5" ${c.judgeModel !== 'claude-haiku-5-5' ? 'selected' : ''}>Claude Opus 5.5 — الأدق (نحو 2 سنت للحدث)</option><option value="claude-haiku-5-5" ${c.judgeModel === 'claude-haiku-5-5' ? 'selected' : ''}>Claude Haiku 5.5 — الأرخص (أقل من عُشر سنت)</option></select></div>
+      ${f('judgeUrl', 'رابط الخادم (اتركه فارغاً إذا فتحت الصفحة من رابط الموقع نفسه)', 'url', 'placeholder="https://<project>.web.app/api/judge" dir="ltr"')}${f('judgeKey', 'رمز الربط (GUARD_KEY نفسه المحفوظ في أسرار المستودع)', 'password')}
+      ${f('judgeMax', 'الحد الأقصى للتحليلات يومياً على هذا الجهاز', 'number', 'min="1"')}
+      <div class="row"><button class="btn sm" onclick="readSet();saveCfg();JUDGE.ping().then(m=>{$('#jst').textContent=m})">اختبار الاتصال</button><span class="xs" id="jst">${judgeUrl() ? 'الرابط: ' + esc(judgeUrl()) : 'لا يوجد رابط بعد'}</span><span class="xs mut">· اليوم: ${(+c.judgeMax || 400) - JUDGE.left()} تحليل</span></div></div>
+    <div class="card"><h3>التنبيهات</h3>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">تكرار صوت التنبيه حتى الاطلاع</b><div class="xs mut">كل 30 ثانية ما دام هناك تنبيه لم يُضغط عليه «تم الاطلاع» في شاشة المراقبة.</div></div><button class="sw ${c.repeatBeep ? 'on' : ''}" id="c_repeatBeep" onclick="this.classList.toggle('on')"></button></div>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">إشعارات الكمبيوتر</b><div class="xs mut">تظهر حتى لو كانت الصفحة خلف نوافذ أخرى.</div></div><button class="sw ${c.notify ? 'on' : ''}" id="c_notify" onclick="this.classList.toggle('on');if(this.classList.contains('on')&&'Notification' in window)Notification.requestPermission()"></button></div>
+      <p class="sm mut">تيليجرام: أنشئ بوتاً عبر @BotFather وانسخ التوكن، وأضفه لمجموعة المشرفين، ثم ضع رقم المجموعة (chat_id).</p>
+      <div class="f2">${f('tgToken', 'توكن البوت')}${f('tgChat', 'رقم المحادثة (chat_id)')}</div>
+      <button class="btn sm" onclick="readSet();tgSend('✅ رسالة اختبار من حارس العارضات — '+S.cfg.site).then(ok=>toast(ok?'أُرسلت رسالة الاختبار؛ تحقق من تيليجرام':'تعذّر الإرسال'))">إرسال رسالة اختبار</button></div>
+    <div class="card"><h3>نسخ احتياطي</h3><p class="sm mut" style="margin-top:0">البيانات محفوظة في هذا المتصفح على هذا الكمبيوتر. احفظ نسخة من الإعدادات والمناطق، أو انقلها لكمبيوتر آخر.</p>
+      <div class="row"><button class="btn sm" onclick="download('haris-settings.json',JSON.stringify({cfg:S.cfg,zones:S.zones},null,2),'application/json')">تصدير الإعدادات والمناطق</button>
+      <label class="btn sm">استيراد<input type="file" accept=".json" style="display:none" onchange="importSettings(this.files[0])"></label>
+      <button class="btn sm dan" onclick="confirmBox('حذف كل الأحداث والمبيعات المسجّلة؟',()=>{S.events=[];S.sales=[];DB.clear('events');DB.clear('sales');render()})">مسح السجلات</button></div></div>
+    <button class="btn pri w big" onclick="readSet();saveCfg();toast('تم الحفظ');render()">حفظ الإعدادات</button><div style="height:20px"></div>`;
+}
+function readSet(){ const g = k => $('#c_' + k) ? $('#c_' + k).value.trim() : S.cfg[k];
+  Object.assign(S.cfg, { site: g('site'), open: g('open'), close: g('close'), grace: Math.max(1, +g('grace') || 20), cleaning: Math.max(1, +g('cleaning') || 15), saleWin: Math.max(1, +g('saleWin') || 30),
+    poll: Math.max(2, +g('poll') || 10), pin: g('pin'), tgToken: g('tgToken'), tgChat: g('tgChat'), night: $('#c_night') ? $('#c_night').classList.contains('on') : S.cfg.night, notify: $('#c_notify') ? $('#c_notify').classList.contains('on') : S.cfg.notify, ai: $('#c_ai') ? $('#c_ai').classList.contains('on') : S.cfg.ai, conceal: $('#c_conceal') ? $('#c_conceal').classList.contains('on') : S.cfg.conceal, noSales: $('#c_noSales') ? $('#c_noSales').classList.contains('on') : S.cfg.noSales, repeatBeep: $('#c_repeatBeep') ? $('#c_repeatBeep').classList.contains('on') : S.cfg.repeatBeep, judge: $('#c_judge') ? $('#c_judge').classList.contains('on') : S.cfg.judge, judgeModel: $('#c_judgeModel') ? $('#c_judgeModel').value : S.cfg.judgeModel, judgeUrl: g('judgeUrl'), judgeKey: g('judgeKey'), judgeMax: Math.max(1, +g('judgeMax') || 400) }); if(S.cfg.ai && S.running && !isDemo()){ loadMP(); loadPose(); } }
+async function importSettings(f){ try{ const j = JSON.parse(await f.text()); if(j.cfg) S.cfg = Object.assign({}, DEF, j.cfg); if(Array.isArray(j.zones)) S.zones = j.zones; saveCfg(); saveZones(); toast('تم الاستيراد'); render(); }catch(e){ toast('ملف غير صالح'); } }
+
+/* =================== التشغيل =================== */
+document.addEventListener('touchstart', () => { if(S.src === 'camera') S.touchAt = now(); }, { passive: true, capture: true });
+window.addEventListener('beforeunload', e => { if(S.running && !isDemo()){ e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('resize', () => { if(S.tab === 'zones') drawEd(); });
+setInterval(() => { header(); if(S.tab === 'mon') updMon();
+  // تكرار صوت التنبيه كل 30 ثانية حتى يضغط أحد «تم الاطلاع» أو يعالج التنبيه
+  if(S.running && S.cfg.repeatBeep && now() - (S.beepAt || 0) >= 30 && S.events.some(e => e.status === 'incident' && !e.ack)){ beep(); S.beepAt = now(); }
+}, 1000);
+(async () => {
+  await DB.open();
+  S.events = (await DB.all('events')).sort((a, b) => b.t_start - a.t_start);
+  S.sales = (await DB.all('sales')).sort((a, b) => b.t - a.t);
+  if(!window.isSecureContext) toast('افتح الملف مباشرة من الكمبيوتر بمتصفح Chrome أو Edge', 6000);
+  render();
+})();
 </script>
 </body>
 </html>
