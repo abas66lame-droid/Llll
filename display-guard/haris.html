@@ -524,7 +524,7 @@ function mpPeople(c){
         const px = (rr - l) * 0.35 + 0.01, py = (b - t) * 0.35 + 0.01; out.push({ kind: 'يد', x: Math.max(0, l - px), y: Math.max(0, t - py), w: Math.min(1, rr - l + 2 * px), h: Math.min(1, b - t + 2 * py) }); }
     }catch(e){}
   }
-  MP.ms = Math.round(performance.now() - t0); MP.boxes = out; logHands(out);
+  MP.ms = Math.round(performance.now() - t0); MP.boxes = out; logHands(out, c);
   return out;
 }
 // تسمية القطعة: نبحث في الصورة "قبل" عن جسم معروف داخل مكان النقص
@@ -819,7 +819,9 @@ const ENG = {
   decide(cands, c, night){
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
-    for(const a of cands) a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
+    for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
+      if(a.hT){ const ib = colorHist(this.baseCv, a.reg, false), ia = colorHist(c, a.reg, false), h = handCarry(a.reg, firstTouch(a.reg, a.hT - 10) || a.hT, ib, ia); a.carry = h.v; a.dbg.carry = h;
+        if(h.v === 'take') a.pol = Math.min(a.pol, -PUT - 0.01); else if(h.v === 'put') a.pol = Math.max(a.pol, PUT + 0.01); } } // دليل اليد يتقدّم على الملمس
     // (تجربة ميدانية) «حرّكت قطعة 2 سم فحسبها سرقة»: إزاحة صغيرة تظهر منطقة واحدة فيها القطعة قبل وبعد، أو منطقتين متلاصقتين.
     // نفس القطعة في المكان نفسه تقريباً = تحرّكت، لا سرقة (لا يحتاج يداً)
     const usedPre = new Set();
@@ -1030,9 +1032,36 @@ const CONCEAL = { st: {}, last: {},
   }
 };
 /* ----- تتبّع الأيدي: سجل أماكن الأيدي بالوقت (آخر 3 دقائق) ----- */
-function logHands(boxes){ const h = boxes.filter(b => b.kind === 'يد'); if(!h.length) return; (S.handLog = S.handLog || []).push({ t: now(), b: h });
+// ألوان قطعة (بلا لون الجلد وبلا الأبيض/الرمادي الباهت): توزيع 12 لوناً × 3 سطوع
+function colorHist(src, box, noSkin){
+  const W = src.width, H = src.height, x0 = Math.max(0, Math.floor(box.x * W)), y0 = Math.max(0, Math.floor(box.y * H)), w = Math.max(1, Math.min(W - x0, Math.ceil(box.w * W))), h = Math.max(1, Math.min(H - y0, Math.ceil(box.h * H)));
+  const d = src.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, w, h).data, hist = new Float32Array(39); let n = 0;
+  for(let i = 0; i < d.length; i += 8){ const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), dl = mx - mn, sat = mx ? dl / mx : 0;
+    let hu = 0; if(dl){ hu = mx === r ? ((g - b) / dl) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4; hu *= 60; if(hu < 0) hu += 360; }
+    if(noSkin && sat > 0.15 && sat < 0.65 && mx > 0.35 && (hu < 45 || hu > 340)) continue; // جلد اليد
+    hist[(sat < 0.15 ? 12 : Math.min(11, (hu / 30) | 0)) * 3 + Math.min(2, (mx * 3) | 0)]++; n++; }
+  for(let k = 0; k < 39; k++) hist[k] /= Math.max(1, n); return { h: hist, n };
+}
+const hsim = (a, b) => { if(!a || !b || a.n < 10 || b.n < 10) return 0; let sa = 0, sb = 0, s = 0; for(let k = 0; k < 36; k++){ sa += a.h[k]; sb += b.h[k]; } if(sa < 0.03 || sb < 0.03) return 0;
+  for(let k = 0; k < 36; k++) s += Math.sqrt(a.h[k] / sa * b.h[k] / sb); return s; };
+// سجل الأيدي: مكان كل يد، وألوان ما تحمله (مربع اليد مكبَّراً، بلا الجلد)
+function logHands(boxes, c){ const h = boxes.filter(b => b.kind === 'يد'); if(!h.length) return;
+  const g = b => ({ x: Math.max(0, b.x - b.w * .4), y: Math.max(0, b.y - b.h * .4), w: Math.min(1, b.w * 1.8), h: Math.min(1, b.h * 1.8) });
+  (S.handLog = S.handLog || []).push({ t: now(), b: h, carry: c ? h.map(b => colorHist(c, g(b), true)) : [] });
   const lim = now() - 180; while(S.handLog.length && S.handLog[0].t < lim) S.handLog.shift(); }
-// آخر وقت لمست فيه يدٌ هذا المكان منذ «since» (0 = لم تلمسه)
+// «تتبّع ما تحمله اليد» (فكرة المستخدم): قبل اللمس هل كانت اليد تحمل القطعة الجديدة؟ وبعده هل خرجت بالقطعة القديمة؟
+// يرجع 'take' أو 'put' أو null إذا لم يكن الدليل واضحاً
+function handCarry(reg, tTouch, itemBefore, itemAfter){
+  const L = S.handLog || [], g = b => ({ x: b.x - b.w * .4, y: b.y - b.h * .4, w: b.w * 1.8, h: b.h * 1.8 }),
+    near = b => Math.abs(b.x + b.w / 2 - (reg.x + reg.w / 2)) < 0.4 && Math.abs(b.y + b.h / 2 - (reg.y + reg.h / 2)) < 0.4 && !ix(g(b), reg);
+  let inB = 0, inA = 0, outB = 0, outA = 0;
+  for(const e of L){ if(Math.abs(e.t - tTouch) > 8) continue; e.b.forEach((b, i) => { if(!near(b) || !e.carry[i]) return; const cb = hsim(e.carry[i], itemBefore), ca = hsim(e.carry[i], itemAfter);
+    if(e.t < tTouch){ inB = Math.max(inB, cb); inA = Math.max(inA, ca); } else { outB = Math.max(outB, cb); outA = Math.max(outA, ca); } }); }
+  const take = outB - Math.max(outA, inB), put = inA - Math.max(inB, outA);
+  return { v: take > 0.12 && take > put ? 'take' : put > 0.12 && put > take ? 'put' : null, take: +take.toFixed(2), put: +put.toFixed(2) };
+}
+function firstTouch(reg, since){ const g = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
+  for(const h of S.handLog || []) if(h.t >= since && h.b.some(b => ix(g(b, 0.2), g(reg, 0.1)))) return h.t; return 0; }
 function handTouch(reg, since){ const g = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) }); let t = 0;
   for(const h of S.handLog || []) if(h.t >= since && h.b.some(b => ix(g(b, 0.2), g(reg, 0.1)))) t = h.t; return t; }
 // فحص حركة رخيص على صورة مصغّرة: نشغّل كاشف الأيدي فقط عند حركة داخل عارضة (أو يد رُصدت قبل لحظات)

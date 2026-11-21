@@ -334,5 +334,39 @@ def hands():
                         # أخذ الموبايل ووضع علبة مختلفة — يُفترض: إنذار للموبايل
 
 
+# ===================== «تتبّع ما تحمله اليد» على عارضة بيضاء (تجربة ميدانية) =====================
+# «سرقت قطعة حقيقةً ولم ينبهني، ولما رجعتها نبهني»: علب بيضاء بطباعة زرقاء على رف أبيض — الملمس يقلب الاتجاه.
+def white_scene(items, hand=None, held=None, marker=True):
+    im = Image.new('RGB', (SW, SH), (236, 238, 242)); d = ImageDraw.Draw(im)
+    d.rectangle([0, 330, SW, 345], fill=(220, 222, 228))  # حافة الرف
+    def box(cx, cy, col):
+        d.rectangle([cx - 42, cy - 70, cx + 42, cy + 70], fill=(248, 248, 250), outline=(200, 205, 215), width=2)
+        d.rectangle([cx - 42, cy - 70, cx + 42, cy - 48], fill=col); d.ellipse([cx - 22, cy - 25, cx + 22, cy + 19], fill=(60, 70, 90)); d.rectangle([cx - 30, cy + 35, cx + 30, cy + 45], fill=col)
+    for cx, col in items: box(cx, 260, col)
+    if hand:
+        if held: box(hand[0], hand[1] - 10, held)  # القطعة في اليد
+        d.ellipse([hand[0] - 40, hand[1] - 20, hand[0] + 40, hand[1] + 50], fill=(205, 160, 135)); d.rectangle([hand[0] - 28, min(SH, hand[1] + 40), hand[0] + 28, SH], fill=(60, 64, 80))
+        if marker: d.ellipse([hand[0] - 8, hand[1] + 7, hand[0] + 8, hand[1] + 23], fill=(0, 255, 255))
+    return im
+
+def carry():
+    B = (30, 110, 220); R = (220, 60, 60); G = (40, 160, 90)
+    shelf = [(130, B), (240, R), (350, B), (460, G)]
+    def run(name, seed, before, after, path):  # path: [(نقطة اليد، اللون المحمول أو None)]
+        rng = np.random.default_rng(seed); f = lambda it, h=None, c=None: noisy(rng, white_scene(it, h, c), 3)
+        seq = [f(before) for _ in range(24)]
+        for k, (pt, col, scene) in enumerate(path): seq += [f(scene, pt, col)] * 2
+        seq += [f(after) for _ in range(150)]
+        write_y4m(name + '.y4m', seq)
+    nored = [s_ for s_ in shelf if s_[1] != R]
+    # سرقة: اليد تدخل فارغة، تأخذ العلبة الحمراء، وتخرج بها من الأسفل
+    run('carrytake', 81, shelf, nored, [((240, 470), None, shelf), ((240, 330), None, shelf), ((240, 300), R, nored), ((240, 420), R, nored), ((240, 520), R, nored)])
+    # إرجاع: اليد تدخل بالعلبة الحمراء وتضعها وتخرج فارغة (يبدأ الفيديو بعد السرقة)
+    run('carryback', 82, nored, shelf, [((240, 520), R, nored), ((240, 400), R, nored), ((240, 330), None, shelf), ((240, 470), None, shelf)])
+    # إضافة: علبة خضراء جديدة توضع في مكان فارغ
+    newg = shelf + [(560, G)]
+    run('carryadd', 83, shelf, newg, [((560, 520), G, shelf), ((560, 400), G, shelf), ((560, 330), None, newg), ((560, 470), None, newg)])
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal(); hands()
+    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal(); hands(); carry()
