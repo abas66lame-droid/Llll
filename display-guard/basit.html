@@ -27,17 +27,18 @@ main{max-width:900px;margin:auto;padding:12px 16px 40px}
 <header>رقابة العارضة</header>
 <main>
   <div id="start"><p>اضغط لتشغيل الكاميرا، ثم ارسم بإصبعك مربعاً حول العارضة. ثبّت الموبايل على حامل.</p>
+    <p class="mut">مفتاح Claude (مرة واحدة، يُحفظ على هذا الجهاز فقط):</p><input id="key" type="password" dir="ltr" placeholder="sk-ant-..." style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
     <button class="btn pri" onclick="startCam()">📷 تشغيل الكاميرا</button></div>
   <div id="app" hidden>
     <div class="live" id="live"><canvas id="cv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
     <div class="bar"><span>القطع في العارضة:</span><span class="cnt" id="cnt">—</span><span class="mut" id="st"></span></div>
-    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
+    <div class="bar"><button class="btn" onclick="resetBase()">اعتماد الوضع الحالي</button><span class="mut" id="ai"></span><span class="mut">ارسم مربعاً جديداً على الصورة لتغيير منطقة الرقابة.</span></div>
     <div id="alarms"></div>
     <h3>الحالات</h3><div id="cases"><div class="mut">لا توجد حالات بعد.</div></div>
   </div>
 </main>
 <video id="vid" playsinline muted autoplay style="position:fixed;width:2px;height:2px;opacity:0;pointer-events:none"></video>
-<script>
+<script type="module">
 /* نسخة تجريبية مبسّطة: منطقة رقابة واحدة، عدّ تلقائي للقطع، وإنذاران:
    «نقص بالعدد» إذا قلّ عدد القطع، و«تغيّر» إذا بقي العدد (أو زاد) لكن شكل العارضة تغيّر.
    الحكم فقط عندما تثبت الصورة (لا يد ولا حركة)، ثم يصبح الوضع الجديد هو المرجع. */
@@ -46,7 +47,9 @@ const W = 160; // دقة التحليل لعرض المنطقة
 let zone = LS.get('basit_zone', null), cases = LS.get('basit_cases', []), base = null, prev = null, stable = 0, pend = null, lastCount = null, drawing = null;
 const cv = $('#cv'), vid = $('#vid');
 
+$('#key').value = LS.get('basit_key', '');
 async function startCam(){
+  const k = $('#key').value.trim(); if(k) LS.set('basit_key', k);
   try{ vid.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false }); await vid.play(); }
   catch(e){ alert('تعذّر تشغيل الكاميرا. افتح الصفحة من رابط https أو من ملف على الكمبيوتر.'); return; }
   $('#start').hidden = true; $('#app').hidden = false; setInterval(paint, 100); setInterval(tick, 700); renderCases();
@@ -95,40 +98,74 @@ function count(F){
     if(a >= min) boxes.push({ x: x0 / W, y: y0 / H, w: (x1 - x0 + 1) / W, h: (y1 - y0 + 1) / H }); }
   return boxes;
 }
+/* المحرك المحلي يكتشف فقط: تغيّر شيء وثبتت الصورة. Claude يعدّ ويقارن الصورتين ويحكم. */
+let asking = false;
 function tick(){
   const F = grab(); if(!F) return overlay();
   const moving = prev && prev.H === F.H && diffMask(prev, F).reduce((s, v) => s + v, 0) > F.W * F.H * 0.004; prev = F;
-  if(moving){ stable = 0; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
-  if(++stable < 2) return;
-  const boxes = count(F); lastCount = boxes; $('#cnt').textContent = boxes.length;
-  if(!base || base.F.H !== F.H){ base = { F, n: boxes.length, img: F.img }; $('#st').textContent = 'تراقب ✓'; return overlay(); }
-  const m = diffMask(base.F, F), changed = m.reduce((s, v) => s + v, 0) / (F.W * F.H);
-  let kind = null; if(boxes.length < base.n) kind = 'lack'; else if(changed > 0.015) kind = 'chg';
-  // نتأكد بقراءتين متتاليتين قبل الإنذار
-  if(kind && pend && pend.kind === kind && pend.n === boxes.length){ alarm(kind, base, F, boxes.length); base = { F, n: boxes.length, img: F.img }; pend = null; }
-  else pend = kind ? { kind, n: boxes.length } : null;
-  $('#st').textContent = kind ? 'جارٍ التأكد…' : 'تراقب ✓'; overlay();
+  if(moving){ stable = 0; pend = null; $('#st').textContent = 'تنتظر: حركة أو يد'; return overlay(); }
+  if(++stable < 2 || asking) return;
+  if(!base || base.F.H !== F.H){ base = { F, n: null, img: zoneImg() }; $('#st').textContent = 'تراقب ✓'; countBase(); return overlay(); }
+  const changed = diffMask(base.F, F).reduce((s, v) => s + v, 0) / (F.W * F.H);
+  if(changed < 0.008){ pend = null; $('#st').textContent = 'تراقب ✓'; return; }
+  if(!pend){ pend = 1; $('#st').textContent = 'تغيّر… جارٍ التأكد'; return; }  // قراءتان ثابتتان قبل السؤال
+  pend = null; judge(base, F);
 }
-function resetBase(){ base = null; pend = null; }
-function alarm(kind, b, F, n){
-  const c = { t: Date.now(), kind, from: b.n, to: n, before: b.img, after: F.img };
+// صورة المنطقة بدقة جيدة (حتى 1000 بكسل) لـ Claude
+function zoneImg(){ const c = document.createElement('canvas'), w = zone.w * cv.width, h = zone.h * cv.height, k = Math.min(1, 1000 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext('2d').drawImage(cv, zone.x * cv.width, zone.y * cv.height, w, h, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', .85); }
+let SDK = null;
+async function claude(content, schema){
+  const key = LS.get('basit_key', ''); if(!key) throw new Error('أدخل مفتاح Claude في أول الصفحة');
+  SDK = SDK || (await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm')).default;
+  const client = new SDK({ apiKey: key, dangerouslyAllowBrowser: true });
+  const r = await client.beta.messages.create({ model: 'claude-opus-5-5', max_tokens: 4000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content }] });
+  if(r.stop_reason === 'refusal') throw new Error('رفض النموذج');
+  return JSON.parse(r.content.filter(b => b.type === 'text').map(b => b.text).join(''));
+}
+const img = d => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: d.split(',')[1] } });
+async function countBase(){
+  asking = true; $('#ai').textContent = '🤖 Claude يعدّ القطع…';
+  try{ const r = await claude([img(base.img), { type: 'text', text: 'هذه عارضة منتجات في محل. عُدّ القطع (العلب والأجهزة) الموجودة عليها بدقة، ولا تعدّ بطاقات الأسعار.' }],
+      { type: 'object', additionalProperties: false, required: ['count'], properties: { count: { type: 'integer' } } });
+    base.n = r.count; $('#cnt').textContent = r.count; $('#ai').textContent = ''; }
+  catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); }
+  asking = false;
+}
+async function judge(b, F){
+  asking = true; $('#ai').textContent = '🤖 Claude يقارن…'; const after = zoneImg();
+  try{
+    const r = await claude([{ type: 'text', text: 'الصورة الأولى: العارضة قبل.' }, img(b.img), { type: 'text', text: 'الصورة الثانية: العارضة الآن.' }, img(after),
+      { type: 'text', text: 'عُدّ القطع (العلب والأجهزة، لا بطاقات الأسعار) في كل صورة، وقارن. verdict = missing إذا نقصت قطعة، changed إذا لم ينقص شيء لكن قطعة نُقلت أو أُضيفت أو تغيّر مكانها، none إذا لا تغيير حقيقي (إضاءة، اهتزاز). summary جملة عربية واحدة تحدد القطعة ومكانها.' }],
+      { type: 'object', additionalProperties: false, required: ['before', 'after', 'verdict', 'summary'], properties: { before: { type: 'integer' }, after: { type: 'integer' }, verdict: { type: 'string', enum: ['missing', 'changed', 'none'] }, summary: { type: 'string' } } });
+    if(b.n == null) b.n = r.before;
+    if(r.verdict !== 'none') alarm(r.verdict === 'missing' ? 'lack' : 'chg', { n: b.n, img: b.img }, after, Math.max(0, b.n - Math.max(0, r.before - r.after)), r.summary);
+    base = { F, n: r.verdict === 'missing' ? Math.max(0, b.n - Math.max(1, r.before - r.after)) : b.n, img: after }; $('#cnt').textContent = base.n; $('#ai').textContent = '';
+  }catch(e){ $('#ai').textContent = '🤖 ' + (e.message || e); base = { F, n: b.n, img: after }; }
+  asking = false;
+}
+function resetBase(){ base = null; pend = null; $('#cnt').textContent = '—'; }
+function alarm(kind, b, after, n, summary){
+  const c = { t: Date.now(), kind, from: b.n, to: n, before: b.img, after, summary };
   cases.unshift(c); cases = cases.slice(0, 60); LS.set('basit_cases', cases); renderCases(); beep();
   const el = document.createElement('div'); el.className = 'alarm' + (kind === 'chg' ? ' chg' : '');
-  el.innerHTML = `<div style="flex:1"><b>${kind === 'lack' ? '⚠️ نقص بالعدد' : '🔄 تغيّر بالعرض'}</b><div>${kind === 'lack' ? `كان ${b.n} وصار ${n}` : `العدد ${n}، لكن شكل العارضة تغيّر`}</div></div><button class="btn">تم الاطلاع</button>`;
+  el.innerHTML = `<div style="flex:1"><b>${kind === 'lack' ? '⚠️ نقص بالعدد' : '🔄 تغيّر بالعرض'}</b><div>${kind === 'lack' ? `كان ${b.n} وصار ${n}` : `العدد ${n}، لكن شكل العارضة تغيّر`}</div><div>🤖 ${summary || ''}</div></div><button class="btn">تم الاطلاع</button>`;
   el.querySelector('button').onclick = () => el.remove(); $('#alarms').prepend(el);
 }
 function renderCases(){
   $('#cases').innerHTML = cases.length ? cases.map(c => `<div class="case"><span class="tag" style="background:${c.kind === 'lack' ? 'var(--da)' : 'var(--wa)'}">${c.kind === 'lack' ? 'نقص بالعدد' : 'تغيّر'}</span>
-    <b> ${c.kind === 'lack' ? `${c.from} ← ${c.to}` : `العدد ${c.to}`}</b> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}</span>
+    <b> ${c.kind === 'lack' ? `${c.from} ← ${c.to}` : `العدد ${c.to}`}</b> <span class="mut">${new Date(c.t).toLocaleString('ar-IQ')}</span><div>🤖 ${c.summary || ''}</div>
     <div class="pics"><div><img src="${c.before}"><div class="mut">قبل</div></div><div><img src="${c.after}"><div class="mut">بعد</div></div></div></div>`).join('') : '<div class="mut">لا توجد حالات بعد.</div>';
 }
 function overlay(){
   const z = drawing ? { x: Math.min(drawing.x0, drawing.x1), y: Math.min(drawing.y0, drawing.y1), w: Math.abs(drawing.x1 - drawing.x0), h: Math.abs(drawing.y1 - drawing.y0) } : zone;
   if(!z){ $('#ov').innerHTML = ''; $('#st').textContent = 'ارسم مربعاً حول العارضة على الصورة'; return; }
   $('#ov').innerHTML = `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="none" stroke="#38d0c0" stroke-width="2" vector-effect="non-scaling-stroke" stroke-dasharray="${drawing ? '6 4' : ''}"/>`
-    + (!drawing && lastCount ? lastCount.map(b => `<rect x="${(z.x + b.x * z.w) * 100}" y="${(z.y + b.y * z.h) * 100}" width="${b.w * z.w * 100}" height="${b.h * z.h * 100}" fill="none" stroke="#fff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`).join('') : '');
+    ;
 }
 let AC; function beep(){ try{ AC = AC || new AudioContext(); [880, 660, 880].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + i * .18; o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + .16); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .17); }); }catch(e){} }
+Object.assign(window, { startCam, resetBase, state: () => ({ cases, base, zone }) });
 </script>
 </body>
 </html>
