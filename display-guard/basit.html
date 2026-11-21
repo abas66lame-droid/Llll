@@ -818,6 +818,7 @@ const ENG = {
     return cd;
   },
   decide(cands, c, night){
+    cands = cands.filter(a => a.reg.w >= 0.015 && a.reg.h >= 0.015);
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
     for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
@@ -1241,6 +1242,7 @@ function vMon(){
     <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
     <div class="live" id="live"><div id="abar"></div><div class="lvw"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="lbl" id="lbl"></div>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>${S.drawMode ? '' : '<button class="fsb" onclick="fullLive()" title="ملء الشاشة">⛶</button>'}</div>
     <div class="chips" id="chips"></div>
+    ${S.zones.length && Math.max(...S.zones.map(z => z.w)) < 0.55 ? `<div class="note wa" style="margin-top:8px">📏 العارضة صغيرة في الصورة: كل علبة صارت بضع نقاط فيضعف الكشف. <b>قرّب الموبايل</b> حتى تملأ العارضة أغلب عرض الصورة، ثم احذف العارضة وارسمها من جديد.</div>` : ''}
     <div class="card feed" id="feed"></div>
     ${!S.zones.length && !S.drawMode ? `<div class="note wa" style="margin-top:10px"><b>الخطوة التالية:</b> اضغط «✏️ رسم عارضة على الصورة» وارسم مربعاً حول العارضة، حتى تبدأ المراقبة.</div>` : ''}
     ${!isDemo() ? `<div class="card" style="padding:10px 14px"><div class="row" style="justify-content:space-between"><div><b class="sm">وضع الاختبار السريع</b><div class="xs mut">${isTest() ? 'مفعّل: المهلة ' + fmtGrace() + '، والتحليل كل ثانية. أطفئه قبل التشغيل الفعلي.' : 'للتجربة فقط: مهلة قصيرة جداً وتحليل كل ثانية.'}</div></div>
