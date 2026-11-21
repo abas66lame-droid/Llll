@@ -117,8 +117,8 @@ function tick(){
   pend = null; judge(base, F);
 }
 // صورة المنطقة بدقة جيدة (حتى 1000 بكسل) لـ Claude
-function zoneImg(){ const c = document.createElement('canvas'), w = zone.w * cv.width, h = zone.h * cv.height, k = Math.min(1, 1000 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
-  c.getContext('2d').drawImage(cv, zone.x * cv.width, zone.y * cv.height, w, h, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', .85); }
+function zoneImg(){ const c = document.createElement('canvas'), w = zone.w * cv.width, h = zone.h * cv.height, k = Math.min(1, 768 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext('2d').drawImage(cv, zone.x * cv.width, zone.y * cv.height, w, h, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', .75); }
 let SDK = null;
 // كمبيوتر المحل: برنامج Ollama مع نموذج Qwen2.5-VL المفتوح (مجاني، داخل شبكة المحل)
 async function local(content, schema){
@@ -136,17 +136,21 @@ async function gemini(content, schema){
   GM = GM || 'models/gemini-flash-latest'; // الاسم الذي تعطيه Google في مثالها الرسمي
   const parts = content.map(c => c.type === 'image' ? { inline_data: { mime_type: 'image/jpeg', data: c.source.data } } : { text: c.text });
   parts.push({ text: 'أجب بـ JSON فقط بهذا الشكل: ' + JSON.stringify(Object.fromEntries(Object.entries(schema.properties).map(([k, v]) => [k, v.enum ? v.enum.join('|') : v.type]))) });
-  // عند الازدحام (503/429) نعيد المحاولة بعد ثوانٍ، ثم ننتقل لنموذج أخف
-  const models = [GM, 'models/gemini-flash-lite-latest'], body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
+  // عند الازدحام نتنقّل فوراً بين نماذج Gemini المتاحة لهذا المفتاح، ثم ننتظر قليلاً ونعيد الدورة
+  if(!gemini.list){ gemini.list = [GM, 'models/gemini-flash-lite-latest'];
+    try{ const l = await (await fetch(B + 'models?pageSize=200', { headers: { 'X-goog-api-key': key }, signal: AbortSignal.timeout(15000) })).json();
+      const more = (l.models || []).filter(m => /gemini/.test(m.name) && /flash|pro/.test(m.name) && !/image|tts|live|audio|embedding/.test(m.name) && (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name);
+      gemini.list = [...new Set([...gemini.list, ...more.sort().reverse()])].slice(0, 6); }catch(e){} }
+  const models = gemini.list, body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json' } });
   let r, last = '';
-  for(let k = 0; k < 4; k++){
-    const m = models[k < 2 ? 0 : 1];
+  for(let k = 0; k < models.length * 2; k++){
+    const m = models[k % models.length];
     try{ r = await (await fetch(B + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': key }, body, signal: AbortSignal.timeout(40000) })).json(); }
     catch(e){ r = { error: { code: 503, message: e.name === 'TimeoutError' ? 'لا رد خلال 40 ثانية' : 'تعذّر الاتصال: ' + (e.message || e) } }; }
     if(!r.error) break;
     last = r.error.message; const busy = [429, 500, 503].includes(r.error.code) || /demand|overload|unavailable|exhausted/i.test(last);
     if(!busy) throw new Error('Gemini: ' + last);
-    $('#ai').textContent = '🤖 Gemini مزدحم، إعادة المحاولة…'; await new Promise(ok => setTimeout(ok, 4000 * (k + 1)));
+    $('#ai').textContent = '🤖 ' + m.replace('models/', '') + ': ' + last.slice(0, 120) + ' — أجرّب نموذجاً آخر…'; await new Promise(ok => setTimeout(ok, k + 1 < models.length ? 500 : 5000));
   }
   if(r.error) throw new Error('Gemini: ' + last + ' — سيُعاد المحاولة تلقائياً');
   return JSON.parse(r.candidates[0].content.parts.map(p => p.text || '').join(''));
