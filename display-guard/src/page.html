@@ -857,7 +857,7 @@ function header(){
   $('#hdr').innerHTML = `<div><b>حارس العارضات</b><small>${esc(S.cfg.site)}</small></div><span class="sp"></span>
     ${S.running ? (isDemo() ? '<span class="badge amber">وضع تجريبي</span>' : '<span class="badge green">المراقبة تعمل</span>') : '<span class="badge red">المراقبة متوقفة</span>'}
     ${isTest() ? `<span class="badge amber">وضع الاختبار: مهلة ${fmtGrace()}</span>` : ''}${isNight() ? '<span class="badge">مراقبة ليلية</span>' : ''}${c.incident ? `<span class="badge red">${c.incident} تنبيه مفتوح</span>` : ''}`;
-  const T = SIMPLE ? [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'الحالات']] : [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'المناطق'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
+  const T = SIMPLE ? [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'الحالات'], ['zones', '▦', 'العارضات']] : [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'العارضات'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
   $('#nav').innerHTML = T.map(([k, i, n]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="go('${k}')"><b>${i}</b>${n}${k === 'ev' && c.incident ? `<span class="cnt">${c.incident}</span>` : ''}</button>`).join('');
 }
 function go(t){ S.tab = t; window.scrollTo(0, 0); render(); }
@@ -866,7 +866,7 @@ function render(){
   const v = $('#view');
   if(S.tab === 'mon') v.innerHTML = vMon(), mountMon();
   else if(S.tab === 'ev') v.innerHTML = vEv();
-  else if(S.tab === 'zones') v.innerHTML = vZones(), mountZones();
+  else if(S.tab === 'zones'){ v.innerHTML = vZones(); if(!SIMPLE) mountZones(); }
   else if(S.tab === 'sales') v.innerHTML = vSales();
   else if(S.tab === 'rep') v.innerHTML = vRep();
   else if(S.tab === 'set') v.innerHTML = vSet();
@@ -1049,7 +1049,11 @@ function pinGate(fn){ openModal(`<h2>رمز الإدارة</h2><input id="pg" ty
 
 /* ----- المناطق ----- */
 function vZones(){
-  return `<h2>مناطق العارضات</h2><div class="note sm">اسحب بالماوس أو بإصبعك مربعاً حول كل عارضة أو رف في صورة الكاميرا. لا حاجة لتحديد المنتجات؛ النظام يراقب أي شيل أو إضافة داخل المربع. اضغط على مربع موجود لتعديله.</div>
+  // الوضع المبسّط: قائمة العارضات مع الحذف فقط (الرسم من شاشة المراقبة)
+  if(SIMPLE) return `<h2>العارضات</h2><div class="note sm">ترسم العارضة من «المراقبة» بزر «✏️ رسم عارضة». هنا تحذفها.</div>
+    <div class="card">${S.zones.map(z => `<div class="li"><b class="sp">${esc(z.name)}</b><button class="btn sm dan" onclick="confirmBox('حذف «${esc(z.name)}»؟',()=>{S.zones=S.zones.filter(x=>x.id!=='${z.id}');saveZones();render()})">حذف</button></div>`).join('') || '<div class="empty">لا توجد عارضات. ارسمها من «المراقبة».</div>'}</div>
+    ${S.zones.length > 1 ? `<button class="btn dan" onclick="confirmBox('حذف كل العارضات؟',()=>{S.zones=[];saveZones();render()})">حذف كل العارضات</button>` : ''}`;
+  return `<h2>العارضات</h2><div class="note sm">اسحب بالماوس أو بإصبعك مربعاً حول كل عارضة أو رف في صورة الكاميرا. لا حاجة لتحديد المنتجات؛ النظام يراقب أي شيل أو إضافة داخل المربع. اضغط على مربع موجود لتعديله.</div>
     ${S.src ? `<div class="row" style="margin:10px 0"><button class="btn sm" onclick="takeSnap();drawEd()">تحديث الصورة</button><span class="xs mut">${S.zones.length} منطقة</span></div>
     <div class="editor" id="ed"><canvas id="edimg"></canvas><canvas class="ov" id="edov"></canvas></div>` : `<div class="card empty">ابدأ مصدر الفيديو من «المراقبة» أولاً حتى تظهر الصورة.<div style="height:10px"></div><button class="btn pri" onclick="go('mon')">المراقبة</button></div>`}
     <div class="card">${S.zones.map(z => `<div class="li"><b class="sp">${esc(z.name)}</b><span class="sm mut">${esc(z.section || '')}</span><button class="btn sm" onclick="zoneForm('${z.id}')">تعديل</button><button class="btn sm dan" onclick="confirmBox('حذف هذه المنطقة؟',()=>{S.zones=S.zones.filter(x=>x.id!=='${z.id}');saveZones();render()})">حذف</button></div>`).join('') || '<div class="empty">لا توجد مناطق.</div>'}</div>`;
