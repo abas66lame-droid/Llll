@@ -6,7 +6,7 @@
 التشغيل: python tests/make_videos.py   (يكتب إلى tests/out/)
 يحتاج: numpy, pillow
 """
-import os, sys
+import os, sys, math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -269,8 +269,14 @@ def hand_scene(items, hand=None, marker=True, cloth=False):
     im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)); d = ImageDraw.Draw(im)
     for kind, cx, cy in items:
         if kind == 'phone': d.rounded_rectangle([cx - 38, cy - 70, cx + 38, cy + 70], radius=10, fill=(28, 28, 34), outline=(70, 70, 80), width=2); d.rectangle([cx - 30, cy - 58, cx + 30, cy + 52], fill=(36, 38, 46))
+        elif kind == 'phoneR':  # نفس الموبايل بعد وضعه مائلاً قليلاً وبإضاءة مختلفة (لا يطابق بصمته الأولى تماماً)
+            w, h, a = 38, 70, math.radians(14); pts = [(cx + x * math.cos(a) - y * math.sin(a), cy + x * math.sin(a) + y * math.cos(a)) for x, y in [(-w, -h), (w, -h), (w, h), (-w, h)]]
+            d.polygon(pts, fill=(48, 46, 54), outline=(95, 95, 105)); d.polygon([(cx + x * .8 * math.cos(a) - y * .82 * math.sin(a), cy + x * .8 * math.sin(a) + y * .82 * math.cos(a)) for x, y in [(-w, -h), (w, -h), (w, h), (-w, h)]], fill=(60, 64, 76))
         elif kind == 'box': d.rectangle([cx - 50, cy - 82, cx + 50, cy + 82], fill=(230, 40, 50)); [d.line([cx - 50, cy - 82 + k * 12, cx + 50, cy - 70 + k * 12], fill=(250, 230, 60), width=4) for k in range(14)]  # تغطي كل ما وراء الموبايل
         elif kind == 'plain': d.rectangle([cx - 40, cy - 60, cx + 40, cy + 60], fill=(45, 45, 50))  # علبة سادة بلا تفاصيل
+        elif kind.startswith('back'):  # قطع خلفية مزدحمة (علب ملونة بخطوط) تُغطّى جزئياً بما يوضع أمامها
+            col = [(220, 60, 60), (60, 150, 220), (240, 190, 40), (90, 180, 90)][int(kind[4:])]
+            d.rectangle([cx - 46, cy - 90, cx + 46, cy + 90], fill=col); [d.line([cx - 46, cy - 90 + k * 14, cx + 46, cy - 80 + k * 14], fill=(250, 250, 250), width=3) for k in range(13)]
         elif kind == 'gift': d.rectangle([cx - 36, cy - 36, cx + 36, cy + 36], fill=(40, 90, 210)); d.rectangle([cx - 6, cy - 36, cx + 6, cy + 36], fill=(250, 250, 250)); d.rectangle([cx - 36, cy - 6, cx + 36, cy + 6], fill=(250, 250, 250))
     if hand:
         d.ellipse([hand[0] - 45, hand[1] - 40, hand[0] + 45, hand[1] + 40], fill=(205, 160, 135)); d.rectangle([hand[0] - 30, min(SH, hand[1] + 30), hand[0] + 30, SH], fill=(60, 64, 80))  # الذراع حتى أسفل الصورة
@@ -300,7 +306,26 @@ def hands():
     rng = np.random.default_rng(67); f = lambda it, h=None: noisy(rng, hand_scene(it, h), 3); g, p2 = ('gift', *A), ('phone', *B)
     seq = [f([p2]) for _ in range(24)] + [f([p2], (A[0], A[1] + 120)), f([p2], A), f([g, p2], A), f([g, p2], A), f([g, p2], (A[0] + 100, A[1] + 20))]
     seq += [f([g, p2], (B[0] - 80, B[1] + 10)), f([g, p2], B), f([g], B), f([g], B), f([g], (B[0], B[1] + 120)), f([g], (B[0], B[1] + 260))] + [f([g]) for _ in range(170)]
-    write_y4m('putthentake.y4m', seq)                        # أخذ الموبايل ووضع علبة مختلفة — يُفترض: إنذار للموبايل
+    write_y4m('putthentake.y4m', seq)
+    # (تجربة ميدانية) «أضفت قطعة اعتبرها سرقة لأنها غطّت جزءاً مما خلفها» و«نقلت قطعة فاعتبرها سرقتين»
+    back = [('back0', 110, 220), ('back1', 250, 220), ('back2', 390, 220), ('back3', 530, 220)]
+    def clutter(name, seed, before, after, touch, marker=True):
+        rng = np.random.default_rng(seed); f = lambda it, h=None: noisy(rng, hand_scene(back + it, h, marker), 3)
+        seq = [f(before) for _ in range(24)]
+        for k, (pt, state) in enumerate(touch): seq += [f(state, pt)] * 3
+        seq += [f(after, (touch[-1][0][0], touch[-1][0][1] + 150)), f(after, (touch[-1][0][0], touch[-1][0][1] + 280))] + [f(after) for _ in range(170)]
+        write_y4m(name + '.y4m', seq)
+    G = ('gift', 250, 300)  # علبة زرقاء توضع أمام العلبة الثانية فتغطي جزءها السفلي
+    for mk, sfx in [(True, ''), (False, '_nohand')]:
+        clutter('addfront' + sfx, 71, [], [G], [((250, 300), [G])], mk)
+        P0, P1 = ('phone', 110, 300), ('phone', 530, 300)  # موبايل أمام العلبة الأولى يُنقل أمام الرابعة
+        clutter('moveclutter' + sfx, 72, [P0], [P1], [((110, 300), [P0]), ((110, 300), []), ((320, 300), []), ((530, 300), [P1])], mk)
+        # الحالة الأصعب: موبايل أسود أملس يوضع أمام علبة مخططة (يغطي زخرفتها)، ونقل موبايل يُوضع مائلاً بإضاءة مختلفة
+        Pf = ('phone', 250, 290)
+        clutter('addfront2' + sfx, 73, [], [Pf], [((250, 290), [Pf])], mk)
+        Q0, Q1 = ('phone', 110, 290), ('phoneR', 530, 290)
+        clutter('moveclutter2' + sfx, 74, [Q0], [Q1], [((110, 290), [Q0]), ((110, 290), []), ((320, 300), []), ((530, 290), [Q1])], mk)
+                        # أخذ الموبايل ووضع علبة مختلفة — يُفترض: إنذار للموبايل
 
 
 if __name__ == '__main__':

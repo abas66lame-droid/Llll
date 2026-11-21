@@ -18,6 +18,7 @@ CHROME = os.environ.get('CHROME')  # مثال: /usr/bin/google-chrome
 GUM = {'id': 'gum', 'name': 'العلكة', 'section': '', 'x': 0.1672, 'y': 0.1796, 'w': 0.4554, 'h': 0.2764}
 ZL = {'id': 'zl', 'name': 'عارضة يسار', 'section': '', 'x': 0.08, 'y': 0.2, 'w': 0.38, 'h': 0.6}
 ZR = {'id': 'zr', 'name': 'عارضة يمين', 'section': '', 'x': 0.54, 'y': 0.2, 'w': 0.38, 'h': 0.6}
+ZALL = {'id': 'za', 'name': 'العارضة', 'section': '', 'x': 0.05, 'y': 0.15, 'w': 0.9, 'h': 0.75}
 SHELF = {'id': 'sh', 'name': 'رف الشيبس والشوكولا', 'section': 'مواد غذائية', 'mode': 'stock', 'x': 0.0, 'y': 0.17, 'w': 0.66, 'h': 0.75}
 MOUSE = {'id': 'mouse', 'name': 'الماوس', 'section': '', 'x': 0.7166, 'y': 0.2577, 'w': 0.2492, 'h': 0.2233}
 # كاشف أشخاص وهمي (يحاكي MediaPipe): يعتبر البكسلات الخضراء (كمّ الذراع) شخصاً
@@ -96,6 +97,16 @@ SCENARIOS = {
     'reveal': ('reveal.y4m', [ZL, ZR], 30, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يسار', 'incident')], MOCK_HAND),
     'handswap': ('handswap.y4m', [ZL, ZR], 34, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يسار', 'incident')] and not [1 for _, k, s in ev if k == 'moved' or s == 'moved'], MOCK_HAND),
     'putthentake': ('putthentake.y4m', [ZL, ZR], 34, lambda ev: [(z, s) for z, k, s in ev if k == 'removal'] == [('عارضة يمين', 'incident')] and not [1 for _, k, s in ev if k == 'moved' or s == 'moved'], MOCK_HAND),
+    # عارضة مزدحمة: إضافة قطعة تغطي جزءاً مما خلفها ≠ سرقة، ونقل قطعة = نقل واحد لا سرقتان (بيد وبدونها)
+    'addfront': ('addfront.y4m', [ZALL], 32, lambda ev: NO_ALARM(ev) and [k for _, k, _ in ev] == ['added'], MOCK_HAND),
+    'addfront_nohand': ('addfront_nohand.y4m', [ZALL], 32, NO_ALARM, None, {'ai': False}),
+    'moveclutter': ('moveclutter.y4m', [ZALL], 36, lambda ev: NO_ALARM(ev) and len([1 for _, k, s in ev if k == 'moved' or s == 'moved']) == 1, MOCK_HAND),
+    'moveclutter_nohand': ('moveclutter_nohand.y4m', [ZALL], 36, lambda ev: NO_ALARM(ev) and len([1 for _, k, s in ev if k == 'moved' or s == 'moved']) == 1, None, {'ai': False}),
+    'addfront2': ('addfront2.y4m', [ZALL], 32, NO_ALARM, MOCK_HAND),
+    'addfront2_nohand': ('addfront2_nohand.y4m', [ZALL], 32, NO_ALARM, None, {'ai': False}),
+    # بيد: نقل واحد بلا إنذار. بلا يد لا دليل على أنها نفس القطعة؛ المطلوب على الأقل ألا تصبح سرقتين (مكان الوضع ليس سرقة)
+    'moveclutter2': ('moveclutter2.y4m', [ZALL], 36, lambda ev: NO_ALARM(ev) and len([1 for _, k, s in ev if k == 'moved' or s == 'moved']) == 1, MOCK_HAND),
+    'moveclutter2_nohand': ('moveclutter2_nohand.y4m', [ZALL], 36, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s in ('pending', 'incident')]) <= 1, None, {'ai': False}),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
 }
 
