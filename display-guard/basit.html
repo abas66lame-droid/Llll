@@ -922,7 +922,7 @@ const ENG = {
     }
   }
 };
-function addEvent(e){ if(isDemo()) e.demo = true; if(DBG_CUR && !e.dbg) e.dbg = DBG_CUR; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); }
+function addEvent(e){ if(isDemo()) e.demo = true; if(DBG_CUR && !e.dbg) e.dbg = DBG_CUR; S.events.unshift(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); GEMINI.ask(e); }
 function putEvent(e){ DB.put('events', e); refreshSoon(); }
 function trySale(e){
   const w = saleWin() * 60, s = S.sales.filter(s => s.zone === e.zone && s.remaining > 0 && s.t >= e.t_start - w).sort((a, b) => a.t - b.t)[0];
@@ -1002,7 +1002,36 @@ const JUDGE = { busy: 0, queue: [],
       return r.ok && j.ok ? 'متصل ✓' : (j.error || 'خطأ ' + r.status); }catch(e){ return 'تعذّر الاتصال: ' + (e.message || e); } }
 };
 const aiLine = e => e.ai ? `<div class="ai ${e.ai.verdict === 'taken' || e.ai.verdict === 'concealed' ? 'bad' : ''}">🤖 <b>Claude:</b> ${esc(e.ai.summary)} <span class="xs mut">(${AIV[e.ai.verdict] || e.ai.verdict} · ثقة ${Math.round(e.ai.confidence * 100)}%)</span></div>`
-  : e.aiPending ? '<div class="xs mut" style="margin-top:4px">🤖 Claude يحلل الصور…</div>' : e.aiErr ? `<div class="xs mut" style="margin-top:4px">🤖 ${esc(e.aiErr)}</div>` : '';
+  : e.aiPending ? '<div class="xs mut" style="margin-top:4px">🤖 Claude يحلل الصور…</div>' : e.aiErr ? `<div class="xs mut" style="margin-top:4px">🤖 ${esc(e.aiErr)}</div>` : ''
+  + (e.gem ? `<div class="ai">🔍 <b>Gemini:</b> ${esc(e.gem)}</div>` : e.gemPending ? '<div class="xs mut" style="margin-top:4px">🔍 Gemini يحدد المنتج…</div>' : '');
+
+// Gemini: تسمية المنتج عند كل حدث (مجاني، لا يحتاج خادم)
+const GEMINI_KEY = window.GEMINI_KEY || '';
+const GEMINI = {
+  ask(e){
+    if(!GEMINI_KEY || e.gem || e.gemPending) return;
+    if(!['removal','night','added','moved','swap'].includes(e.kind)) return;
+    const img = e.img_c || e.img_b || e.img_a; if(!img) return;
+    e.gemPending = true; putEvent(e); refreshSoon();
+    this.send(e, img, 0);
+  },
+  async send(e, img, tries){
+    const b64 = img.split(',')[1] || img;
+    const prompt = 'أنت مساعد لمحل إلكترونيات عراقي. انظر لصورة رف العارضة وأخبرني باختصار شديد: ما المنتج الموجود أو المفقود؟ فقط اسم المنتج (مثال: راوتر TP-Link AC1200). لا تكتب أي شيء آخر.';
+    const body = { contents:[{ parts:[{ text: prompt },{ inline_data:{ mime_type:'image/jpeg', data: b64 }}]}] };
+    try{
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_KEY}`,
+        { method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key': GEMINI_KEY}, body: JSON.stringify(body) });
+      const j = await r.json().catch(()=>({}));
+      const txt = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      e.gemPending = false;
+      if(txt){ e.gem = txt.slice(0,80); if(!e.name) e.name = e.gem; }
+      else if((r.status===429||r.status>=500) && tries<1){ await new Promise(ok=>setTimeout(ok,15000)); return this.send(e,img,tries+1); }
+      else e.gem = '';
+    }catch(err){ if(tries<1){ await new Promise(ok=>setTimeout(ok,15000)); return this.send(e,img,tries+1); } e.gemPending=false; e.gem=''; }
+    putEvent(e); refreshSoon();
+  }
+};
 
 /* =================== كشف حركة الإخفاء (تجريبي) ===================
    يد (معصم من MediaPipe Pose) تلمس عارضة أو رفاً، ثم تذهب مباشرة إلى منطقة الجيب/الخصر/داخل الملابس وتبقى لحظة
