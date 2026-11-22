@@ -48,6 +48,7 @@ h2{font-size:18px;margin:16px 0 6px}
 .feed .it{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line);cursor:pointer}.feed h3+.it{border-top:0}
 .feed img{width:64px;height:44px;object-fit:cover;border-radius:6px;flex:none;background:#eee}
 .card.hl{outline:3px solid var(--da);outline-offset:2px}
+.counts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.cnt-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 12px;min-width:120px;cursor:pointer}.cnt-card .big{font-size:26px;font-weight:800;line-height:1.2}
 .ai{background:#eef4ff;border:1px solid #c9dafc;border-radius:8px;padding:6px 9px;margin-top:6px;font-size:13px;line-height:1.6}.ai.bad{background:#fdecec;border-color:#f3c0c0}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:20px;padding:3px 4px 3px 10px;font-size:12.5px;background:#fff}
@@ -1242,7 +1243,7 @@ function vMon(){
   return `    <div class="row" style="margin:12px 0 8px"><b>${S.src === 'camera' ? 'الكاميرا' : 'كاميرا تجريبية'}</b><span class="xs mut" id="mstat"></span><span class="xs" id="aistat"></span><span class="sp"></span>${S.src === 'camera' ? '<button class="btn sm" onclick="flipCam()">تبديل الكاميرا</button>' : ''}<button class="btn sm dan" onclick="confirmBox('إيقاف المراقبة؟', () => stopSource())">إيقاف</button></div>
     <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
     <div class="live" id="live"><div id="abar"></div><div class="lvw"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="lbl" id="lbl"></div>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>${S.drawMode ? '' : '<button class="fsb" onclick="fullLive()" title="ملء الشاشة">⛶</button>'}</div>
-    <div class="chips" id="chips"></div>
+    ${SIMPLE ? '<div class="counts" id="counts"></div>' : ''}<div class="chips" id="chips"></div>
     ${S.zones.length && Math.max(...S.zones.map(z => z.w)) < 0.55 ? `<div class="note wa" style="margin-top:8px">📏 العارضة صغيرة في الصورة: كل علبة صارت بضع نقاط فيضعف الكشف. <b>قرّب الموبايل</b> حتى تملأ العارضة أغلب عرض الصورة، ثم احذف العارضة وارسمها من جديد.</div>` : ''}
     <div class="card feed" id="feed"></div>
     ${!S.zones.length && !S.drawMode ? `<div class="note wa" style="margin-top:10px"><b>الخطوة التالية:</b> اضغط «✏️ رسم عارضة على الصورة» وارسم مربعاً حول العارضة، حتى تبدأ المراقبة.</div>` : ''}
@@ -1313,6 +1314,9 @@ function updMon(){
         return r.st.map((s, k) => s === 'same' ? '' : `<rect x="${(r.x0 + (k % r.nx) * r.cs) / r.W * 100}" y="${(r.y0 + ((k / r.nx) | 0) * r.cs) / r.H * 100}" width="${r.cs / r.W * 100}" height="${r.cs / r.H * 100}" fill="${col[s]}" fill-opacity=".45" stroke="none"/>`).join(''); }).join('') : '')
     + (S.cfg.ai && !isDemo() && MP.state === 'ready' && now() - S.lastTick < 3 ? MP.boxes.map(b => `<rect x="${b.x * 100}" y="${b.y * 100}" width="${b.w * 100}" height="${b.h * 100}" fill="none" stroke="#fff" stroke-dasharray="3 3" style="stroke-width:1.5px" vector-effect="non-scaling-stroke"/>`).join('') : '');
   alertBar(); liveLabels(); liveFeed();
+  if(SIMPLE) $('#counts').innerHTML = S.zones.map(z => { const k = zoneCount(z);
+    return `<div class="cnt-card" onclick="setTotal('${z.id}')"><div class="xs mut">${esc(z.name)}</div>${k.total != null ? `<div class="big">${k.now}<span class="xs mut"> / ${k.total}</span></div>` : '<div class="xs" style="color:var(--inf)">اضغط لإدخال عدد القطع</div>'}
+      <div class="xs">${k.miss ? `<b style="color:var(--da)">نقص ${k.miss}</b>` : '<span style="color:var(--ok)">لا نقص</span>'}${k.add ? ` · <span style="color:var(--inf)">مضاف ${k.add}</span>` : ''}</div></div>`; }).join('');
   $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
     const pe = ev.filter(e => e.status === 'pending').sort((a, b) => a.deadline - b.deadline)[0], left = pe ? Math.max(0, Math.ceil(pe.deadline - t)) : 0;
     const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>', blind: '<b style="color:var(--da)">الكاميرا مغطاة أو مظلمة</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
@@ -1351,6 +1355,19 @@ function liveFeed(){
       return `<div class="it" onclick="openEv('${e.id}')">${e.img_a || e.img_c ? `<img src="${e.img_a || e.img_c}">` : '<img>'}<div style="flex:1;min-width:0"><div class="row" style="gap:6px"><b class="sm">${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''}</b><span class="tag ${st[1]}">${st[0]}</span></div><div class="xs mut">${esc(zoneOf(e.zone).name)} · <span data-t="${evT(e)}"></span></div>${e.ai ? `<div class="xs" style="margin-top:2px">🤖 ${esc(e.ai.summary)}</div>` : e.aiPending ? '<div class="xs mut">🤖 يحلل…</div>' : ''}</div></div>`; }).join('') : '<div class="xs mut">لا أحداث بعد. أي شيل أو نقل أو تنبيه يظهر هنا فوراً.</div>'); }
   el.querySelectorAll('[data-t]').forEach(x => x.textContent = ago(+x.dataset.t));
 }
+// العدد: ما أُخذ ولم يرجع (معلّق أو منبَّه عليه) ينقص، والإضافات منذ إدخال العدد تزيد
+function zoneCount(z){
+  const since = z.totalAt || 0, E = S.events.filter(e => e.zone === z.id && e.t_start >= since);
+  const miss = E.filter(e => (e.kind === 'removal' || e.kind === 'night') && (e.status === 'pending' || e.status === 'incident')).length;
+  const add = E.filter(e => e.kind === 'added').length;
+  return { total: z.total == null ? null : z.total, miss, add, now: z.total == null ? null : Math.max(0, z.total - miss + add) };
+}
+function setTotal(id){ const z = S.zones.find(x => x.id === id); if(!z) return;
+  openModal(`<h2>عدد القطع في «${esc(z.name)}»</h2><p class="sm">اكتب عدد القطع الموجودة الآن مرة واحدة. بعدها يحسب النظام وحده: كل قطعة تُؤخذ تنقص، وكل قطعة تُضاف تزيد، والنقل لا يغيّر العدد.</p>
+    <div class="fld"><input id="tot" type="number" min="0" inputmode="numeric" value="${z.total ?? ''}" style="font-size:22px;text-align:center"></div>
+    <div class="f2"><button class="btn pri" onclick="saveTotal('${id}')">حفظ</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`); setTimeout(() => $('#tot') && $('#tot').focus(), 50); }
+function saveTotal(id){ const z = S.zones.find(x => x.id === id), v = parseInt($('#tot').value); if(!z || isNaN(v)) return toast('اكتب رقماً');
+  z.total = v; z.totalAt = now(); saveZones(); closeModal(); updMon(); toast('سيحسب النظام العدد من الآن'); }
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
 function openEv(id){ const e = S.events.find(x => x.id === id); S.evf = e && e.status === 'incident' ? 'incident' : 'all'; go('ev');
   setTimeout(() => { const c = document.getElementById('ev_' + id); if(c){ c.scrollIntoView({ block: 'center' }); c.classList.add('hl'); } }, 120); }
