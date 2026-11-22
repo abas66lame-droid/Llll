@@ -122,7 +122,7 @@ const DB = {
 };
 const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true, judge: true, judgeModel: 'claude-opus-5-5', judgeUrl: '', judgeKey: '', judgeMax: 400 };
 const SIMPLE = !!window.SIMPLE;
-if(SIMPLE) Object.assign(DEF, { test: true, testSec: 10 });
+if(SIMPLE) Object.assign(DEF, { test: true, testSec: 10, fine: true });
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
   events: [], sales: [], tab: 'mon', evf: 'open', src: null, stream: null, running: false, demo: null,
@@ -220,7 +220,7 @@ function mpName(src, box){
 }
 
 /* =================== مصادر الفيديو =================== */
-const AW = 960;
+const AW = window.SIMPLE ? 1280 : 960;
 const frameCv = document.createElement('canvas');
 async function startScreen(){
   try{
