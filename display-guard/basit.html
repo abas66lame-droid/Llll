@@ -1394,6 +1394,10 @@ function vEv(){
   return `<h2>التنبيهات والأحداث</h2><div class="seg">${F.map(([k, n]) => `<button class="${S.evf === k ? 'on' : ''}" onclick="S.evf='${k}';render()">${n}</button>`).join('')}</div>
     <div class="note sm">عند شيل منتج تبدأ مهلة ${fmtGrace()}. إذا رجع المنتج أو سُجّل بيعه تُغلق الحالة تلقائياً. وإذا انتهت المهلة بدون ذلك تصبح «اختفاء غير مبرر» ويصدر تنبيه.</div>
     <div class="row" style="margin:8px 0"><button class="btn sm" onclick="exportCases()">📤 تصدير آخر الحالات بالصور (أرسله للمطوّر)</button></div>
+    <div class="row" style="margin:8px 0;gap:6px">
+      <button class="btn sm${TL.on ? ' pri' : ''}" onclick="tlToggle()">${TL.on ? '⏹ إيقاف التسجيل' : '⏺ تسجيل مستمر (صورة/دقيقة)'}</button>
+      ${TL.shots.length ? `<button class="btn sm" onclick="tlExport()">💾 تنزيل (${TL.shots.length} صورة)</button><button class="btn sm dan" onclick="tlClear()">مسح</button>` : ''}
+    </div>
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
 }
 // ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
@@ -1401,6 +1405,26 @@ function exportCases(){
   const L = S.events.slice(0, 30).map(e => ({ kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
   download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
+// تسجيل مستمر: صورة كل دقيقة للتدريب اللاحق
+const TL = { on: false, shots: [], max: 480, iv: null }; // max=480 = 8 ساعات
+function tlToggle(){
+  if(TL.on){ clearInterval(TL.iv); TL.iv = null; TL.on = false; toast('توقف التسجيل — ' + TL.shots.length + ' صورة محفوظة'); render(); return; }
+  if(!S.src){ toast('شغّل الكاميرا أولاً'); return; }
+  TL.on = true;
+  TL.iv = setInterval(() => {
+    const c = grabFrame(); if(!c) return;
+    if(TL.shots.length >= TL.max){ clearInterval(TL.iv); TL.iv = null; TL.on = false; toast('اكتمل التسجيل (' + TL.max + ' صورة)'); render(); return; }
+    TL.shots.push({ t: now(), img: c.toDataURL('image/jpeg', 0.5) });
+  }, 60000);
+  toast('بدأ التسجيل — صورة كل دقيقة');
+  render();
+}
+function tlExport(){
+  if(!TL.shots.length){ toast('لا توجد صور مسجّلة'); return; }
+  download('timelapse-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.json',
+    JSON.stringify({ count: TL.shots.length, shots: TL.shots }), 'application/json');
+}
+function tlClear(){ TL.shots = []; toast('مسحت الصور المحفوظة'); render(); }
 function evCard(e){
   const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
   return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
