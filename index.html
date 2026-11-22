@@ -7968,12 +7968,23 @@ function openPointSlider(staffId, deptId, date, criterionId, fieldLabel, current
   };
 }
 
+/* نقاط أمس حتى الساعة ٣ فجراً — لأقسام محدّدة فقط (الحسابات الامنة: جعفر) */
+const AM_LATE_POINTS_DEPTS = ['dept12'];
+window.__amPtsYday = window.__amPtsYday || {};
+function amPtsLateOpen(){ try{ return iraqNow().getHours() < 3; }catch(e){ return false; } }
+window.amPtsDay = function(deptId, y){
+  if (y && !amPtsLateOpen()){ try{ neoToast('انتهت مهلة نقاط الأمس (تُغلق الساعة 3 فجراً)'); }catch(e){} return; }
+  window.__amPtsYday[deptId] = !!y; renderPointsSection(deptId);
+};
 async function renderPointsSection(deptId){
   const el = document.getElementById('pointsSection');
   if (!el) return;
   const current = neoDepartmentSectionGuard(el, deptId);
   if (!current()) return false;
-  const date = currentDate || todayStr();
+  const _lateDept = AM_LATE_POINTS_DEPTS.includes(String(deptId)) && !currentManageMode;
+  if (_lateDept && window.__amPtsYday[deptId] && !amPtsLateOpen()) window.__amPtsYday[deptId] = false;   /* انتهت المهلة */
+  const _yday = _lateDept && !!window.__amPtsYday[deptId];
+  const date = _yday ? addDaysStr(todayStr(), -1) : (currentDate || todayStr());
   /* المعطَّل مؤقتاً لا يظهر في النقاط أيضاً — كما في تقييم الموظفين (يبقى في خانة التعديل وحدها) */
   const staffList = (await getStaffList(deptId))
     .filter(st => (typeof currentManageMode !== 'undefined' && currentManageMode) || !neoIsOff(st.id));
@@ -7987,7 +7998,7 @@ async function renderPointsSection(deptId){
   if (!current()) return false;
 
   /* حالة اكتمال النقاط لملخص الشفت فقط — لا تغيير لأي درجة أو قاعدة حساب. */
-  if (document.getElementById('shiftView') && !document.getElementById('shiftView').classList.contains('hidden')){
+  if (!_yday && document.getElementById('shiftView') && !document.getElementById('shiftView').classList.contains('hidden')){
     let applicable = 0, complete = true;
     staffList.forEach(staff => {
       const group = pgOn ? neoPgOf('staff',staff.id,staff.name) : 0;
@@ -8078,8 +8089,12 @@ async function renderPointsSection(deptId){
       ${criteria.length === 0 ? `<button class="secondary" style="margin-top:8px; width:100%;" onclick="seedDefaultPointCriteria('${deptId}')">✨ استخدم المعايير الافتراضية الستة</button>` : ''}
     </div>` : '';
 
+  const _dayBar = _lateDept ? `<div class="amPtsDays" role="group" aria-label="يوم النقاط">
+      <button type="button" class="${_yday ? 'on' : ''}${amPtsLateOpen() ? '' : ' lock'}" onclick="amPtsDay('${deptId}', true)">أمس<small>${amPtsLateOpen() ? 'متاح حتى 3 فجراً' : 'مغلق'}</small></button>
+      <button type="button" class="${_yday ? '' : 'on'}" onclick="amPtsDay('${deptId}', false)">اليوم<small>${neoHtml(todayStr())}</small></button>
+    </div>${_yday ? '<div style="color:#d3a04f;font-size:12px;text-align:center;margin:-4px 0 10px;">تقيّم الآن نقاط يوم ' + neoHtml(date) + '</div>' : ''}` : '';
   el.innerHTML = `
-    <h3>🏆 نقاط الموظفين اليومية</h3>
+    <h3>🏆 نقاط الموظفين اليومية</h3>${_dayBar}
     <details class="neoShiftHelp"><summary aria-label="طريقة تقييم النقاط" title="طريقة تقييم النقاط">ⓘ</summary><div class="neoShiftHelpText">اضغط على أي رقم لفتح شريط التقييم من 0 إلى 10.</div></details>
     <style>.point-cell{width:36px;height:36px;border-radius:8px;background:#12141a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:bold;}</style>
     ${tablesHtml}
@@ -31731,12 +31746,17 @@ window.amIsLeaveRow = amIsLeaveRow;
   };
   /* زر في الإعدادات للحسابات المخوّلة */
   var orig = window.neoOpenSettings;
+  /* يُطابَق مع الحساب الحالي في كل مرة: يُضاف للمخوّلين ويُزال عن غيرهم
+     (كان يبقى بعد تبديل الحساب على نفس الجهاز فيظهر لمسؤولي الشفت) */
   function addBtn(){
-    if (!canGrant() || document.getElementById('amLvBtn') || typeof window.__neoDock !== 'function') return;
+    var old = document.getElementById('amLvBtn');
+    if (!canGrant()){ if (old) (old.closest('.neoSettingsRow') || old).remove(); return; }
+    if (old || typeof window.__neoDock !== 'function') return;
     var b = document.createElement('button'); b.id = 'amLvBtn'; b.type = 'button'; b.className = 'secondary amLvDockBtn';
-    b.textContent = 'إجازة مسؤول شفت'; b.onclick = window.amLeaveOpen;
+    b.title = 'إجازة مسؤول شفت'; b.textContent = '›'; b.onclick = window.amLeaveOpen;
     window.__neoDock().appendChild(b);
   }
+  document.addEventListener('neo-auth-changed', function(){ try{ addBtn(); }catch(e){} });
   /* يُضاف عند فتح الإعدادات — بعد اكتمال تحميل الحساب */
   var _open = window.neoOpenSettings;
   if (typeof _open === 'function') window.neoOpenSettings = function(){ try{ addBtn(); }catch(e){} return _open.apply(this, arguments); };
@@ -31783,6 +31803,11 @@ html body #hallAuditSummary .amHallTxt small b{display:inline;font-size:12px;col
 html body #hallAuditSummary .amHallSum > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){grid-column:2;justify-self:start;width:auto!important;margin:4px 0 0!important;padding:7px 14px!important;min-height:0!important;font-size:12.5px!important}
 html body #hallContentWrap .dept-card .amHallMini{display:block;flex:0 0 56px;width:56px;height:5px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;margin-inline-start:auto}
 html body #hallContentWrap .dept-card .amHallMini span{display:block;height:100%;background:var(--accent);border-radius:9px}
+html body #pointsSection .amPtsDays:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:grid;grid-template-columns:1fr 1fr;gap:4px;background:rgba(0,0,0,.22);border-radius:14px;padding:4px;margin:6px 0 12px}
+html body #pointsSection .amPtsDays > button:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){display:block!important;margin:0!important;width:100%!important;min-height:0!important;padding:8px 0!important;border:0!important;border-radius:11px!important;background:transparent!important;box-shadow:none!important;color:var(--ui-muted)!important;font-size:14px!important;font-weight:800!important;line-height:1.3!important}
+html body #pointsSection .amPtsDays > button.on:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){background:var(--ui-panel,rgba(22,38,58,.9))!important;color:var(--accent)!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)!important}
+html body #pointsSection .amPtsDays > button.lock:not(#_a):not(#_b):not(#_c):not(#_d):not(#_e):not(#_f){opacity:.5!important}
+html body #pointsSection .amPtsDays > button small{display:block;font-size:10.5px;font-weight:500;color:var(--ui-muted);margin-top:2px}
 </style>
 <style id="amCalStyle">
 #amSaOv .amCalHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
@@ -31896,7 +31921,7 @@ html body #amSaOv .amRpPer button.on:not(#_a):not(#_b):not(#_c):not(#_d){backgro
       + '<small>' + full + ' يوماً مكتملاً من ' + vals.length + ' مثبّت</small></div><span>' + c.label + '</span></div>'
       + '<div class="amCalGrid">' + DW.map(function(w){ return '<div class="amCalW">' + w + '</div>'; }).join('') + cells + '</div>'
       + '<div class="amCalKey"><span><i style="background:' + neoTrendColor(100) + '"></i>ممتاز</span><span><i style="background:' + neoTrendColor(85) + '"></i>جيد</span>'
-      + '<span><i style="background:' + neoTrendColor(75) + '"></i>متوسط</span><span><i style="background:' + neoTrendColor(10) + '"></i>منخفض</span><span><i style="background:#aab4c3"></i>إجازة</span></div></div>';
+      + '<span><i style="background:' + neoTrendColor(75) + '"></i>متوسط</span><span><i style="background:' + neoTrendColor(10) + '"></i>منخفض</span>' + (lvs && Object.keys(lvs).length ? '<span><i style="background:#aab4c3"></i>إجازة</span>' : '') + '</div></div>';
   }
   async function trend(dept){
     var c = neoBillingMonth(st.off), pc = neoBillingMonth(st.off + 1);
