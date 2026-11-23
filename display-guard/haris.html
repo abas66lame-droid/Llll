@@ -715,9 +715,15 @@ const ENG = {
       if(who.length){
         S.diag[z.id] = { state: hands.length ? 'hand' : 'person' };
         // يد أو شخص داخل العارضة: نحتفظ بصورة اللحظة ونعدّ التفاعل، ولا نحكم الآن
-        if(!zs.busy){ zs.busy = true; countInteraction(z.id); }
+        if(!zs.busy){ zs.busy = true; zs.busySince = now(); countInteraction(z.id); }
         zs.lastBusy = { t: now(), who: [...new Set(who)].join(' و'), img: this.shot(c, z, '#5b8def', 640) };
+        // نجمّد الـ baseline طالما الشخص موجود (لا تعيد baseline أثناء التفاعل — أهم إصلاح)
         S.moving[z.id] = true; continue;
+      }
+      // انتهى التفاعل: قارن الـ baseline المجمّد بالوضع الحالي لرصد ما أُخذ
+      if(zs.busy && zs.busySince && now() - zs.busySince > 1){
+        zs.busySince = null;
+        // لا تُعد الـ baseline هنا — اترك المحرك يقارن ويرصد أولاً
       }
       zs.busy = false;
       if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
@@ -818,7 +824,7 @@ const ENG = {
     return cd;
   },
   decide(cands, c, night){
-    cands = cands.filter(a => a.reg.w >= 0.015 && a.reg.h >= 0.015);
+    cands = cands.filter(a => a.reg.w >= 0.008 && a.reg.h >= 0.008); // خُفِّض من 0.015 لرصد القطع الصغيرة (دوائر، بطاقات)
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
     for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
@@ -1426,6 +1432,11 @@ function vEv(){
       <button class="btn sm${TL.on ? ' pri' : ''}" onclick="tlToggle()">${TL.on ? '⏹ إيقاف التسجيل' : '⏺ تسجيل مستمر (صورة/دقيقة)'}</button>
       ${TL.shots.length ? `<button class="btn sm" onclick="tlExport()">💾 تنزيل (${TL.shots.length} صورة)</button><button class="btn sm dan" onclick="tlClear()">مسح</button>` : ''}
     </div>
+    <div class="row" style="margin:8px 0;gap:6px">
+      <button class="btn sm" onclick="standSave()" title="احفظ بصمة هذه العارضة لتعرّف عليها لاحقاً">📸 حفظ بصمة العارضة</button>
+      <button class="btn sm" onclick="standDetect()" title="تعرّف على العارضة الحالية">🔍 تعرّف على العارضة</button>
+      <button class="btn sm" onclick="standList()" title="قائمة العارضات المحفوظة">📋 العارضات (${STAND.list().length})</button>
+    </div>
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
 }
 // ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
@@ -1453,6 +1464,94 @@ function tlExport(){
     JSON.stringify({ count: TL.shots.length, shots: TL.shots }), 'application/json');
 }
 function tlClear(){ TL.shots = []; toast('مسحت الصور المحفوظة'); render(); }
+
+/* =================== بصمة العارضة (Stand Fingerprint) ===================
+   تحفظ bصمة بصرية مختصرة (histogram 64×RGB) لكل عارضة في localStorage.
+   عند بدء الكاميرا تُقارن الصورة بالبصمات المحفوظة وتُرشّح المناطق تلقائياً.
+   كل عارضة تحتفظ ببصمتها المستقلة؛ تقدر تضيف عارضات أخرى طبيعي.
+================================================================== */
+const STAND = {
+  BINS: 16, // 16 bin لكل قناة RGB = 48 قيمة
+  _key: 'haris_stands_v1',
+
+  load(){ try{ return JSON.parse(localStorage.getItem(this._key) || '[]'); }catch(e){ return []; } },
+  save(list){ try{ localStorage.setItem(this._key, JSON.stringify(list)); }catch(e){} },
+
+  // احسب بصمة صورة (canvas أو ImageData)
+  fingerprint(cv){
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    const W = cv.width, H = cv.height;
+    const im = ctx.getImageData(0, 0, W, H).data;
+    const B = this.BINS, hist = new Float32Array(B * 3);
+    for(let i = 0; i < im.length; i += 4){
+      hist[Math.floor(im[i]   * B / 256)]       += 1;
+      hist[B + Math.floor(im[i+1] * B / 256)]   += 1;
+      hist[B*2 + Math.floor(im[i+2] * B / 256)] += 1;
+    }
+    const n = W * H;
+    for(let i = 0; i < hist.length; i++) hist[i] /= n;
+    return Array.from(hist);
+  },
+
+  // تشابه بصمتين (cosine)
+  sim(a, b){
+    let dot = 0, na = 0, nb = 0;
+    for(let i = 0; i < a.length; i++){ dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+    return na && nb ? dot / Math.sqrt(na * nb) : 0;
+  },
+
+  // احفظ بصمة العارضة الحالية باسم
+  saveStand(name, cv){
+    const fp = this.fingerprint(cv);
+    const list = this.load().filter(s => s.name !== name);
+    list.push({ name, fp, zones: JSON.parse(JSON.stringify(S.zones)), saved: now() });
+    this.save(list);
+    return list;
+  },
+
+  // ابحث عن أقرب عارضة محفوظة للصورة الحالية
+  match(cv, threshold = 0.92){
+    const fp = this.fingerprint(cv);
+    const list = this.load();
+    let best = null, bestSim = 0;
+    for(const s of list){
+      const sc = this.sim(fp, s.fp);
+      if(sc > bestSim){ bestSim = sc; best = s; }
+    }
+    return bestSim >= threshold ? { stand: best, sim: bestSim } : null;
+  },
+
+  // تحقق تلقائياً عند بدء الكاميرا وحمّل مناطق العارضة المعروفة
+  autoDetect(cv){
+    const r = this.match(cv);
+    if(!r) return null;
+    return r;
+  },
+
+  list(){ return this.load(); },
+  delete(name){ this.save(this.load().filter(s => s.name !== name)); },
+};
+
+function standSave(){
+  const cv = grabFrame(); if(!cv){ toast('شغّل الكاميرا أولاً'); return; }
+  const name = prompt('اسم العارضة (مثال: عارضة كاميرات المدخل):', zoneOf(S.zones[0]?.id)?.name || 'عارضة جديدة');
+  if(!name) return;
+  const list = STAND.saveStand(name, cv);
+  toast('✅ حُفظت بصمة «' + name + '» — ' + list.length + ' عارضة محفوظة');
+}
+function standList(){
+  const list = STAND.list();
+  if(!list.length){ toast('لا توجد عارضات محفوظة بعد'); return; }
+  const lines = list.map(s => `• ${s.name} (${new Date(s.saved*1000).toLocaleDateString('ar-IQ')})`).join('\n');
+  alert('العارضات المحفوظة:\n\n' + lines + '\n\nعدد المناطق لكل عارضة محفوظ تلقائياً.');
+}
+function standDetect(){
+  const cv = grabFrame(); if(!cv){ toast('شغّل الكاميرا أولاً'); return; }
+  const r = STAND.autoDetect(cv);
+  if(r) toast(`🔍 عارضة «${r.stand.name}» — تشابه ${Math.round(r.sim*100)}%`);
+  else toast('لم أتعرف على هذه العارضة. احفظها أولاً.');
+}
+
 function evCard(e){
   const z = zoneOf(e.zone), s = ((e.kind === 'tamper' || e.kind === 'conceal') && e.status === 'incident') ? ['يحتاج مراجعة', 't-da'] : STA[e.status] || ['', 't-mut'], left = e.status === 'pending' ? Math.max(0, Math.round(e.deadline - now())) : null;
   return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
