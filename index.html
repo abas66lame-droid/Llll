@@ -8759,6 +8759,7 @@ window.neoComputeShiftPct = neoComputeShiftPct;
 
 /* زر الحفظ: يثبّت النسبة للجميع */
 window.neoSaveShiftPct = async function(deptId, date, silent){
+  if (amShiftStale(date)) return false;
   const loadingButton = document.getElementById('shiftSavePctBtn');
   if (loadingButton && loadingButton.disabled){
     if (!silent && typeof neoToast === 'function') neoToast('انتظر اكتمال بنود القسم أو أعد تحميل الجزء المتعثر قبل تثبيت النسبة');
@@ -9359,6 +9360,22 @@ function neoDepartmentSectionGuard(el, deptId){
       && String((currentShiftProfile && currentShiftProfile.department_ids || [])[0] || '') === String(deptId))));
 }
 
+/* يتحقق كل دقيقة وعند العودة للتطبيق: إذا تغيّر اليوم والشاشة على اليوم القديم، تُعاد رسمها */
+(function amShiftDayWatch(){
+  const check = () => {
+    try{
+      const sv = document.getElementById('shiftView');
+      if (!sv || sv.classList.contains('hidden')) return;
+      const st = (typeof shiftRowsState !== 'undefined') ? shiftRowsState : null;
+      if (st && st.date && st.date !== todayStr()){
+        if (typeof neoDirty !== 'undefined' && neoDirty) return;   /* لا نفقد تأشيراً لم يُحفظ بعد */
+        getMyProfile().then(renderShiftView);
+      }
+    }catch(e){}
+  };
+  setInterval(check, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
 async function renderShiftView(profile){
   window.__neoShiftRenderEpoch = (window.__neoShiftRenderEpoch || 0) + 1;
   shiftRowsState = null;
@@ -10174,7 +10191,17 @@ function refreshShiftTable(){
 }
 
 // تبديل الحالة: فارغ ← ✓ ← ✗ ← فارغ ، مع الحفظ الفوري
+/* يوم الشاشة المعروضة قديم؟ (مثلاً فُتحت قبل منتصف الليل ولم تُحدَّث)
+   فلا يُكتب شيء عليه؛ تُعاد الشاشة إلى اليوم الحالي ويُبلَّغ المسؤول */
+function amShiftStale(date){
+  if (!date || date === todayStr()) return false;
+  try{ neoToast('تغيّر اليوم — حدّثنا الشاشة إلى اليوم الجديد. أعد التأشير'); }catch(e){}
+  try{ getMyProfile().then(renderShiftView); }catch(e){}
+  return true;
+}
+window.amShiftStale = amShiftStale;
 async function shiftCycleField(locId, defKey, forcedState){
+  if (amShiftStale(shiftRowsState && shiftRowsState.date)) return;
   const st = shiftRowsState;
   const def = (st.defs || []).find(d => String(d.key) === String(defKey));
   if (!def) return;
@@ -10214,6 +10241,7 @@ async function shiftSaveFieldNote(locId, noteKey, value){
 
 async function shiftSaveRow(locId){
   const st = shiftRowsState;
+  if (amShiftStale(st && st.date)) return;
   const log = st.logsMap[locId];
   const uid = await neoUserId();
   const payload = { location_id: locId, log_date: st.date, shift: st.shift, updated_at: new Date().toISOString() };
