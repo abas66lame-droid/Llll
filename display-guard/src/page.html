@@ -252,11 +252,11 @@ function useStream(st, kind){
     if(cap.focusMode && cap.focusMode.includes('manual')) tr.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => { S.focusLocked = true; }).catch(() => {});
     else if(cap.focusMode && cap.focusMode.includes('single-shot')) tr.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).then(() => { S.focusLocked = true; }).catch(() => {}); }catch(e){} }, 3000);
   startLoop(); loadMP(); render();
-  // تعرّف تلقائي على العارضة بعد 3 ثواني من بدء الكاميرا
+  // تعرّف تلقائي على العارضة بعد 3 ثواني — يحمّل مناطقها تلقائياً
   setTimeout(() => {
     const c = grabFrame(); if(!c) return;
     const r = STAND.autoDetect(c);
-    if(r){ toast(`🏪 عارضة «${r.stand.name}» — تعرّفت عليها تلقائياً (${Math.round(r.sim*100)}%)`, 5000); }
+    if(r){ STAND.applyStand(r.stand); }
   }, 3000);
 }
 function startDemo(){ stopSource(true); S.snap = null; S.src = 'demo'; S.demo = new DemoSource(); S.demo.ensureZones(); startLoop(); render(); }
@@ -1219,26 +1219,42 @@ const STAND = {
 
   list(){ return this.load(); },
   delete(name){ this.save(this.load().filter(s => s.name !== name)); },
+
+  // حمّل مناطق العارضة المتعرَّف عليها وأعد الضبط
+  applyStand(stand){
+    if(!stand.zones || !stand.zones.length){
+      toast(`🏪 عارضة «${stand.name}» — لا توجد مناطق محفوظة، ارسمها يدوياً`, 5000);
+      return;
+    }
+    // أعطِ كل منطقة id جديد حتى لا تتعارض مع مناطق قديمة
+    const newZones = stand.zones.map(z => ({ ...z, id: Math.random().toString(36).slice(2,10) }));
+    S.zones = newZones;
+    saveZones();
+    ENG.reset();
+    toast(`✅ عارضة «${stand.name}» — حُمِّلت ${newZones.length} منطقة تلقائياً، بدأت المراقبة`, 5000);
+    render();
+  },
 };
 
 function standSave(){
   const cv = grabFrame(); if(!cv){ toast('شغّل الكاميرا أولاً'); return; }
-  const name = prompt('اسم العارضة (مثال: عارضة كاميرات المدخل):', zoneOf(S.zones[0]?.id)?.name || 'عارضة جديدة');
+  if(!S.zones.length){ toast('ارسم المناطق على العارضة أولاً ثم احفظ البصمة'); return; }
+  const name = prompt('اسم العارضة:', S.zones[0]?.name?.split(' - ')[0] || 'عارضة جديدة');
   if(!name) return;
   const list = STAND.saveStand(name, cv);
-  toast('✅ حُفظت بصمة «' + name + '» — ' + list.length + ' عارضة محفوظة');
+  toast('✅ حُفظت بصمة «' + name + '» مع ' + S.zones.length + ' منطقة — ' + list.length + ' عارضة إجمالاً');
 }
 function standList(){
   const list = STAND.list();
-  if(!list.length){ toast('لا توجد عارضات محفوظة بعد'); return; }
-  const lines = list.map(s => `• ${s.name} (${new Date(s.saved*1000).toLocaleDateString('ar-IQ')})`).join('\n');
-  alert('العارضات المحفوظة:\n\n' + lines + '\n\nعدد المناطق لكل عارضة محفوظ تلقائياً.');
+  if(!list.length){ toast('لا توجد عارضات محفوظة. ارسم المناطق ثم اضغط 📸 حفظ بصمة.'); return; }
+  const lines = list.map(s => `• ${s.name} — ${(s.zones||[]).length} منطقة (${new Date(s.saved*1000).toLocaleDateString('ar-IQ')})`).join('\n');
+  if(confirm('العارضات المحفوظة:\n\n' + lines + '\n\nهل تريد مسح كل البصمات؟')){ list.forEach(s => STAND.delete(s.name)); toast('مسحت كل البصمات'); render(); }
 }
 function standDetect(){
   const cv = grabFrame(); if(!cv){ toast('شغّل الكاميرا أولاً'); return; }
   const r = STAND.autoDetect(cv);
-  if(r) toast(`🔍 عارضة «${r.stand.name}» — تشابه ${Math.round(r.sim*100)}%`);
-  else toast('لم أتعرف على هذه العارضة. احفظها أولاً.');
+  if(r){ STAND.applyStand(r.stand); }
+  else toast('لم أتعرف على هذه العارضة. ارسم مناطقها واضغط 📸 حفظ بصمة.');
 }
 
 function evCard(e){
