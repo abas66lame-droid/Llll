@@ -410,6 +410,7 @@ const ENG = {
       if(zs.busy){
         zs.leftAt = now(); // وقت مغادرة الشخص
         zs.busySince = null;
+        zs.rebaseBlock = now() + 20; // إصلاح: نمنع تحديث الـ baseline 20 ثانية بعد المغادرة
       }
       zs.busy = false;
       if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
@@ -457,7 +458,8 @@ const ENG = {
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
       }
-      zs.judged = now(); toRebase.push(z);
+      zs.judged = now();
+      if(!zs.rebaseBlock || now() > zs.rebaseBlock) toRebase.push(z); // إصلاح: لا تحديث baseline إذا مازال الشخص قريباً
     }
     this.decide(cands, c, night);
     toRebase.forEach(z => this.rebase(z, F, c));
@@ -489,9 +491,12 @@ const ENG = {
     return c.toDataURL('image/jpeg', 0.75);
   },
   newRemoval(z, reg, c, night, sig, why){
+    // إصلاح: تجاهل إذا كان هناك حدث حديث (8 ثواني) يتداخل >70% مع نفس المنطقة
+    const box = { x: reg.x, y: reg.y, w: reg.w, h: reg.h };
+    if(S.events.some(e => e.t_start > now() - 8 && DET.overlap(e.box, box) > 0.70)) return;
     const t = now(), cu = S.cleaning[z.id] || 0;
     let deadline = t + grace() * 60; if(cu > t) deadline = Math.max(deadline, cu + 60);
-    const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h },
+    const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box,
       img_b: this.shot(this.baseCv, reg, '#e53e3e'), img_a: this.shot(c, reg, '#e53e3e'), img_c: this.crop(this.baseCv, c, reg), note: night ? 'رُصد بعد ساعات العمل' : '' };
     if(why) e.note = ((e.note || '') + ' ' + why).trim();
     if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
@@ -513,7 +518,11 @@ const ENG = {
     return cd;
   },
   decide(cands, c, night){
-    cands = cands.filter(a => a.reg.w >= 0.008 && a.reg.h >= 0.008); // خُفِّض من 0.015 لرصد القطع الصغيرة (دوائر، بطاقات)
+    // إصلاح: حجم أدنى أكبر لأحداث الشيل (تقليل النويز الصغير كـ incident) — الإضافات تسمح بأصغر
+    cands = cands.filter(a => {
+      const minSz = (a.reg.type === 'rem' || a.pol < -0.25) ? 0.015 : 0.008;
+      return a.reg.w >= minSz && a.reg.h >= minSz;
+    });
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
     for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
@@ -595,7 +604,10 @@ const ENG = {
     addEvent(e); alertEv(e); return e;
   },
   newInfo(z, reg, kind, c, note){
-    addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box: { x: reg.x, y: reg.y, w: reg.w, h: reg.h }, note: note || '',
+    // إصلاح: تجاهل إذا كان هناك حدث حديث (5 ثواني) يتداخل >70% (يمنع التعداد المزدوج)
+    const box = { x: reg.x, y: reg.y, w: reg.w, h: reg.h };
+    if(kind !== 'moved' && S.events.some(e => e.t_start > now() - 5 && e.kind === kind && DET.overlap(e.box, box) > 0.70)) return;
+    addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box, note: note || '',
       img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, '#38a169'), img_c: this.crop(this.baseCv, c, reg) });
   },
   returned(e, c){
