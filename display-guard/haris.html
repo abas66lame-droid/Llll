@@ -726,14 +726,17 @@ const ENG = {
         // نجمّد الـ baseline طالما الشخص موجود (لا تعيد baseline أثناء التفاعل — أهم إصلاح)
         S.moving[z.id] = true; continue;
       }
-      // انتهى التفاعل: قارن الـ baseline المجمّد بالوضع الحالي لرصد ما أُخذ
-      if(zs.busy && zs.busySince && now() - zs.busySince > 1){
+      // انتهى التفاعل: سجّل وقت المغادرة حتى نجبر مقارنة بعدها مباشرة
+      if(zs.busy){
+        zs.leftAt = now(); // وقت مغادرة الشخص
         zs.busySince = null;
-        // لا تُعد الـ baseline هنا — اترك المحرك يقارن ويرصد أولاً
       }
       zs.busy = false;
       if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
-      if(frac > 0.01 || cnt >= 3){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
+      // بعد مغادرة الشخص مباشرة: أجبر مقارنة حتى لو frac مرتفع (المنتج المُزال يبدو كـ"حركة")
+      const justLeft = zs.leftAt && now() - zs.leftAt < 8;
+      if(!justLeft && (frac > 0.01 || cnt >= 3)){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
+      if(justLeft) zs.leftAt = null; // مقارنة مرة واحدة فقط
       S.moving[z.id] = false;
       const r = DET.compareZone(this.base, F, z, sh, { fine: fineOf(z) });
       S.diag[z.id] = { state: 'ok', changed: r.changed, r };
@@ -1283,6 +1286,11 @@ function vMon(){
   const c = counts();
   return `    <div class="row" style="margin:12px 0 8px"><b>${S.src === 'camera' ? 'الكاميرا' : 'كاميرا تجريبية'}</b><span class="xs mut" id="mstat"></span><span class="xs" id="aistat"></span><span class="sp"></span>${S.src === 'camera' ? '<button class="btn sm" onclick="flipCam()">تبديل الكاميرا</button>' : ''}<button class="btn sm dan" onclick="confirmBox('إيقاف المراقبة؟', () => stopSource())">إيقاف</button></div>
     <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
+    <div class="row" style="margin:-2px 0 6px;gap:6px">
+      <button class="btn sm" onclick="standSave()" title="احفظ بصمة العارضة الحالية">📸 حفظ بصمة</button>
+      <button class="btn sm" onclick="standDetect()" title="تعرّف على العارضة الحالية">🔍 تعرّف</button>
+      ${STAND.list().length ? `<button class="btn sm" onclick="standList()" title="العارضات المحفوظة">📋 (${STAND.list().length})</button>` : ''}
+    </div>
     <div class="live" id="live"><div id="abar"></div><div class="lvw"><canvas class="v" id="liveCv"></canvas><svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="lbl" id="lbl"></div>${S.drawMode ? '<canvas id="drawCv" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>' : ''}</div>${S.drawMode ? '' : '<button class="fsb" onclick="fullLive()" title="ملء الشاشة">⛶</button>'}</div>
     ${SIMPLE ? '<div class="counts" id="counts"></div>' : ''}<div class="chips" id="chips"></div>
     ${S.zones.length && Math.max(...S.zones.map(z => z.w)) < 0.55 ? `<div class="note wa" style="margin-top:8px">📏 العارضة صغيرة في الصورة: كل علبة صارت بضع نقاط فيضعف الكشف. <b>قرّب الموبايل</b> حتى تملأ العارضة أغلب عرض الصورة، ثم احذف العارضة وارسمها من جديد.</div>` : ''}
@@ -1437,11 +1445,6 @@ function vEv(){
     <div class="row" style="margin:8px 0;gap:6px">
       <button class="btn sm${TL.on ? ' pri' : ''}" onclick="tlToggle()">${TL.on ? '⏹ إيقاف التسجيل' : '⏺ تسجيل مستمر (صورة/دقيقة)'}</button>
       ${TL.shots.length ? `<button class="btn sm" onclick="tlExport()">💾 تنزيل (${TL.shots.length} صورة)</button><button class="btn sm dan" onclick="tlClear()">مسح</button>` : ''}
-    </div>
-    <div class="row" style="margin:8px 0;gap:6px">
-      <button class="btn sm" onclick="standSave()" title="احفظ بصمة هذه العارضة لتعرّف عليها لاحقاً">📸 حفظ بصمة العارضة</button>
-      <button class="btn sm" onclick="standDetect()" title="تعرّف على العارضة الحالية">🔍 تعرّف على العارضة</button>
-      <button class="btn sm" onclick="standList()" title="قائمة العارضات المحفوظة">📋 العارضات (${STAND.list().length})</button>
     </div>
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
 }
