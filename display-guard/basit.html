@@ -573,6 +573,12 @@ function useStream(st, kind){
     if(cap.focusMode && cap.focusMode.includes('manual')) tr.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => { S.focusLocked = true; }).catch(() => {});
     else if(cap.focusMode && cap.focusMode.includes('single-shot')) tr.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).then(() => { S.focusLocked = true; }).catch(() => {}); }catch(e){} }, 3000);
   startLoop(); loadMP(); render();
+  // تعرّف تلقائي على العارضة بعد 3 ثواني من بدء الكاميرا
+  setTimeout(() => {
+    const c = grabFrame(); if(!c) return;
+    const r = STAND.autoDetect(c);
+    if(r){ toast(`🏪 عارضة «${r.stand.name}» — تعرّفت عليها تلقائياً (${Math.round(r.sim*100)}%)`, 5000); }
+  }, 3000);
 }
 function startDemo(){ stopSource(true); S.snap = null; S.src = 'demo'; S.demo = new DemoSource(); S.demo.ensureZones(); startLoop(); render(); }
 function stopSource(silent){
