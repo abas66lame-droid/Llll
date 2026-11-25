@@ -57,7 +57,10 @@ if URL and KEY:
             with urllib.request.urlopen(r, context=ctx, timeout=60) as resp:
                 return resp.status
         except urllib.error.HTTPError as e:
-            return e.code if e.code == 409 else (_ for _ in ()).throw(RuntimeError(f'{e.code} {e.read().decode()[:200]}'))
+            msg = e.read().decode()[:200]
+            if e.code == 409 or 'Duplicate' in msg:  # التخزين يردّ 400 بنص 409 للصورة المرفوعة سابقاً
+                return 409
+            raise RuntimeError(f'{e.code} {msg}')
 
     with open(csv_path, encoding='utf-8') as f:
         rows = list(csv.DictReader(f))
