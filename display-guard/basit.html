@@ -553,6 +553,17 @@ function embCrop(src, b){
     return Array.from(MP.emb.embed(c).embeddings[0].floatEmbedding, v => Math.round(v * 1000) / 1000);
   }catch(e){ return null; }
 }
+// صورة رمادية صغيرة (16 خانة عرضاً) لمكان الحالة قبل الشيل: عند الإرجاع نقارن المكان كله بما كان، فإن بقي جزء مختلف لم يرجع كل شيء
+function grayThumb(src, b){
+  try{ const W = src.width, H = src.height, m = 0.04, gw = 16, gh = Math.max(4, Math.round(gw * (b.h * H) / Math.max(1, b.w * W)));
+    const c = document.createElement('canvas'); c.width = gw; c.height = gh; const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(src, (b.x + b.w * m) * W, (b.y + b.h * m) * H, b.w * (1 - 2 * m) * W, b.h * (1 - 2 * m) * H, 0, 0, gw, gh);
+    const d = x.getImageData(0, 0, gw, gh).data, g = []; for(let i = 0; i < d.length; i += 4) g.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+    const mu = g.reduce((a, v) => a + v, 0) / g.length, sd = Math.sqrt(g.reduce((a, v) => a + (v - mu) * (v - mu), 0) / g.length) + 1e-6;
+    return g.map(v => Math.round((v - mu) / sd * 100) / 100);
+  }catch(e){ return null; }
+}
+const thumbDiff = (a, b) => { let n = 0; for(let i = 0; i < a.length; i++) if(Math.abs(a[i] - b[i]) > 1) n++; return n / a.length; };
 const embSim = (a, b) => { let d = 0, na = 0, nb = 0; for(let i = 0; i < a.length; i++){ d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return na && nb ? d / Math.sqrt(na * nb) : 0; };
 // نموذج وضعية الجسم (للكشف التجريبي عن حركة الإخفاء): يُحمَّل فقط إذا فُعّل الخيار
 async function loadPose(){
@@ -867,6 +878,7 @@ const ENG = {
     if(why) e.note = ((e.note || '') + ' ' + why).trim();
     if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
     const em = embCrop(this.baseCv, box); if(em) e.emb = em;
+    const gt = grayThumb(this.baseCv, box); if(gt) e.ref = gt;
     this.extras(z, e);
     // نموذج مدرَّب على أمثلة المحل المعلّمة (اختياري: window.HARIS_MODEL). الشيل غير المرجّح لا يُنذر، لكنه يُسجَّل «غير مؤكد» للمراجعة
     const pr = night ? null : modelP(e, DBG_CUR);
@@ -985,7 +997,9 @@ const ENG = {
     // (تجربة ميدانية) 4 قطع في حالة واحدة طويلة، رجعت قطعة واحدة فأُغلقت كلها: الحالة تُغلق فقط حين يغطي الراجع أغلب مكانها
     if(reg && e.box){ const ix = Math.max(0, Math.min(reg.x + reg.w, e.box.x + e.box.w) - Math.max(reg.x, e.box.x)), iy = Math.max(0, Math.min(reg.y + reg.h, e.box.y + e.box.h) - Math.max(reg.y, e.box.y));
       e.retFrac = Math.min(1, (e.retFrac || 0) + ix * iy / Math.max(1e-9, e.box.w * e.box.h));
-      if(e.retFrac < 0.5){ if(!/رجع جزء/.test(e.note || '')) e.note = ((e.note || '') + ' رجع جزء منها فقط — باقي القطع ما زالت مفقودة.').trim(); putEvent(e); return; } }
+      // (تجربة ميدانية) أسود+أزرق في حالة واحدة، رجع الأسود فقط فأُغلقت: المكان يجب أن يعود كما كان قبل الشيل
+      const nowT = e.ref && grayThumb(c, e.box), rest = nowT && nowT.length === e.ref.length ? thumbDiff(e.ref, nowT) : 0;
+      if(e.retFrac < 0.5 || rest >= 0.4){ if(!/رجع جزء/.test(e.note || '')) e.note = ((e.note || '') + ' رجع جزء منها فقط — باقي القطع ما زالت مفقودة.').trim(); putEvent(e); return; } }
     e.img_r = this.shot(c, e.box, '#38a169'); e.t_end = now();   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
     if(e.status === 'pending') e.status = 'returned';
     else { e.status = 'resolved'; e.resolution = 'returned'; e.resolved_by = 'النظام'; e.t_resolved = now(); e.note = ((e.note || '') + ' عاد المنتج إلى مكانه بعد التنبيه').trim(); }
