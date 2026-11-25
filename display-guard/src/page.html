@@ -350,7 +350,7 @@ const ENG = {
     let pc = null; const P = () => pc || (pc = typeof pplFn === 'function' ? (S.mpCalls = (S.mpCalls || 0) + 1, pplFn() || []) : (pplFn || []));
     const F = DET.frameFromCanvas(c);
     if(!this.base || this.base.w !== F.w || this.base.h !== F.h){
-      this.hb = DET.health(F); this.base = DET.clone(F); this.prev = F; this.baseCv = document.createElement('canvas'); this.baseCv.width = c.width; this.baseCv.height = c.height; this.baseCv.getContext('2d').drawImage(c, 0, 0); return;
+      S.liveSince = now(); this.hb = DET.health(F); this.base = DET.clone(F); this.prev = F; this.baseCv = document.createElement('canvas'); this.baseCv.width = c.width; this.baseCv.height = c.height; this.baseCv.getContext('2d').drawImage(c, 0, 0); return;
     }
     const sh = DET.estimateShift(this.base, F), night = isNight(), FULL = { x: 0, y: 0, w: 1, h: 1 };
     // 0) لمس الشاشة يحرّك الموبايل: نوقف الحكم حتى يثبت، ثم نعيد الضبط تلقائياً
@@ -1032,7 +1032,7 @@ function updMon(){
   const ai = $('#aistat'); if(ai){ const m = { off: '', loading: ' · ⏳ تحميل الذكاء الاصطناعي…', ready: ` · 🤖 الذكاء الاصطناعي يعمل${MP.hand ? ' (أيادٍ + أشخاص + أجسام)' : ' (أشخاص + أجسام)'}`, error: ' · الذكاء الاصطناعي غير متاح (يحتاج إنترنت أول مرة)' };
     ai.textContent = isDemo() || !S.cfg.ai ? '' : m[MP.state] || ''; ai.style.color = MP.state === 'error' ? 'var(--wa)' : 'var(--ok)'; }
   const t = now();
-  $('#ov').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.some(e => e.status === 'incident'), pen = ev.some(e => e.status === 'pending'), cl = (S.cleaning[z.id] || 0) > t;
+  $('#ov').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id && onScreen(e)), inc = ev.some(e => e.status === 'incident'), pen = ev.some(e => e.status === 'pending'), cl = (S.cleaning[z.id] || 0) > t;
     const col = inc ? '#e53e3e' : pen ? '#f0a020' : cl ? '#5b8def' : '#38d0c0';
     return `<rect x="${z.x * 100}" y="${z.y * 100}" width="${z.w * 100}" height="${z.h * 100}" fill="${col}" fill-opacity="${inc || pen || cl ? .12 : .04}" stroke="${col}" style="stroke-width:2px" vector-effect="non-scaling-stroke" ${S.moving[z.id] ? 'stroke-dasharray="5 4"' : ''}/>`
       + ev.filter(e => e.status === 'incident' || e.status === 'pending').map(e => { const c2 = e.status === 'incident' ? '#e53e3e' : '#f0a020';
@@ -1044,7 +1044,7 @@ function updMon(){
   if(SIMPLE) $('#counts').innerHTML = S.zones.map(z => { const k = zoneCount(z);
     return `<div class="cnt-card" onclick="setTotal('${z.id}')"><div class="xs mut">${esc(z.name)}</div>${k.total != null ? `<div class="big">${k.now}<span class="xs mut"> / ${k.total}</span></div>` : '<div class="xs" style="color:var(--inf)">اضغط لإدخال عدد القطع</div>'}
       <div class="xs">${k.miss ? `<b style="color:var(--da)">نقص ${k.miss}</b>` : '<span style="color:var(--ok)">لا نقص</span>'}${k.add ? ` · <span style="color:var(--inf)">مضاف ${k.add}</span>` : ''}</div></div>`; }).join('');
-  $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
+  $('#chips').innerHTML = S.zones.map(z => { const ev = S.events.filter(e => e.zone === z.id && onScreen(e)), inc = ev.filter(e => e.status === 'incident').length, pen = ev.filter(e => e.status === 'pending').length, cl = (S.cleaning[z.id] || 0) > t;
     const pe = ev.filter(e => e.status === 'pending').sort((a, b) => a.deadline - b.deadline)[0], left = pe ? Math.max(0, Math.ceil(pe.deadline - t)) : 0;
     const dg = S.diag[z.id] || {}, dtx = { ok: '<b style="color:var(--ok)">تراقب ✓</b>' + (S.cfg.debug && dg.changed ? ' (تغيّر ' + Math.round(dg.changed * 100) + '%)' : ''), motion: '<b style="color:var(--wa)">تنتظر: حركة</b>', hand: '<b style="color:var(--inf)">تنتظر: يد</b>', person: '<b style="color:var(--inf)">تنتظر: شخص</b>', camera: '<b style="color:var(--da)">الكاميرا تتحرك</b>', confirm: '<b style="color:var(--wa)">تغيّر كبير… جارٍ التأكد</b>', touch: '<b style="color:var(--inf)">لمس الشاشة… انتظار</b>', settle: '<b style="color:var(--inf)">جارٍ التثبيت…</b>', blind: '<b style="color:var(--da)">الكاميرا مغطاة أو مظلمة</b>' }[dg.state] || '<span class="mut">بانتظار الصورة…</span>';
     return `<span class="chip ${inc ? 'i' : pen ? 'p' : cl ? 'c' : ''}">${esc(z.name)} · ${dtx}${inc ? ` · <b style="color:var(--da)">${inc} تنبيه</b>` : ''}${pen ? ` · ${pen} ضمن المهلة (${left < 120 ? left + ' ث' : Math.ceil(left / 60) + ' د'})` : ''}${cl ? ' · تنظيف جارٍ' : ''}${interToday(z.id) ? ' · ' + interToday(z.id) + ' تفاعل اليوم' : ''}
@@ -1057,7 +1057,7 @@ const evStatus = e => ((e.kind === 'tamper' || e.kind === 'conceal') && e.status
 // شريط أحمر فوق الصورة: أحدث تنبيه لم يُطّلع عليه، ويبقى حتى «تم الاطلاع» أو المعالجة
 function alertBar(){
   const el = $('#abar'); if(!el) return;
-  const L = S.events.filter(e => e.status === 'incident' && !e.ack).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id + (e.ai ? 'a' : '')).join(',');
+  const L = S.events.filter(e => e.status === 'incident' && !e.ack && onScreen(e)).sort((a, b) => b.t_start - a.t_start), key = L.map(e => e.id + (e.ai ? 'a' : '')).join(',');
   if(el.dataset.k === key){ const a = el.querySelector('.ago'); if(a && L[0]) a.textContent = ago(L[0].t_start); return; }
   el.dataset.k = key; if(!L.length){ el.innerHTML = ''; return; }
   const e = L[0], z = zoneOf(e.zone), img = e.img_p || e.img_c || e.img_a;
@@ -1066,7 +1066,7 @@ function alertBar(){
 // ملصقات فوق أماكن الأحداث في الصورة: عدّ تنازلي للمعلّقة، «سرقة؟» للتنبيه، ونتيجة الأحداث الأخيرة لثوانٍ
 function liveLabels(){
   const el = $('#lbl'); if(!el) return; const t = now();
-  el.innerHTML = S.events.filter(e => e.box && e.zone !== '_cam' && (e.status === 'pending' || e.status === 'incident' || t - evT(e) < 12)).slice(0, 30).map(e => {
+  el.innerHTML = S.events.filter(e => e.box && e.zone !== '_cam' && onScreen(e) && (e.status === 'pending' || e.status === 'incident' || t - evT(e) < 12)).slice(0, 30).map(e => {
     let tx, bg;
     if(e.status === 'pending'){ const l = Math.max(0, Math.ceil(e.deadline - t)); tx = '⏳ ' + (l < 120 ? l + ' ث' : Math.ceil(l / 60) + ' د'); bg = '#d97706'; }
     else if(e.status === 'incident'){ tx = e.kind === 'conceal' ? '👁 اشتباه إخفاء' : '⚠ سرقة؟'; bg = '#c53030'; }
@@ -1095,6 +1095,8 @@ function setTotal(id){ const z = S.zones.find(x => x.id === id); if(!z) return;
     <div class="f2"><button class="btn pri" onclick="saveTotal('${id}')">حفظ</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`); setTimeout(() => $('#tot') && $('#tot').focus(), 50); }
 function saveTotal(id){ const z = S.zones.find(x => x.id === id), v = parseInt($('#tot').value); if(!z || isNaN(v)) return toast('اكتب رقماً');
   z.total = v; z.totalAt = now(); saveZones(); closeModal(); updMon(); toast('سيحسب النظام العدد من الآن'); }
+// على الشاشة: أحداث هذه الجلسة فقط، على عارضة موجودة، والتنبيه آخر 10 دقائق. القديم يبقى في «الحالات» للمراجعة
+const onScreen = e => e.t_start >= (S.liveSince || 0) && (e.zone === '_cam' || S.zones.some(z => z.id === e.zone)) && (e.status !== 'incident' || now() - e.t_start < 600);
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
 // تعليم من الاستخدام اليومي: «صحيح/خطأ» على كل حدث يُحفظ مع الحدث ويُرسل مثالاً للتدريب (Supabase إن وُجد)
 const TRUTH = { removal: 'removal', night: 'removal', added: 'added', moved: 'moved', swap: 'swap' };
@@ -1467,7 +1469,7 @@ window.addEventListener('beforeunload', e => { if(S.running && !isDemo()){ e.pre
 window.addEventListener('resize', () => { if(S.tab === 'zones') drawEd(); });
 setInterval(() => { header(); if(S.tab === 'mon') updMon();
   // تكرار صوت التنبيه كل 30 ثانية حتى يضغط أحد «تم الاطلاع» أو يعالج التنبيه
-  if(S.running && S.cfg.repeatBeep && now() - (S.beepAt || 0) >= 30 && S.events.some(e => e.status === 'incident' && !e.ack)){ beep(); S.beepAt = now(); }
+  if(S.running && S.cfg.repeatBeep && now() - (S.beepAt || 0) >= 30 && S.events.some(e => e.status === 'incident' && !e.ack && onScreen(e))){ beep(); S.beepAt = now(); }
 }, 1000);
 (async () => {
   await DB.open();
