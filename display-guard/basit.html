@@ -413,7 +413,42 @@ const DET = (() => {
     return best;
   }
   const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return ix * iy / Math.max(1e-9, Math.min(a.w * a.h, b.w * b.h)); };
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim };
+  // صورة مصغّرة رمادية (عرض ثابت) لمطابقة العارضة المحفوظة مع اللقطة الحالية
+  function resize(A, w, h, nw, nh){
+    const o = new Float32Array(nw * nh), sx = w / nw, sy = h / nh;
+    for(let j = 0; j < nh; j++){ const y0 = Math.floor(j * sy), y1 = Math.max(y0 + 1, Math.floor((j + 1) * sy));
+      for(let i = 0; i < nw; i++){ const x0 = Math.floor(i * sx), x1 = Math.max(x0 + 1, Math.floor((i + 1) * sx)); let s = 0, c = 0;
+        for(let y = y0; y < y1 && y < h; y++) for(let x = x0; x < x1 && x < w; x++){ s += A[y * w + x]; c++; }
+        o[j * nw + i] = c ? s / c : 0; } }
+    return o;
+  }
+  function ncc(R, rw, rh, C, cw, ch, tx, ty){
+    const x0 = Math.max(0, tx), x1 = Math.min(cw, tx + rw), y0 = Math.max(0, ty), y1 = Math.min(ch, ty + rh);
+    const n = (x1 - x0) * (y1 - y0); if(x1 <= x0 || y1 <= y0 || n < 0.5 * rw * rh) return -1;
+    let sr = 0, sc = 0, srr = 0, scc = 0, src = 0;
+    for(let y = y0; y < y1; y++){ const rr = (y - ty) * rw - tx, cr = y * cw;
+      for(let x = x0; x < x1; x++){ const a = R[rr + x], b = C[cr + x]; sr += a; sc += b; srr += a * a; scc += b * b; src += a * b; } }
+    const vr = srr - sr * sr / n, vc = scc - sc * sc / n; return vr > 1e-6 && vc > 1e-6 ? (src - sr * sc / n) / Math.sqrt(vr * vc) : -1;
+  }
+  // أين صارت العارضة المحفوظة في اللقطة الحالية: تكبير s وإزاحة (tx,ty) بنقاط الصورة المصغّرة الحالية (الموبايل قد يكون أقرب/أبعد/مزاحاً)
+  function alignThumb(R, rw, rh, C, cw, ch){
+    const k = 24 / cw, CW = 24, CH = Math.max(1, Math.round(ch * k)), Cc = resize(C, cw, ch, CW, CH);
+    let best = { score: -1 };
+    for(let s = 0.6; s <= 1.6001; s += 0.04){
+      const w = Math.max(4, Math.round(rw * s * k)), h = Math.max(4, Math.round(rh * s * k)), Rs = resize(R, rw, rh, w, h);
+      for(let ty = -Math.round(h / 2); ty <= CH - Math.round(h / 2); ty++) for(let tx = -Math.round(w / 2); tx <= CW - Math.round(w / 2); tx++){
+        const v = ncc(Rs, w, h, Cc, CW, CH, tx, ty); if(v > best.score) best = { score: v, s, tx: tx / k, ty: ty / k }; } }
+    if(best.score < 0) return null;
+    const b0 = best;
+    for(let s = b0.s - 0.04; s <= b0.s + 0.0401; s += 0.01){
+      const w = Math.round(rw * s), h = Math.round(rh * s), Rs = resize(R, rw, rh, w, h);
+      for(let ty = Math.round(b0.ty) - 4; ty <= Math.round(b0.ty) + 4; ty++) for(let tx = Math.round(b0.tx) - 4; tx <= Math.round(b0.tx) + 4; tx++){
+        const v = ncc(Rs, w, h, C, cw, ch, tx, ty); if(v > best.score || best === b0) best = { score: v, s: w / rw, sy: h / rh, tx, ty }; } }
+    return best;
+  }
+  // نقل منطقة (نسبية في المرجع) إلى مكانها في اللقطة الحالية
+  const mapZone = (z, T, rw, rh, cw, ch) => ({ ...z, x: (T.s * z.x * rw + T.tx) / cw, y: ((T.sy || T.s) * z.y * rh + T.ty) / ch, w: T.s * z.w * rw / cw, h: (T.sy || T.s) * z.h * rh / ch });
+  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim, resize, alignThumb, mapZone };
 })();
 /* DETECTOR_END */
 /* =================== أدوات =================== */
@@ -577,7 +612,7 @@ function useStream(st, kind){
   setTimeout(() => {
     const c = grabFrame(); if(!c) return;
     const r = STAND.autoDetect(c);
-    if(r){ STAND.applyStand(r.stand); }
+    if(r){ STAND.applyStand(r.stand, c); }
   }, 3000);
 }
 function startDemo(){ stopSource(true); S.snap = null; S.src = 'demo'; S.demo = new DemoSource(); S.demo.ensureZones(); startLoop(); render(); }
@@ -1523,7 +1558,7 @@ const STAND = {
   saveStand(name, cv){
     const fp = this.fingerprint(cv);
     const list = this.load().filter(s => s.name !== name);
-    list.push({ name, fp, zones: JSON.parse(JSON.stringify(S.zones)), saved: now() });
+    list.push({ name, fp, ref: this.thumb(cv), zones: JSON.parse(JSON.stringify(S.zones)), saved: now() });
     this.save(list);
     return list;
   },
@@ -1551,13 +1586,30 @@ const STAND = {
   delete(name){ this.save(this.load().filter(s => s.name !== name)); },
 
   // حمّل مناطق العارضة المتعرَّف عليها وأعد الضبط
-  applyStand(stand){
+  // صورة مصغّرة رمادية بعرض 96 (بايت لكل نقطة، base64) لمعرفة أين صارت العارضة لاحقاً
+  TW: 96,
+  thumb(cv){
+    const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cv.width, cv.height).data, n = cv.width * cv.height, g = new Float32Array(n);
+    for(let i = 0, j = 0; i < n; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+    const th = Math.round(this.TW * cv.height / cv.width), t = DET.resize(g, cv.width, cv.height, this.TW, th);
+    let b = ''; for(const v of t) b += String.fromCharCode(Math.round(v));
+    return { w: this.TW, h: th, g: btoa(b) };
+  },
+  unthumb(r){ const b = atob(r.g), t = new Float32Array(b.length); for(let i = 0; i < b.length; i++) t[i] = b.charCodeAt(i); return t; },
+  applyStand(stand, cv){
     if(!stand.zones || !stand.zones.length){
       toast(`🏪 عارضة «${stand.name}» — لا توجد مناطق محفوظة، ارسمها يدوياً`, 5000);
       return;
     }
+    let zones = stand.zones;
+    // الموبايل قد لا يكون في نفس مكانه وقت الحفظ: ننقل المناطق إلى مكان العارضة الآن
+    if(stand.ref && cv){
+      const cur = this.thumb(cv), T = DET.alignThumb(this.unthumb(stand.ref), stand.ref.w, stand.ref.h, this.unthumb(cur), cur.w, cur.h);
+      if(!T || T.score < 0.5){ toast(`🏪 عرفت العارضة «${stand.name}» لكن لم أستطع تحديد مكان رفوفها في هذه اللقطة — ارسم المناطق يدوياً`, 6000); return; }
+      zones = zones.map(z => DET.mapZone(z, T, stand.ref.w, stand.ref.h, cur.w, cur.h));
+    }
     // أعطِ كل منطقة id جديد حتى لا تتعارض مع مناطق قديمة
-    const newZones = stand.zones.map(z => ({ ...z, id: Math.random().toString(36).slice(2,10) }));
+    const newZones = zones.map(z => ({ ...z, id: Math.random().toString(36).slice(2,10) }));
     S.zones = newZones;
     saveZones();
     ENG.reset();
@@ -1583,7 +1635,7 @@ function standList(){
 function standDetect(){
   const cv = grabFrame(); if(!cv){ toast('شغّل الكاميرا أولاً'); return; }
   const r = STAND.autoDetect(cv);
-  if(r){ STAND.applyStand(r.stand); }
+  if(r){ STAND.applyStand(r.stand, cv); }
   else toast('لم أتعرف على هذه العارضة. ارسم مناطقها واضغط 📸 حفظ بصمة.');
 }
 

@@ -27,4 +27,14 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   const err = T ? Math.max(...[[100, 100], [860, 100], [100, 440], [860, 440], [480, 270]].map(([x, y]) => Math.hypot(T.a * x + T.c * y + T.e - (A.a * x + A.c * y + A.e), T.b * x + T.d * y + T.f - (A.b * x + A.d * y + A.f)))) : 1e9;
   t(`camera affine: recovered within 1.5px (max err ${err.toFixed(2)}px, ${ms}ms)`, err < 1.5);
 }
+// العارضة المحفوظة في لقطة جديدة (الموبايل أبعد ومزاح): المناطق تُنقل لمكانها الجديد
+{
+  const RW = 96, RH = 170, pat = (x, y) => 120 + 60 * Math.sin(x / 5) * Math.cos(y / 7) + (y > 40 && y < 60 ? 50 : 0) + (x > 20 && x < 35 ? -40 : 0);
+  const R = new Float32Array(RW * RH); for(let y = 0; y < RH; y++) for(let x = 0; x < RW; x++) R[y * RW + x] = pat(x, y);
+  const s = 0.85, tx = 9, ty = 14, C = new Float32Array(RW * RH);
+  for(let y = 0; y < RH; y++) for(let x = 0; x < RW; x++) C[y * RW + x] = pat((x - tx) / s, (y - ty) / s);
+  const T = D.alignThumb(R, RW, RH, C, RW, RH), z = D.mapZone({ x: 0.2, y: 0.3, w: 0.5, h: 0.1 }, T, RW, RH, RW, RH);
+  const want = { x: (0.2 * RW * s + tx) / RW, y: (0.3 * RH * s + ty) / RH };
+  t(`stand re-located after phone moved (scale ${T.s.toFixed(2)}, score ${T.score.toFixed(2)})`, Math.abs(z.x - want.x) < 0.02 && Math.abs(z.y - want.y) < 0.02 && Math.abs(T.s - s) < 0.04);
+}
 process.exit(fails ? 1 : 0);
