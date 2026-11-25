@@ -845,6 +845,9 @@ const ENG = {
     if(why) e.note = ((e.note || '') + ' ' + why).trim();
     if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
     this.extras(z, e);
+    // نموذج مدرَّب على أمثلة المحل المعلّمة (اختياري: window.HARIS_MODEL). الشيل غير المرجّح لا يُنذر، لكنه يُسجَّل «غير مؤكد» للمراجعة
+    const pr = night ? null : modelP(e, DBG_CUR);
+    if(pr !== null){ e.p = pr; if(pr < window.HARIS_MODEL.th){ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: احتمال السرقة ' + Math.round(pr * 100) + '% حسب النموذج.').trim(); addEvent(e); return; } }
     addEvent(e);
     if(!night) trySale(e);
     if(night) alertEv(e);
@@ -1175,6 +1178,12 @@ function stockRegions(r, rc){
 }
 // أجزاء نفس القطعة قد تظهر منطقتين متلاصقتين بنوعين مختلفين بالملمس (أعلاها كشف علبة خلفها، وأسفلها كشف الخشب).
 // ندمج المتلاصقة التي لها نفس الاتجاه (أخذ مع أخذ، وضع مع وضع) في تغيّر واحد، ونعيد حساب بصمته على المربع الموحّد
+function modelP(e, d){
+  const M = window.HARIS_MODEL; if(!M || !d || d.pol === undefined) return null;
+  const b = e.box, lo = Math.min(b.w, b.h), hi = Math.max(b.w, b.h), ca = d.carry || {};
+  const f = [d.pol, d.self || 0, d.hand ? 1 : 0, d.type === 'rem' ? 1 : 0, /قبل الشيل/.test(e.note || '') ? 1 : 0, ca.take || 0, ca.put || 0, Math.log(b.w * b.h + 1e-6), hi > 3 * Math.max(lo, 1e-6) ? 1 : 0];
+  let z = M.b; f.forEach((v, i) => z += M.w[i] * (v - M.mu[i]) / M.sd[i]); return 1 / (1 + Math.exp(-z));
+}
 function mergeCands(cs, remake){
   const cls = a => a.pol > PUT ? 1 : a.pol < -PUT ? -1 : 0, g = 0.02;
   for(let ch = true; ch;){ ch = false;
@@ -1281,7 +1290,7 @@ class DemoSource {
 }
 
 /* =================== الواجهة =================== */
-const KIND = { removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
+const KIND = { weak: 'نقص غير مؤكد', removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
 const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], moved: ['نُقل لمكان آخر', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
 const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه', moved: 'نُقل لمكان آخر' };
 let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
@@ -1462,7 +1471,7 @@ function saveTotal(id){ const z = S.zones.find(x => x.id === id), v = parseInt($
 const onScreen = e => e.t_start >= (S.liveSince || 0) && (e.zone === '_cam' || S.zones.some(z => z.id === e.zone)) && (e.status !== 'incident' || now() - e.t_start < 600);
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
 // تعليم من الاستخدام اليومي: «صحيح/خطأ» على كل حدث يُحفظ مع الحدث ويُرسل مثالاً للتدريب (Supabase إن وُجد)
-const TRUTH = { removal: 'removal', night: 'removal', added: 'added', moved: 'moved', swap: 'swap' };
+const TRUTH = { weak: 'removal', removal: 'removal', night: 'removal', added: 'added', moved: 'moved', swap: 'swap' };
 function teach(id, ok){
   const e = S.events.find(x => x.id === id); if(!e) return;
   e.truth = ok ? (TRUTH[e.kind] || e.kind) : 'false'; e.ack = true;
