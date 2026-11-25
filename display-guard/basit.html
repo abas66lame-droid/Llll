@@ -762,17 +762,10 @@ const ENG = {
         // نجمّد الـ baseline طالما الشخص موجود (لا تعيد baseline أثناء التفاعل — أهم إصلاح)
         S.moving[z.id] = true; continue;
       }
-      // انتهى التفاعل: سجّل وقت المغادرة حتى نجبر مقارنة بعدها مباشرة
-      if(zs.busy){
-        zs.leftAt = now(); // وقت مغادرة الشخص
-        zs.busySince = null;
-      }
-      zs.busy = false;
+      zs.busy = false; zs.busySince = null;
       if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
-      // بعد مغادرة الشخص مباشرة: أجبر مقارنة حتى لو frac مرتفع (المنتج المُزال يبدو كـ"حركة")
-      const justLeft = zs.leftAt && now() - zs.leftAt < 8;
-      if(!justLeft && (frac > 0.01 || cnt >= 3)){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
-      if(justLeft) zs.leftAt = null; // مقارنة مرة واحدة فقط
+      // لا نحكم والصورة ما زالت تتحرك (قطعة تستقر بعد دفعها): المقارنة تأتي تلقائياً حين تثبت
+      if(frac > 0.01 || cnt >= 3){ S.moving[z.id] = true; S.diag[z.id] = { state: 'motion' }; continue; }
       S.moving[z.id] = false;
       const r = DET.compareZone(this.base, F, z, sh, { fine: fineOf(z) });
       S.diag[z.id] = { state: 'ok', changed: r.changed, r };
