@@ -878,7 +878,8 @@ const ENG = {
     for(const a of Nd){ if(used.has(a)) continue; DBG_CUR = a.dbg;
       // وضعٌ واضح (حدّ القطعة الجديدة أمام ما خلفها) ليس سرقة أبداً، حتى لو غطّت زخرفة فبدا «نقصاً» بالملمس
       if(a.pol > PUT){ if(!night && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c)) continue; this.newInfo(a.z, a.reg, 'added', c, 'ظهرت قطعة جديدة أمام ما خلفها.'); continue; }
-      if(a.reg.type === 'rem' || a.pol < -PUT) this.newRemoval(a.z, a.reg, c, night, a.before);
+      // (أمثلة معلّمة) تغيّر بلا يد قطبيته تميل للنقص (≤ -0.15) كان يُسجَّل «إضافة» وهو شيل: يُعامل شيلاً بمهلة
+      if(a.reg.type === 'rem' || a.pol < -0.15) this.newRemoval(a.z, a.reg, c, night, a.before);
       // (تجربة ميدانية: «القلمان أُخذا فأُغلقت الحالة نُقلت») تغيّر غامض بلا وضع واضح لا يُغلق حالة شيل مفتوحة
       else this.newInfo(a.z, a.reg, a.reg.type === 'add' ? 'added' : 'swap', c);
     }
