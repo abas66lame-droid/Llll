@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تعليم الأمثلة</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1d2330;--mute:#6b7383;--line:#e2e5ea;--acc:#2f6fdf}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--ink:#e8eaee;--mute:#9aa2b1;--line:#2c313a;--acc:#6b9bff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Tahoma,system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:12px 16px 120px}
+h1{font-size:18px;margin:4px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 12px;color:var(--mute);font-size:13px;margin-bottom:8px}
+.meta b{color:var(--ink)}
+img{display:block;width:100%;border-radius:8px;background:var(--line);min-height:60px}
+#c{max-height:42vh;object-fit:contain}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.pair div{font-size:12px;color:var(--mute);text-align:center}
+.bar{position:fixed;inset:auto 0 0 0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.btns{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+button{font:inherit;padding:12px 4px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.sel{border-color:var(--acc);outline:2px solid var(--acc)}
+.nav{max-width:640px;margin:8px auto 0;display:flex;justify-content:space-between;align-items:center;color:var(--mute);font-size:13px}
+.nav button{padding:6px 14px}
+#setup input{width:100%;padding:10px;margin:4px 0 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);direction:ltr}
+.msg{color:var(--mute);text-align:center;padding:30px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>تعليم أمثلة التدريب</h1>
+  <div id="setup" class="card" hidden>
+    <div>رابط مشروع Supabase</div><input id="u" placeholder="https://xxxx.supabase.co">
+    <div>المفتاح العام (publishable)</div><input id="k" placeholder="sb_publishable_...">
+    <button id="save">حفظ</button>
+  </div>
+  <div id="view"></div>
+</main>
+<div class="bar" id="bar" hidden>
+  <div class="btns">
+    <button data-t="removal">شيل</button>
+    <button data-t="added">إضافة</button>
+    <button data-t="moved">نقل</button>
+    <button data-t="false">خطأ</button>
+  </div>
+  <div class="nav"><button id="prev">السابق</button><span id="pos"></span><button id="next">التالي</button></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const KIND = { removal: 'شيل', added: 'إضافة', moved: 'نقل', swap: 'تبديل', night: 'شيل ليلي', false: 'خطأ' };
+const store = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} } };
+let URL_ = window.SB_URL || store.get('sb_url'), KEY = window.SB_KEY || store.get('sb_key'), rows = [], i = 0;
+const H = () => ({ apikey: KEY, Authorization: 'Bearer ' + KEY });
+const imgCache = {};
+
+async function img(name){
+  if(imgCache[name]) return imgCache[name];
+  const r = await fetch(`${URL_}/storage/v1/object/authenticated/samples/${name}`, { headers: H() });
+  return imgCache[name] = r.ok ? URL.createObjectURL(await r.blob()) : '';
+}
+
+async function load(){
+  const r = await fetch(`${URL_}/rest/v1/samples?select=*&order=truth.nullsfirst,t.asc`, { headers: H() });
+  if(!r.ok){ $('#view').innerHTML = `<div class="msg">تعذّر الاتصال (${r.status}). تأكد من الرابط والمفتاح.</div>`; $('#setup').hidden = false; return; }
+  rows = await r.json(); i = Math.max(0, rows.findIndex(x => !x.truth)); if(i < 0) i = 0;
+  if(!rows.length){ $('#view').innerHTML = '<div class="msg">لا توجد أمثلة بعد.</div>'; return; }
+  $('#bar').hidden = false; show();
+}
+
+async function show(){
+  const s = rows[i], done = rows.filter(x => x.truth).length;
+  $('#pos').textContent = `${i + 1} / ${rows.length} · مُعلّم ${done}`;
+  document.querySelectorAll('.btns button').forEach(b => b.classList.toggle('sel', b.dataset.t === s.truth));
+  const when = new Date(s.t * 1000).toLocaleString('en-GB');
+  $('#view').innerHTML = `<div class="card">
+    <div class="meta"><span>النظام قال: <b>${KIND[s.system_kind] || s.system_kind}</b></span><span>${s.zone || ''}</span><span>${when}</span>${s.hand ? '<span>رُصدت يد</span>' : ''}</div>
+    <img id="c" alt="قبل وبعد مكبّر">
+    <div class="pair"><div><img id="b" alt="قبل">قبل</div><div><img id="a" alt="بعد">بعد</div></div>
+    ${s.note ? `<div class="meta" style="margin-top:8px">${s.note.replace(/[<>&]/g, '')}</div>` : ''}
+  </div>`;
+  const [c, b, a] = await Promise.all(['c', 'b', 'a'].map(k => img(`${s.id}_${k}.jpg`)));
+  if(rows[i] !== s) return;
+  $('#c').src = c; $('#b').src = b; $('#a').src = a;
+  if(rows[i + 1]) ['c', 'b', 'a'].forEach(k => img(`${rows[i + 1].id}_${k}.jpg`));
+}
+
+async function label(t){
+  const s = rows[i];
+  const r = await fetch(`${URL_}/rest/v1/samples?id=eq.${encodeURIComponent(s.id)}`, {
+    method: 'PATCH', headers: { ...H(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ truth: t }) });
+  if(!r.ok){ alert('لم يُحفظ (' + r.status + ')'); return; }
+  s.truth = t; if(i < rows.length - 1) i++; show();
+}
+
+document.querySelectorAll('.btns button').forEach(b => b.onclick = () => label(b.dataset.t));
+$('#prev').onclick = () => { if(i > 0){ i--; show(); } };
+$('#next').onclick = () => { if(i < rows.length - 1){ i++; show(); } };
+$('#save').onclick = () => { URL_ = $('#u').value.trim().replace(/\/$/, ''); KEY = $('#k').value.trim(); store.set('sb_url', URL_); store.set('sb_key', KEY); $('#setup').hidden = true; load(); };
+if(URL_ && KEY) load(); else $('#setup').hidden = false;
+</script>
+</body>
+</html>
