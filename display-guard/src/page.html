@@ -508,6 +508,10 @@ const ENG = {
   },
   decide(cands, c, night){
     cands = cands.filter(a => a.reg.w >= 0.008 && a.reg.h >= 0.008); // في الصورة الطولية رف كامل ≈ 0.08 من الارتفاع: القطع الصغيرة ≈ 0.01
+    // (تجربة ميدانية) شيل كرتونة واحدة أعطى 4 سرقات: أجزاء صغيرة داخل منطقة أكبر في نفس القراءة = نفس القطعة
+    cands = cands.filter(a => !cands.some(b => b !== a && b.z === a.z && b.reg.w * b.reg.h > a.reg.w * a.reg.h && DET.overlap(a.reg, b.reg) >= 0.6));
+    // شريط رفيع طويل بلا يد = فراغ بين كرتونتين أو حافة قطعة، لا قطعة مشالة
+    cands = cands.filter(a => { const lo = Math.min(a.reg.w, a.reg.h), hi = Math.max(a.reg.w, a.reg.h); return !(!a.hT && lo <= 0.025 && hi >= 3 * lo); });
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
     for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
