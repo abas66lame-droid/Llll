@@ -42,3 +42,37 @@ with open(csv_path, 'a', newline='', encoding='utf-8') as f:
                         'pol': d.get('pol', ''), 'hand': d.get('hand', ''), 'note': c.get('note', ''), 'truth': ''})
             new += 1
 print(f'{new} أمثلة جديدة → {csv_path} (المجموع {len(seen)})')
+
+# رفع اختياري إلى Supabase: SUPABASE_URL و SUPABASE_KEY في البيئة (الجدول samples ومكان الصور samples)
+URL, KEY = os.environ.get('SUPABASE_URL'), os.environ.get('SUPABASE_KEY')
+if URL and KEY:
+    import ssl, urllib.request, urllib.error
+    ca = os.environ.get('SSL_CERT_FILE') or os.environ.get('REQUESTS_CA_BUNDLE')
+    ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+    H = {'apikey': KEY, 'Authorization': f'Bearer {KEY}'}
+
+    def req(method, path, body, ctype, extra=None):
+        r = urllib.request.Request(URL.rstrip('/') + path, data=body, method=method, headers={**H, 'Content-Type': ctype, **(extra or {})})
+        try:
+            with urllib.request.urlopen(r, context=ctx, timeout=60) as resp:
+                return resp.status
+        except urllib.error.HTTPError as e:
+            return e.code if e.code == 409 else (_ for _ in ()).throw(RuntimeError(f'{e.code} {e.read().decode()[:200]}'))
+
+    with open(csv_path, encoding='utf-8') as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        for k in 'bac':
+            p = os.path.join(img_dir, f"{r['id']}_{k}.jpg")
+            if os.path.exists(p):
+                with open(p, 'rb') as im:
+                    req('POST', f"/storage/v1/object/samples/{r['id']}_{k}.jpg", im.read(), 'image/jpeg')
+    num = lambda v: float(v) if v not in ('', None) else None
+    payload = [{**r, 't': num(r['t']), 'x': num(r['x']), 'y': num(r['y']), 'w': num(r['w']), 'h': num(r['h']), 'pol': num(r['pol']),
+                'hand': {'True': True, 'False': False}.get(r['hand']), 'truth': r['truth'] or None} for r in rows]
+    for r in payload:
+        if r['truth'] is None:
+            r.pop('truth')
+    req('POST', '/rest/v1/samples?on_conflict=id', json.dumps(payload).encode(), 'application/json',
+        {'Prefer': 'resolution=merge-duplicates,return=minimal'})
+    print(f'رُفع {len(rows)} مثال وصورها إلى Supabase')
