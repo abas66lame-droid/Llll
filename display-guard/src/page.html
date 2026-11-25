@@ -518,11 +518,7 @@ const ENG = {
     return cd;
   },
   decide(cands, c, night){
-    // إصلاح: حجم أدنى أكبر لأحداث الشيل (تقليل النويز الصغير كـ incident) — الإضافات تسمح بأصغر
-    cands = cands.filter(a => {
-      const minSz = (a.reg.type === 'rem' || a.pol < -0.25) ? 0.015 : 0.008;
-      return a.reg.w >= minSz && a.reg.h >= minSz;
-    });
+    cands = cands.filter(a => a.reg.w >= 0.008 && a.reg.h >= 0.008); // في الصورة الطولية رف كامل ≈ 0.08 من الارتفاع: القطع الصغيرة ≈ 0.01
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
     for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
