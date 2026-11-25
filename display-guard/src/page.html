@@ -410,7 +410,6 @@ const ENG = {
       if(zs.busy){
         zs.leftAt = now(); // وقت مغادرة الشخص
         zs.busySince = null;
-        zs.rebaseBlock = now() + 20; // إصلاح: نمنع تحديث الـ baseline 20 ثانية بعد المغادرة
       }
       zs.busy = false;
       if(frac > 0 || cnt > 0 || ppl.length) S.activeAt = now();
@@ -458,8 +457,7 @@ const ENG = {
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
       }
-      zs.judged = now();
-      if(!zs.rebaseBlock || now() > zs.rebaseBlock) toRebase.push(z); // إصلاح: لا تحديث baseline إذا مازال الشخص قريباً
+      zs.judged = now(); toRebase.push(z);
     }
     this.decide(cands, c, night);
     toRebase.forEach(z => this.rebase(z, F, c));
