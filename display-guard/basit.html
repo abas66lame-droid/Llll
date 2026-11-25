@@ -532,10 +532,28 @@ async function loadMP(){
     MP.state = 'ready';
     // تسخين: أول استدعاء للنماذج بطيء جداً (ثوانٍ). نستهلكه الآن حتى لا يتأخر الحكم لحظة أول حركة عند العارضة
     try{ const w = document.createElement('canvas'); w.width = 320; w.height = 240; const x = w.getContext('2d'); x.fillStyle = '#888'; x.fillRect(0, 0, 320, 240); mpPeople(w); }catch(e){}
-    loadPose();
+    loadPose(); loadEmb();
   }catch(e){ MP.state = 'error'; MP.err = (e && e.message) || String(e); }
   refreshSoon();
 }
+// بصمة القطعة بنموذج MobileNetV3 (يرى الشكل والكتابة لا اللون فقط): تُحسب عند الأحداث فقط.
+// (أمثلة ميدانية معلّمة) تشابه القطعة المسروقة مع الراجعة: نفس القطعة 0.51–0.93 (حتى مقلوبة 0.80)، قطعة بديلة 0.14–0.17
+const EMB_SAME = 0.4;
+async function loadEmb(){
+  if(MP.emb || MP.embLoading || MP.state !== 'ready' || !MP.make || !MP.mp.ImageEmbedder) return;
+  MP.embLoading = true;
+  try{ MP.emb = await MP.make(MP.mp.ImageEmbedder, { baseOptions: { modelAssetPath: MP_MODELS + 'image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite' }, l2Normalize: true }); }catch(e){}
+  MP.embLoading = false;
+}
+function embCrop(src, b){
+  if(!MP.emb || !src || !b) return null;
+  try{ const W = src.width, H = src.height, m = 0.04, x = (b.x + b.w * m) * W, y = (b.y + b.h * m) * H, w = b.w * (1 - 2 * m) * W, h = b.h * (1 - 2 * m) * H;
+    if(w < 8 || h < 8) return null;
+    const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h); c.getContext('2d').drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+    return Array.from(MP.emb.embed(c).embeddings[0].floatEmbedding, v => Math.round(v * 1000) / 1000);
+  }catch(e){ return null; }
+}
+const embSim = (a, b) => { let d = 0, na = 0, nb = 0; for(let i = 0; i < a.length; i++){ d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return na && nb ? d / Math.sqrt(na * nb) : 0; };
 // نموذج وضعية الجسم (للكشف التجريبي عن حركة الإخفاء): يُحمَّل فقط إذا فُعّل الخيار
 async function loadPose(){
   if(!S.cfg.conceal || MP.pose || MP.poseLoading || MP.state !== 'ready' || !MP.make) return;
@@ -801,7 +819,7 @@ const ENG = {
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, sh, since)), reg => this.cand(z, reg, F, sh, since))){
         const reg = cd.reg;
         // رجوع قطعة لمكان حالة مفتوحة: يجب أن تكون نفس القطعة (البصمة). (تجربة ميدانية: سُرق شريط ووُضع كأس مكانه فأُغلقت السرقة)
-        const near = opened.filter(e => DET.overlap(reg, e.box) > 0.35), same = e => !e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND;
+        const near = opened.filter(e => DET.overlap(reg, e.box) > 0.35), same = e => { const now_ = e.emb && embCrop(c, e.box); if(now_){ e.embLast = +embSim(e.emb, now_).toFixed(2); return e.embLast >= EMB_SAME; } return !e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND; };
         const m = near.filter(same), diff = near.filter(e => !same(e) && !handled.has(e.id));
         if(!m.length && diff.length && reg.type !== 'rem'){ diff.forEach(e => { handled.add(e.id); if(!/قطعة مختلفة/.test(e.note || '')){ e.note = ((e.note || '') + ' وُضعت قطعة مختلفة مكانها — الحالة تبقى مفتوحة.').trim(); putEvent(e); } });
           this.newInfo(z, reg, 'swap', c, 'وُضعت قطعة مختلفة مكان قطعة مشالة.'); continue; }
@@ -848,6 +866,7 @@ const ENG = {
       img_b: this.shot(this.baseCv, reg, '#e53e3e'), img_a: this.shot(c, reg, '#e53e3e'), img_c: this.crop(this.baseCv, c, reg), note: night ? 'رُصد بعد ساعات العمل' : '' };
     if(why) e.note = ((e.note || '') + ' ' + why).trim();
     if(sig) e.sig = sig; // بصمة القطعة: إذا ظهرت في مكان آخر لاحقاً تُغلق الحالة «نُقلت»
+    const em = embCrop(this.baseCv, box); if(em) e.emb = em;
     this.extras(z, e);
     // نموذج مدرَّب على أمثلة المحل المعلّمة (اختياري: window.HARIS_MODEL). الشيل غير المرجّح لا يُنذر، لكنه يُسجَّل «غير مؤكد» للمراجعة
     const pr = night ? null : modelP(e, DBG_CUR);
