@@ -844,9 +844,7 @@ const ENG = {
     return c.toDataURL('image/jpeg', 0.75);
   },
   newRemoval(z, reg, c, night, sig, why){
-    // إصلاح: تجاهل إذا كان هناك حدث حديث (8 ثواني) يتداخل >70% مع نفس المنطقة
-    const box = { x: reg.x, y: reg.y, w: reg.w, h: reg.h };
-    if(S.events.some(e => e.t_start > now() - 8 && DET.overlap(e.box, box) > 0.70)) return;
+    const box = { x: reg.x, y: reg.y, w: reg.w, h: reg.h }; // لا نُسقط شيلاً بسبب حدث قريب: تنبيه «نقل» سابق في نفس المكان كان يُخفي سرقة
     const t = now(), cu = S.cleaning[z.id] || 0;
     let deadline = t + grace() * 60; if(cu > t) deadline = Math.max(deadline, cu + 60);
     const e = { id: rid(), zone: z.id, kind: night ? 'night' : 'removal', status: night ? 'incident' : 'pending', t_start: t, deadline, box,
