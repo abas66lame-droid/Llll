@@ -1061,7 +1061,7 @@ function alertBar(){
   if(el.dataset.k === key){ const a = el.querySelector('.ago'); if(a && L[0]) a.textContent = ago(L[0].t_start); return; }
   el.dataset.k = key; if(!L.length){ el.innerHTML = ''; return; }
   const e = L[0], z = zoneOf(e.zone), img = e.img_p || e.img_c || e.img_a;
-  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div>${e.ai ? `<div class="s">🤖 ${esc(e.ai.summary)}</div>` : ''}</div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button><button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
+  el.innerHTML = `<div class="alertbar">${img ? `<img src="${img}">` : ''}<div style="flex:1;min-width:0"><div class="t">${ALERT_T(e)} — ${esc(z.name)}</div><div class="s">${e.name ? esc(e.name) + ' · ' : ''}<span class="ago">${ago(e.t_start)}</span>${L.length > 1 ? ` · و${L.length - 1} تنبيه آخر` : ''}</div>${e.ai ? `<div class="s">🤖 ${esc(e.ai.summary)}</div>` : ''}</div><div class="btns"><button onclick="ackEv('${e.id}')">تم الاطلاع</button>${teachBtns(e, 'g')}<button class="g" onclick="openEv('${e.id}')">التفاصيل</button></div></div>`;
 }
 // ملصقات فوق أماكن الأحداث في الصورة: عدّ تنازلي للمعلّقة، «سرقة؟» للتنبيه، ونتيجة الأحداث الأخيرة لثوانٍ
 function liveLabels(){
@@ -1096,6 +1096,29 @@ function setTotal(id){ const z = S.zones.find(x => x.id === id); if(!z) return;
 function saveTotal(id){ const z = S.zones.find(x => x.id === id), v = parseInt($('#tot').value); if(!z || isNaN(v)) return toast('اكتب رقماً');
   z.total = v; z.totalAt = now(); saveZones(); closeModal(); updMon(); toast('سيحسب النظام العدد من الآن'); }
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
+// تعليم من الاستخدام اليومي: «صحيح/خطأ» على كل حدث يُحفظ مع الحدث ويُرسل مثالاً للتدريب (Supabase إن وُجد)
+const TRUTH = { removal: 'removal', night: 'removal', added: 'added', moved: 'moved', swap: 'swap' };
+function teach(id, ok){
+  const e = S.events.find(x => x.id === id); if(!e) return;
+  e.truth = ok ? (TRUTH[e.kind] || e.kind) : 'false'; e.ack = true;
+  if(!ok && (e.status === 'pending' || e.status === 'incident')) resolveEv(id, 'false', '', LS.get('haris_who') || '');
+  else putEvent(e);
+  sbSample(e).then(r => toast(r ? 'شكراً — حُفظ مثال تعليم' : 'حُفظ التعليم على الجهاز'), () => toast('حُفظ على الجهاز — تعذّر الرفع الآن'));
+  render();
+}
+async function sbSample(e){
+  const U = window.SB_URL, K = window.SB_KEY; if(!U || !K) return false;
+  const H = { apikey: K, Authorization: 'Bearer ' + K }, id = 'app-' + e.id;
+  for(const k of ['b', 'a', 'c']){ const d = e['img_' + k]; if(!d) continue;
+    const r = await fetch(`${U}/storage/v1/object/samples/${id}_${k}.jpg`, { method: 'POST', headers: { ...H, 'Content-Type': 'image/jpeg' }, body: await (await fetch(d)).blob() });
+    if(!r.ok && r.status !== 400 && r.status !== 409) throw new Error('img ' + r.status); } // 400/409 = الصورة مرفوعة سابقاً
+  const b = e.box || {}, d = e.dbg || {};
+  const r = await fetch(`${U}/rest/v1/samples?on_conflict=id`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify([{ id, source: 'app', t: e.t_start, zone: zoneOf(e.zone).name, system_kind: e.kind, status: e.status, x: b.x, y: b.y, w: b.w, h: b.h, pol: d.pol ?? null, hand: d.hand ?? null, note: e.note || '', truth: e.truth }]) });
+  if(!r.ok) throw new Error('row ' + r.status); return true;
+}
+const teachBtns = (e, cls) => e.truth ? `<span class="xs mut">${e.truth === 'false' ? '✗ عُلّم خطأ' : '✓ عُلّم صحيح'}</span>`
+  : `<button class="${cls} ok" onclick="event.stopPropagation();teach('${e.id}',true)">✓ صحيح</button><button class="${cls} dan" onclick="event.stopPropagation();teach('${e.id}',false)">✗ خطأ</button>`;
 function openEv(id){ const e = S.events.find(x => x.id === id); S.evf = e && e.status === 'incident' ? 'incident' : 'all'; go('ev');
   setTimeout(() => { const c = document.getElementById('ev_' + id); if(c){ c.scrollIntoView({ block: 'center' }); c.classList.add('hl'); } }, 120); }
 function fullLive(){ const el = $('#live'); if(!el) return;
@@ -1128,7 +1151,7 @@ function vEv(){
 }
 // ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
 function exportCases(){
-  const L = S.events.slice(0, 30).map(e => ({ kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
+  const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
   download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
 // تسجيل مستمر: صورة كل دقيقة للتدريب اللاحق
@@ -1277,7 +1300,7 @@ function evCard(e){
   return `<div class="card ev" id="ev_${e.id}"><div>${e.img_c ? `<img src="${e.img_c}" onclick="zoom(this.src)">` : ''}${e.img_p ? `<div style="margin-top:6px"><img src="${e.img_p}" onclick="zoom(this.src)"><div class="xs mut">لحظة التفاعل (${esc(e.who || '')})</div></div>` : ''}<div class="pics">${e.img_b ? `<div><img src="${e.img_b}" onclick="zoom(this.src)"><div class="xs mut">قبل</div></div>` : ''}${e.img_a ? `<div><img src="${e.img_a}" onclick="zoom(this.src)"><div class="xs mut">بعد</div></div>` : ''}${e.img_r ? `<div><img src="${e.img_r}" onclick="zoom(this.src)"><div class="xs mut">عند الرجوع</div></div>` : ''}</div></div>
     <div><div class="row"><b>${esc(KIND[e.kind] || e.kind)}${e.name ? ': ' + esc(e.name) : ''} — ${esc(z.name)}</b><span class="tag ${s[1]}">${s[0]}${e.resolution ? ': ' + esc(RES[e.resolution] || e.resolution) : ''}</span></div>
     <div class="sm mut">${esc(z.section || '')} · ${tm(e.t_start)} (${ago(e.t_start)})${left !== null ? ' · تنتهي المهلة خلال ' + (left < 120 ? left + ' ث' : Math.round(left / 60) + ' د') : ''}</div>
-    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${aiLine(e)}${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
+    ${e.note ? `<div class="sm" style="margin-top:4px">${esc(e.note)}</div>` : ''}${aiLine(e)}<div class="row" style="margin-top:8px;gap:6px">${teachBtns(e, 'btn sm')}</div>${e.resolved_by ? `<div class="xs mut">عالجها: ${esc(e.resolved_by)}</div>` : ''}
     ${e.status === 'incident' ? `<div class="row" style="margin-top:10px">${e.kind === 'tamper' || e.kind === 'conceal' ? '' : `<button class="btn sm ok" onclick="resForm('${e.id}','sold')">تم بيعه</button>`}<button class="btn sm" onclick="resForm('${e.id}','justified')">مبرر</button><button class="btn sm dan" onclick="resForm('${e.id}','theft')">سرقة مؤكدة</button><button class="btn sm" onclick="resForm('${e.id}','false')">خطأ في الكشف</button></div>` : ''}
     ${e.status === 'pending' ? `<div class="row" style="margin-top:10px"><button class="btn sm ok" onclick="addSale('${e.zone}',1,'','يدوي');toast('سُجّل البيع')">تسجيل بيع لهذه العارضة</button><button class="btn sm" onclick="startCleaning('${e.zone}');toast('مُدّدت المهلة')">تنظيف/عرض (تمديد)</button></div>` : ''}</div></div>`;
 }

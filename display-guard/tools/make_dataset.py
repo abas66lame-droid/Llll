@@ -27,7 +27,7 @@ with open(csv_path, 'a', newline='', encoding='utf-8') as f:
             data = json.load(fh)
         for c in data.get('cases', []):
             b = c.get('box') or {}
-            cid = hashlib.sha1(f"{c.get('t')}|{b}|{c.get('kind')}".encode()).hexdigest()[:12]
+            cid = c.get('id') or hashlib.sha1(f"{c.get('t')}|{b}|{c.get('kind')}".encode()).hexdigest()[:12]
             if cid in seen:
                 continue
             seen.add(cid)
@@ -39,7 +39,7 @@ with open(csv_path, 'a', newline='', encoding='utf-8') as f:
             w.writerow({'id': cid, 'source': os.path.basename(path), 't': c.get('t'), 'zone': c.get('zone', ''),
                         'system_kind': c.get('kind'), 'status': c.get('status'),
                         'x': round(b.get('x', 0), 4), 'y': round(b.get('y', 0), 4), 'w': round(b.get('w', 0), 4), 'h': round(b.get('h', 0), 4),
-                        'pol': d.get('pol', ''), 'hand': d.get('hand', ''), 'note': c.get('note', ''), 'truth': ''})
+                        'pol': d.get('pol', ''), 'hand': d.get('hand', ''), 'note': c.get('note', ''), 'truth': c.get('truth') or ''})
             new += 1
 print(f'{new} أمثلة جديدة → {csv_path} (المجموع {len(seen)})')
 
