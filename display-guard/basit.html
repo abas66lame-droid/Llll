@@ -691,7 +691,7 @@ const ENG = {
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, [0, 0], now() - 60)), reg => this.cand(z, reg, F, [0, 0], now() - 60))){
         const reg = cd.reg; if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
         const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
-        if(m.length){ m.forEach(e => this.returned(e, c)); continue; }
+        if(m.length){ m.forEach(e => this.returned(e, c, reg)); continue; }
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
       }
@@ -802,7 +802,7 @@ const ENG = {
         const reg = cd.reg;
         // رجوع قطعة لمكان حالة مفتوحة: بيد، أو بتغيّر ليس «نقصاً»، أو بنفس بصمة القطعة المشالة
         const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (cd.hT || reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
-        if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c); } }); continue; }
+        if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c, reg); } }); continue; }
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
       }
@@ -956,7 +956,11 @@ const ENG = {
     addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box, note: note || '',
       img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, '#38a169'), img_c: this.crop(this.baseCv, c, reg) });
   },
-  returned(e, c){
+  returned(e, c, reg){
+    // (تجربة ميدانية) 4 قطع في حالة واحدة طويلة، رجعت قطعة واحدة فأُغلقت كلها: الحالة تُغلق فقط حين يغطي الراجع أغلب مكانها
+    if(reg && e.box){ const ix = Math.max(0, Math.min(reg.x + reg.w, e.box.x + e.box.w) - Math.max(reg.x, e.box.x)), iy = Math.max(0, Math.min(reg.y + reg.h, e.box.y + e.box.h) - Math.max(reg.y, e.box.y));
+      e.retFrac = Math.min(1, (e.retFrac || 0) + ix * iy / Math.max(1e-9, e.box.w * e.box.h));
+      if(e.retFrac < 0.5){ if(!/رجع جزء/.test(e.note || '')) e.note = ((e.note || '') + ' رجع جزء منها فقط — باقي القطع ما زالت مفقودة.').trim(); putEvent(e); return; } }
     e.img_r = this.shot(c, e.box, '#38a169'); e.t_end = now();   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
     if(e.status === 'pending') e.status = 'returned';
     else { e.status = 'resolved'; e.resolution = 'returned'; e.resolved_by = 'النظام'; e.t_resolved = now(); e.note = ((e.note || '') + ' عاد المنتج إلى مكانه بعد التنبيه').trim(); }
