@@ -62,8 +62,9 @@ if URL and KEY:
                 return 409
             raise RuntimeError(f'{e.code} {msg}')
 
+    srcs = {os.path.basename(p) for p in a.files}  # نرفع أمثلة الملفات المعطاة فقط، لا كل ما سبق
     with open(csv_path, encoding='utf-8') as f:
-        rows = list(csv.DictReader(f))
+        rows = [r for r in csv.DictReader(f) if r['source'] in srcs]
     for r in rows:
         for k in 'bac':
             p = os.path.join(img_dir, f"{r['id']}_{k}.jpg")
