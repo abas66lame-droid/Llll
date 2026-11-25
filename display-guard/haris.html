@@ -689,7 +689,7 @@ const ENG = {
       const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, [0, 0], now() - 60)), reg => this.cand(z, reg, F, [0, 0], now() - 60))){
         const reg = cd.reg; if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
-        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (!e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
         if(m.length){ m.forEach(e => this.returned(e, c, reg)); continue; }
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
@@ -799,8 +799,11 @@ const ENG = {
       const handled = new Set(), since = (zs.judged || 0) - 3;
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, sh, since)), reg => this.cand(z, reg, F, sh, since))){
         const reg = cd.reg;
-        // رجوع قطعة لمكان حالة مفتوحة: بيد، أو بتغيّر ليس «نقصاً»، أو بنفس بصمة القطعة المشالة
-        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (cd.hT || reg.type !== 'rem' || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        // رجوع قطعة لمكان حالة مفتوحة: يجب أن تكون نفس القطعة (البصمة). (تجربة ميدانية: سُرق شريط ووُضع كأس مكانه فأُغلقت السرقة)
+        const near = opened.filter(e => DET.overlap(reg, e.box) > 0.35), same = e => !e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND;
+        const m = near.filter(same), diff = near.filter(e => !same(e) && !handled.has(e.id));
+        if(!m.length && diff.length && reg.type !== 'rem'){ diff.forEach(e => { handled.add(e.id); if(!/قطعة مختلفة/.test(e.note || '')){ e.note = ((e.note || '') + ' وُضعت قطعة مختلفة مكانها — الحالة تبقى مفتوحة.').trim(); putEvent(e); } });
+          this.newInfo(z, reg, 'swap', c, 'وُضعت قطعة مختلفة مكان قطعة مشالة.'); continue; }
         if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c, reg); } }); continue; }
         if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
         cands.push(cd);
