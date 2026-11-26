@@ -996,6 +996,8 @@ const ENG = {
     // إصلاح: تجاهل إذا كان هناك حدث حديث (5 ثواني) يتداخل >70% (يمنع التعداد المزدوج)
     const box = { x: reg.x, y: reg.y, w: reg.w, h: reg.h };
     if(kind !== 'moved' && S.events.some(e => e.t_start > now() - 5 && e.kind === kind && DET.overlap(e.box, box) > 0.70)) return;
+    // تشابه المكان قبل/بعد (MobileNet) لكل الأحداث، لا للشيل فقط: يدخل أرقام القرار ويتعلّم منه النموذج القادم
+    if(DBG_CUR){ const b0 = embCrop(this.baseCv, box), a1 = b0 && embCrop(c, box); if(a1) DBG_CUR.emb = +embSim(b0, a1).toFixed(3); }
     addEvent({ id: rid(), zone: z.id, kind, status: 'info', t_start: now(), t_end: now(), box, note: note || '',
       img_b: this.shot(this.baseCv, reg, '#e0a020'), img_a: this.shot(c, reg, '#38a169'), img_c: this.crop(this.baseCv, c, reg) });
   },
@@ -1334,7 +1336,7 @@ class DemoSource {
 }
 
 /* =================== الواجهة =================== */
-const KIND = { weak: 'نقص غير مؤكد', removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
+const KIND = { missed: '🚩 فات النظام', weak: 'نقص غير مؤكد', removal: 'نقص', night: 'نقص ليلي', added: 'إضافة', swap: 'تبديل', major: 'تغيّر كبير', tamper: 'عبث بالكاميرا', moved: 'نقل', pick: 'التقاط من الرف', restock: 'تعبئة', conceal: 'اشتباه إخفاء' };
 const STA = { pending: ['ضمن المهلة', 't-wa'], incident: ['اختفاء غير مبرر', 't-da'], returned: ['رجع إلى مكانه', 't-ok'], moved: ['نُقل لمكان آخر', 't-ok'], sold: ['مُباع', 't-ok'], resolved: ['تمت المعالجة', 't-mut'], info: ['معلومة', 't-inf'] };
 const RES = { sold: 'مُباع', justified: 'مبرر', theft: 'سرقة مؤكدة', false: 'خطأ في الكشف', returned: 'عاد إلى مكانه', moved: 'نُقل لمكان آخر' };
 let rt = 0; function refreshSoon(){ clearTimeout(rt); rt = setTimeout(() => { header(); if(S.tab === 'ev' && !$('#modal').innerHTML) render(); else if(S.tab === 'mon') updMon(); }, 300); }
@@ -1381,6 +1383,7 @@ function vMon(){
   return `    <div class="row" style="margin:12px 0 8px"><b>${S.src === 'camera' ? 'الكاميرا' : 'كاميرا تجريبية'}</b><span class="xs mut" id="mstat"></span><span class="xs" id="aistat"></span><span class="sp"></span>${S.src === 'camera' ? '<button class="btn sm" onclick="flipCam()">تبديل الكاميرا</button>' : ''}<button class="btn sm dan" onclick="confirmBox('إيقاف المراقبة؟', () => stopSource())">إيقاف</button></div>
     <div class="row" style="margin:-2px 0 8px"><button class="btn sm ${S.drawMode ? 'pri' : ''}" onclick="toggleDraw()">${S.drawMode ? '✓ إنهاء الرسم' : '✏️ رسم عارضة على الصورة'}</button>${S.drawMode ? '<span class="xs mut">الصورة مجمّدة للرسم. اسحب بإصبعك مربعاً حول العارضة ثم سمّها؛ بعدها تُعاد معايرة الصورة تلقائياً.</span>' : ''}</div>
     <div class="row" style="margin:-2px 0 6px;gap:6px">
+      <button class="btn sm" onclick="missedForm()" title="حدث شيء ولم يلاحظه النظام">🚩 فاتني شيء</button>
       <button class="btn sm" onclick="standSave()" title="احفظ بصمة العارضة الحالية">📸 حفظ بصمة</button>
       <button class="btn sm" onclick="standDetect()" title="تعرّف على العارضة الحالية">🔍 تعرّف</button>
       ${STAND.list().length ? `<button class="btn sm" onclick="standList()" title="العارضات المحفوظة">📋 (${STAND.list().length})</button>` : ''}
@@ -1519,6 +1522,21 @@ const TRUTH = { weak: 'removal', removal: 'removal', night: 'removal', added: 'a
 // أسباب جاهزة بضغطة: «صحيح لكن…» و«خطأ لأن…» — تعلّمنا أكثر من ✓/✗ وحدها
 const WHY_OK = { box: 'المربع أكبر أو أصغر من القطعة', merged: 'دمج أكثر من قطعة', kind: 'النوع غلط (مثلاً نقل لا سرقة)' };
 const WHY_NO = { flip: 'قلب أو تحريك بسيط', light: 'ظل أو إضاءة', staff: 'يد موظف أو ترتيب', back: 'القطعة رجعت', none: 'لم يحدث شيء' };
+// «فاتني شيء»: حدث لم يرصده النظام = أثمن مثال تدريب (يُحفظ بصورة المرجع والصورة الآن)
+const MISSED = { removal: 'سرقة / شيل', returned: 'إرجاع', added: 'إضافة', moved: 'نقل أو تحريك', other: 'شيء آخر' };
+function missedForm(){
+  if(!ENG.baseCv){ toast('شغّل الكاميرا أولاً'); return; }
+  openModal(`<h3 style="margin:0 0 6px">🚩 ماذا حدث ولم يلاحظه النظام؟</h3><div class="sm mut" style="margin-bottom:10px">تُحفظ صورة العارضة الآن وصورتها المرجعية كمثال تدريب.</div>`
+    + Object.entries(MISSED).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();missedSave('${k}')">${v}</button>`).join(''), true);
+}
+function missedSave(what){
+  const c = grabFrame(); if(!c || !ENG.baseCv){ toast('لا توجد صورة من الكاميرا'); return; }
+  const z = S.zones[0], box = z ? { x: z.x, y: z.y, w: z.w, h: z.h } : { x: 0, y: 0, w: 1, h: 1 };
+  const e = { id: rid(), zone: z ? z.id : '_cam', kind: 'missed', status: 'info', t_start: now(), t_end: now(), box, truth: what, ack: true,
+    note: 'فات النظام: ' + MISSED[what], img_b: ENG.shot(ENG.baseCv, box, '#7c3aed'), img_a: ENG.shot(c, box, '#7c3aed'), img_c: ENG.crop(ENG.baseCv, c, box) };
+  addEvent(e); render();
+  sbSample(e).then(r => toast(r ? '🚩 شكراً — حُفظ مثال «فات النظام»' : '🚩 حُفظ على الجهاز'), () => toast('🚩 حُفظ على الجهاز — تعذّر الرفع الآن'));
+}
 function teachWhy(id, ok){
   const L = ok ? WHY_OK : WHY_NO;
   openModal(`<h3 style="margin:0 0 10px">${ok ? '✓ صحيح، لكن…' : '✗ خطأ، لأن…'}</h3>` + Object.entries(L).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();teach('${id}',${ok},'${k}')">${v}</button>`).join('')
