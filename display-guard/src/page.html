@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>حارس العارضات</title>
+<title>مِرصاد — MIRSAD</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20120%20104%22%20role%3D%22img%22%20aria-label%3D%22MIRSAD%22%3E%20%3Cdefs%3E%3Cfilter%20id%3D%22mg%22%20x%3D%22-20%25%22%20y%3D%22-200%25%22%20width%3D%22140%25%22%20height%3D%22500%25%22%3E%3CfeGaussianBlur%20stdDeviation%3D%222.2%22/%3E%3C/filter%3E%3C/defs%3E%20%3Cpath%20d%3D%22M19%2012%20L101%208%20Q107%208%20107.5%2014%20L112%2086%20Q112.5%2092%20106%2092%20L14%2096%20Q8%2096.3%208.4%2090%20L13%2018%20Q13.4%2012.3%2019%2012%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%230B3D91%22%20stroke-width%3D%229%22%20stroke-linejoin%3D%22round%22/%3E%20%3Cg%20fill%3D%22%234B7BAA%22%3E%20%20%3Crect%20x%3D%2227%22%20y%3D%2224%22%20width%3D%2218%22%20height%3D%2215%22%20rx%3D%223%22/%3E%3Crect%20x%3D%2251%22%20y%3D%2223%22%20width%3D%2218%22%20height%3D%2215%22%20rx%3D%223%22/%3E%3Crect%20x%3D%2275%22%20y%3D%2222%22%20width%3D%2218%22%20height%3D%2215%22%20rx%3D%223%22/%3E%20%20%3Crect%20x%3D%2225%22%20y%3D%2265%22%20width%3D%2219%22%20height%3D%2216%22%20rx%3D%223%22/%3E%3Crect%20x%3D%2250%22%20y%3D%2264%22%20width%3D%2219%22%20height%3D%2216%22%20rx%3D%223%22/%3E%3Crect%20x%3D%2275%22%20y%3D%2263%22%20width%3D%2219%22%20height%3D%2216%22%20rx%3D%223%22/%3E%20%3C/g%3E%20%3Crect%20x%3D%220%22%20y%3D%2248%22%20width%3D%22120%22%20height%3D%227%22%20rx%3D%223.5%22%20fill%3D%22%2322D3EE%22%20filter%3D%22url%28%23mg%29%22%20opacity%3D%22.8%22/%3E%20%3Crect%20x%3D%220%22%20y%3D%2249.5%22%20width%3D%22120%22%20height%3D%224%22%20rx%3D%222%22%20fill%3D%22%2322D3EE%22/%3E%3C/svg%3E">
 <style>
 :root{--bg:#f3f5f8;--card:#fff;--line:#e2e7ee;--line2:#eef1f5;--tx:#16202c;--mut:#6a7686;--nav:#0f2742;--pri:#0e6f7a;--pril:#e3f2f3;
 --ok:#1a7f4b;--okl:#e6f4ec;--wa:#a86412;--wal:#fdf2e2;--da:#b42f2f;--dal:#fbeaea;--inf:#2d5bb5;--infl:#e8eefa;--r:12px}
@@ -123,6 +124,7 @@ const DB = {
 };
 const DEF = { site: 'الفرع الرئيسي', open: '09:00', close: '23:00', night: true, grace: 20, cleaning: 15, saleWin: 30, poll: 10, tgToken: '', tgChat: '', notify: false, pin: '', test: false, testSec: 10, ai: true, fine: false, debug: false, conceal: false, noSales: true, repeatBeep: true, judge: true, judgeModel: 'claude-opus-5-5', judgeUrl: '', judgeKey: '', judgeMax: 400 };
 const SIMPLE = !!window.SIMPLE;
+const MIRSAD_ICON = '<svg width="100%" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 104" role="img" aria-label="MIRSAD"> <defs><filter id="mg" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="2.2"/></filter></defs> <path d="M19 12 L101 8 Q107 8 107.5 14 L112 86 Q112.5 92 106 92 L14 96 Q8 96.3 8.4 90 L13 18 Q13.4 12.3 19 12 Z" fill="#fff" stroke="#0B3D91" stroke-width="9" stroke-linejoin="round"/> <g fill="#4B7BAA">  <rect x="27" y="24" width="18" height="15" rx="3"/><rect x="51" y="23" width="18" height="15" rx="3"/><rect x="75" y="22" width="18" height="15" rx="3"/>  <rect x="25" y="65" width="19" height="16" rx="3"/><rect x="50" y="64" width="19" height="16" rx="3"/><rect x="75" y="63" width="19" height="16" rx="3"/> </g> <rect x="0" y="48" width="120" height="7" rx="3.5" fill="#22D3EE" filter="url(#mg)" opacity=".8"/> <rect x="0" y="49.5" width="120" height="4" rx="2" fill="#22D3EE"/></svg>';
 if(SIMPLE) Object.assign(DEF, { test: true, testSec: 10, fine: true });
 const S = {
   cfg: Object.assign({}, DEF, LS.get('haris_cfg', {})), zones: LS.get('haris_zones', []), cleaning: LS.get('haris_cleaning', {}),
@@ -906,7 +908,7 @@ function alertEv(e){
   notifyAll(txt + (e.who ? '\nرُصد ' + e.who + ' عند العارضة قبل الشيل.' : '') + (e.ai ? '\n🤖 Claude: ' + e.ai.summary : ''), e.img_p || e.img_c);
 }
 function notifyAll(text, img){
-  if(S.cfg.notify && 'Notification' in window && Notification.permission === 'granted'){ try{ new Notification('حارس العارضات', { body: text }); }catch(e){} }
+  if(S.cfg.notify && 'Notification' in window && Notification.permission === 'granted'){ try{ new Notification('مِرصاد', { body: text }); }catch(e){} }
   tgSend(text, img);
 }
 async function tgSend(text, dataUrl){
@@ -988,7 +990,7 @@ function counts(){
 }
 function header(){
   const c = counts();
-  $('#hdr').innerHTML = `<div><b>حارس العارضات</b><small>${esc(S.cfg.site)}</small></div><span class="sp"></span>
+  $('#hdr').innerHTML = `<div style="display:flex;align-items:center;gap:8px"><span style="width:34px;flex:none;display:inline-flex">${MIRSAD_ICON}</span><div><b>مِرصاد <span style="font-weight:600;opacity:.7;font-size:.8em">MIRSAD</span></b><small>${esc(S.cfg.site)}</small></div></div><span class="sp"></span>
     ${S.running ? (isDemo() ? '<span class="badge amber">وضع تجريبي</span>' : '<span class="badge green">المراقبة تعمل</span>') : '<span class="badge red">المراقبة متوقفة</span>'}
     ${isTest() ? `<span class="badge amber">وضع الاختبار: مهلة ${fmtGrace()}</span>` : ''}${isNight() ? '<span class="badge">مراقبة ليلية</span>' : ''}${c.incident ? `<span class="badge red">${c.incident} تنبيه مفتوح</span>` : ''}`;
   const T = SIMPLE ? [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'الحالات'], ['zones', '▦', 'العارضات']] : [['mon', '◉', 'المراقبة'], ['ev', '⚠', 'التنبيهات'], ['zones', '▦', 'العارضات'], ['sales', '🛒', 'المبيعات'], ['rep', '▤', 'التقارير'], ['set', '⚙', 'الإعدادات']];
@@ -1519,7 +1521,7 @@ function vSet(){
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><b class="sm">إشعارات الكمبيوتر</b><div class="xs mut">تظهر حتى لو كانت الصفحة خلف نوافذ أخرى.</div></div><button class="sw ${c.notify ? 'on' : ''}" id="c_notify" onclick="this.classList.toggle('on');if(this.classList.contains('on')&&'Notification' in window)Notification.requestPermission()"></button></div>
       <p class="sm mut">تيليجرام: أنشئ بوتاً عبر @BotFather وانسخ التوكن، وأضفه لمجموعة المشرفين، ثم ضع رقم المجموعة (chat_id).</p>
       <div class="f2">${f('tgToken', 'توكن البوت')}${f('tgChat', 'رقم المحادثة (chat_id)')}</div>
-      <button class="btn sm" onclick="readSet();tgSend('✅ رسالة اختبار من حارس العارضات — '+S.cfg.site).then(ok=>toast(ok?'أُرسلت رسالة الاختبار؛ تحقق من تيليجرام':'تعذّر الإرسال'))">إرسال رسالة اختبار</button></div>
+      <button class="btn sm" onclick="readSet();tgSend('✅ رسالة اختبار من مِرصاد — '+S.cfg.site).then(ok=>toast(ok?'أُرسلت رسالة الاختبار؛ تحقق من تيليجرام':'تعذّر الإرسال'))">إرسال رسالة اختبار</button></div>
     <div class="card"><h3>نسخ احتياطي</h3><p class="sm mut" style="margin-top:0">البيانات محفوظة في هذا المتصفح على هذا الكمبيوتر. احفظ نسخة من الإعدادات والمناطق، أو انقلها لكمبيوتر آخر.</p>
       <div class="row"><button class="btn sm" onclick="download('haris-settings.json',JSON.stringify({cfg:S.cfg,zones:S.zones},null,2),'application/json')">تصدير الإعدادات والمناطق</button>
       <label class="btn sm">استيراد<input type="file" accept=".json" style="display:none" onchange="importSettings(this.files[0])"></label>
