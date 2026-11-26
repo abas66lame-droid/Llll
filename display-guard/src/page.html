@@ -1158,9 +1158,18 @@ const onScreen = e => e.t_start >= (S.liveSince || 0) && (e.zone === '_cam' || S
 function ackEv(id){ const e = S.events.find(x => x.id === id); if(e){ e.ack = true; putEvent(e); } updMon(); }
 // تعليم من الاستخدام اليومي: «صحيح/خطأ» على كل حدث يُحفظ مع الحدث ويُرسل مثالاً للتدريب (Supabase إن وُجد)
 const TRUTH = { weak: 'removal', removal: 'removal', night: 'removal', added: 'added', moved: 'moved', swap: 'swap' };
-function teach(id, ok){
+// أسباب جاهزة بضغطة: «صحيح لكن…» و«خطأ لأن…» — تعلّمنا أكثر من ✓/✗ وحدها
+const WHY_OK = { box: 'المربع أكبر أو أصغر من القطعة', merged: 'دمج أكثر من قطعة', kind: 'النوع غلط (مثلاً نقل لا سرقة)' };
+const WHY_NO = { flip: 'قلب أو تحريك بسيط', light: 'ظل أو إضاءة', staff: 'يد موظف أو ترتيب', back: 'القطعة رجعت', none: 'لم يحدث شيء' };
+function teachWhy(id, ok){
+  const L = ok ? WHY_OK : WHY_NO;
+  openModal(`<h3 style="margin:0 0 10px">${ok ? '✓ صحيح، لكن…' : '✗ خطأ، لأن…'}</h3>` + Object.entries(L).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();teach('${id}',${ok},'${k}')">${v}</button>`).join('')
+    + `<button class="btn w ${ok ? 'ok' : 'dan'}" onclick="closeModal();teach('${id}',${ok})">${ok ? 'صحيح تماماً' : 'سبب آخر'}</button>`, true);
+}
+function teach(id, ok, why){
   const e = S.events.find(x => x.id === id); if(!e) return;
   e.truth = ok ? (TRUTH[e.kind] || e.kind) : 'false'; e.ack = true;
+  if(why){ e.why = why; e.note = ((e.note || '') + ' [تعليم: ' + ((ok ? WHY_OK : WHY_NO)[why] || why) + ']').trim(); }
   if(!ok && (e.status === 'pending' || e.status === 'incident')) resolveEv(id, 'false', '', LS.get('haris_who') || '');
   else putEvent(e);
   sbSample(e).then(r => toast(r ? 'شكراً — حُفظ مثال تعليم' : 'حُفظ التعليم على الجهاز'), () => toast('حُفظ على الجهاز — تعذّر الرفع الآن'));
@@ -1178,7 +1187,7 @@ async function sbSample(e){
   if(!r.ok) throw new Error('row ' + r.status); return true;
 }
 const teachBtns = (e, cls) => e.truth ? `<span class="xs mut">${e.truth === 'false' ? '✗ عُلّم خطأ' : '✓ عُلّم صحيح'}</span>`
-  : `<button class="${cls} ok" onclick="event.stopPropagation();teach('${e.id}',true)">✓ صحيح</button><button class="${cls} dan" onclick="event.stopPropagation();teach('${e.id}',false)">✗ خطأ</button>`;
+  : `<button class="${cls} ok" onclick="event.stopPropagation();teach('${e.id}',true)">✓ صحيح</button><button class="${cls}" onclick="event.stopPropagation();teachWhy('${e.id}',true)">✓ لكن…</button><button class="${cls} dan" onclick="event.stopPropagation();teachWhy('${e.id}',false)">✗ خطأ</button>`;
 function openEv(id){ const e = S.events.find(x => x.id === id); S.evf = e && e.status === 'incident' ? 'incident' : 'all'; go('ev');
   setTimeout(() => { const c = document.getElementById('ev_' + id); if(c){ c.scrollIntoView({ block: 'center' }); c.classList.add('hl'); } }, 120); }
 function fullLive(){ const el = $('#live'); if(!el) return;
@@ -1211,7 +1220,7 @@ function vEv(){
 }
 // ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
 function exportCases(){
-  const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
+  const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, why: e.why, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
   download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
 // تسجيل مستمر: صورة كل دقيقة للتدريب اللاحق
