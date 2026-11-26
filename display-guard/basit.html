@@ -1590,7 +1590,7 @@ function vEv(){
     <div class="note sm">عند شيل منتج تبدأ مهلة ${fmtGrace()}. إذا رجع المنتج أو سُجّل بيعه تُغلق الحالة تلقائياً. وإذا انتهت المهلة بدون ذلك تصبح «اختفاء غير مبرر» ويصدر تنبيه.</div>
     <div class="row" style="margin:8px 0"><button class="btn sm" onclick="exportCases()">📤 تصدير آخر الحالات بالصور (أرسله للمطوّر)</button></div>
     <div class="row" style="margin:8px 0;gap:6px">
-      <button class="btn sm${TL.on ? ' pri' : ''}" onclick="tlToggle()">${TL.on ? '⏹ إيقاف التسجيل' : '⏺ تسجيل مستمر (صورة/دقيقة)'}</button>
+      <button class="btn sm${TL.on ? ' pri' : ''}" onclick="tlToggle()">${TL.on ? '⏺ الحفظ التلقائي يعمل (كل 15 ث)' : '⏸ الحفظ التلقائي متوقف'}</button><span class="xs mut">${TL.up ? 'رُفعت ' + TL.up + ' صورة' : ''}${TL.upFail ? ' · فشل ' + TL.upFail : ''}</span>
       ${TL.shots.length ? `<button class="btn sm" onclick="tlExport()">💾 تنزيل (${TL.shots.length} صورة)</button><button class="btn sm dan" onclick="tlClear()">مسح</button>` : ''}
     </div>
     ${L.length ? L.map(evCard).join('') : '<div class="card empty">لا توجد أحداث في هذا التصنيف.</div>'}`;
@@ -1600,22 +1600,23 @@ function exportCases(){
   const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, why: e.why, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
   download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
-// تسجيل مستمر: صورة كل دقيقة للتدريب اللاحق
-const TL = { on: false, shots: [], max: 480, iv: null }; // max=480 = 8 ساعات
-function tlToggle(){
-  if(TL.on){ clearInterval(TL.iv); TL.iv = null; TL.on = false; toast('توقف التسجيل — ' + TL.shots.length + ' صورة محفوظة'); render(); return; }
-  if(!S.src){ toast('شغّل الكاميرا أولاً'); return; }
-  TL.on = true;
-  TL.iv = setInterval(() => {
-    const c = grabFrame(); if(!c) return;
-    if(TL.shots.length >= TL.max){ clearInterval(TL.iv); TL.iv = null; TL.on = false; toast('اكتمل التسجيل (' + TL.max + ' صورة)'); render(); return; }
-    TL.shots.push({ t: now(), img: c.toDataURL('image/jpeg', 0.5) });
-  }, 60000);
-  toast('بدأ التسجيل — صورة كل دقيقة');
-  render();
+// حفظ تلقائي: صورة كل 15 ثانية ما دامت الكاميرا تعمل — آخر ساعتين على الجهاز، وكل صورة تُرفع (إن وُجد Supabase) لمطابقتها لاحقاً مع ما حدث فعلاً
+const TL = { on: true, shots: [], max: 480, every: 15, last: 0, up: 0, upFail: 0 };
+function tlTick(){
+  if(!TL.on || !S.running || now() - TL.last < TL.every) return;
+  const c = grabFrame(); if(!c) return;
+  TL.last = now();
+  const w = 640, sc = document.createElement('canvas'); sc.width = w; sc.height = Math.round(w * c.height / c.width); sc.getContext('2d').drawImage(c, 0, 0, sc.width, sc.height);
+  const img = sc.toDataURL('image/jpeg', 0.6), t = now();
+  TL.shots.push({ t, img }); if(TL.shots.length > TL.max) TL.shots.shift();
+  const U = window.SB_URL, K = window.SB_KEY; if(!U || !K) return;
+  const d = new Date(t * 1000), day = d.toISOString().slice(0, 10), stand = (S.zones[0] && S.zones[0].id || 'stand').replace(/[^\w-]+/g, '_'); // Supabase يرفض الأسماء العربية في مسار الملف
+  fetch(img).then(r => r.blob()).then(b => fetch(`${U}/storage/v1/object/samples/tl/${day}/${stand}/${Math.round(t)}.jpg`, { method: 'POST', headers: { apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'image/jpeg' }, body: b }))
+    .then(r => { if(r.ok) TL.up++; else TL.upFail++; }, () => TL.upFail++);
 }
+function tlToggle(){ TL.on = !TL.on; toast(TL.on ? 'الحفظ التلقائي يعمل — صورة كل 15 ثانية' : 'أوقفت الحفظ التلقائي'); render(); }
 function tlExport(){
-  if(!TL.shots.length){ toast('لا توجد صور مسجّلة'); return; }
+  if(!TL.shots.length){ toast('لا توجد صور محفوظة'); return; }
   download('timelapse-' + new Date().toISOString().slice(0,16).replace(/[:T]/g,'-') + '.json',
     JSON.stringify({ count: TL.shots.length, shots: TL.shots }), 'application/json');
 }
@@ -1913,6 +1914,7 @@ window.addEventListener('beforeunload', e => { if(S.running && !isDemo()){ e.pre
 window.addEventListener('resize', () => { if(S.tab === 'zones') drawEd(); });
 setInterval(() => { header(); if(S.tab === 'mon') updMon();
   // تكرار صوت التنبيه كل 30 ثانية حتى يضغط أحد «تم الاطلاع» أو يعالج التنبيه
+  tlTick();
   if(S.running && S.cfg.repeatBeep && now() - (S.beepAt || 0) >= 30 && S.events.some(e => e.status === 'incident' && !e.ack && onScreen(e))){ beep(); S.beepAt = now(); }
 }, 1000);
 (async () => {
