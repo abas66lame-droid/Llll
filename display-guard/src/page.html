@@ -208,6 +208,8 @@ function grayThumb(src, b){
   }catch(e){ return null; }
 }
 const thumbDiff = (a, b) => { let n = 0; for(let i = 0; i < a.length; i++) if(Math.abs(a[i] - b[i]) > 1) n++; return n / a.length; };
+function rot180(src, b){ const W = src.width, H = src.height, c = document.createElement('canvas'); c.width = Math.max(1, Math.round(b.w * W)); c.height = Math.max(1, Math.round(b.h * H));
+  const x = c.getContext('2d'); x.translate(c.width, c.height); x.rotate(Math.PI); x.drawImage(src, b.x * W, b.y * H, b.w * W, b.h * H, 0, 0, c.width, c.height); return c; }
 const embSim = (a, b) => { let d = 0, na = 0, nb = 0; for(let i = 0; i < a.length; i++){ d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return na && nb ? d / Math.sqrt(na * nb) : 0; };
 // نموذج وضعية الجسم (للكشف التجريبي عن حركة الإخفاء): يُحمَّل فقط إذا فُعّل الخيار
 async function loadPose(){
@@ -525,6 +527,8 @@ const ENG = {
     const gt = grayThumb(this.baseCv, box); if(gt) e.ref = gt;
     this.extras(z, e);
     // نموذج مدرَّب على أمثلة المحل المعلّمة (اختياري: window.HARIS_MODEL). الشيل غير المرجّح لا يُنذر، لكنه يُسجَّل «غير مؤكد» للمراجعة
+    // تشابه مكان القطعة قبل وبعد (MobileNet، ومع قلب 180°): يُحفظ مع أرقام القرار ويدخل النموذج المدرَّب
+    if(DBG_CUR && e.emb){ const a1 = embCrop(c, box), a2 = embCrop(rot180(c, box), { x: 0, y: 0, w: 1, h: 1 }); const v = Math.max(a1 ? embSim(e.emb, a1) : 0, a2 ? embSim(e.emb, a2) : 0); if(a1 || a2) DBG_CUR.emb = +v.toFixed(3); }
     const pr = night ? null : modelP(e, DBG_CUR);
     if(pr !== null){ e.p = pr; if(pr < window.HARIS_MODEL.th){ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: احتمال السرقة ' + Math.round(pr * 100) + '% حسب النموذج.').trim(); addEvent(e); return; } }
     addEvent(e);
@@ -863,6 +867,7 @@ function modelP(e, d){
   const M = window.HARIS_MODEL; if(!M || !d || d.pol === undefined) return null;
   const b = e.box, lo = Math.min(b.w, b.h), hi = Math.max(b.w, b.h), ca = d.carry || {};
   const f = [d.pol, d.self || 0, d.hand ? 1 : 0, d.type === 'rem' ? 1 : 0, /قبل الشيل/.test(e.note || '') ? 1 : 0, ca.take || 0, ca.put || 0, Math.log(b.w * b.h + 1e-6), hi > 3 * Math.max(lo, 1e-6) ? 1 : 0];
+  if(M.w.length > 9) f.push(d.emb ?? M.mu[9]); // تشابه القطعة قبل/بعد بـ MobileNet (بدون النموذج: قيمة محايدة)
   let z = M.b; f.forEach((v, i) => z += M.w[i] * (v - M.mu[i]) / M.sd[i]); return 1 / (1 + Math.exp(-z));
 }
 function mergeCands(cs, remake){
