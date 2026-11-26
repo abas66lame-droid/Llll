@@ -879,6 +879,14 @@ const ENG = {
     x.fillStyle = '#000a'; x.fillRect(0, 0, c.width, 20); x.fillStyle = '#fff'; x.font = '12px sans-serif'; x.fillText(new Date().toLocaleString('en-GB'), 6, 14);
     return c.toDataURL('image/jpeg', 0.7);
   },
+  // صورة مقرّبة للمكان الآن، بنفس تأطير crop() (لتُوضع بجانب نصف «قبل» من صورة المقارنة الأصلية)
+  zoom(src, box){
+    const W = src.width, H = src.height, px = box.w * 0.35, py = box.h * 0.35;
+    const x0 = Math.max(0, (box.x - px) * W), y0 = Math.max(0, (box.y - py) * H), x1 = Math.min(W, (box.x + box.w + px) * W), y1 = Math.min(H, (box.y + box.h + py) * H);
+    const cw = x1 - x0, ch = y1 - y0, h = 260, w = Math.max(1, Math.round(cw * h / Math.max(1, ch)));
+    const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(src, x0, y0, cw, ch, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.8);
+  },
   crop(before, after, box){
     const W = before.width, H = before.height, px = box.w * 0.35, py = box.h * 0.35;
     const x0 = Math.max(0, (box.x - px) * W), y0 = Math.max(0, (box.y - py) * H), x1 = Math.min(W, (box.x + box.w + px) * W), y1 = Math.min(H, (box.y + box.h + py) * H);
@@ -1029,6 +1037,7 @@ const ENG = {
       // (الجلسة الميدانية 7) المكان الآن يجب أن يشبه ما قبل الشيل أكثر مما يشبه الفراغ بعده
       if(nowT && e.gone && e.gone.length === nowT.length && e.ref && thumbDiff(e.ref, nowT) >= thumbDiff(e.gone, nowT)) return; }
     e.img_r = this.shot(c, e.box, '#38a169');   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
+    e.img_rz = this.zoom(c, e.box);
     // حالة نُبّه عليها: قبل إغلاقها «رجعت» نسأل Claude (إن وُجد) هل القطعة رجعت فعلاً
     if(e.status === 'incident' && JUDGE.ready()){ if(!e.retAsk) JUDGE.confirmReturn(e, () => this.closeReturned(e)); return; }
     this.closeReturned(e);
@@ -1151,7 +1160,15 @@ const JUDGE = { busy: 0, queue: [],
   // إذا قال بثقة إن القطعة ما زالت مفقودة تبقى الحالة مفتوحة؛ وإذا تعذّر الاتصال نعتمد حكم المحرك كما كان
   async confirmReturn(e, close){
     e.retAsk = 'wait'; const b64 = d => (d || '').split(',')[1] || '';
-    const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: [{ label: 'before', data: b64(e.img_b) }, { label: 'after', data: b64(e.img_r) }],
+    // مقارنة مقرّبة: نصف «قبل» من صورة الشيل الأصلية (اليمين) بجانب المكان الآن (اليسار) — القطع الصغيرة لا تُرى في الصورة الكاملة
+    let cmp = '';
+    try{ const ld = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
+      const [ic, iz] = await Promise.all([ld(e.img_c), ld(e.img_rz)]), w = (ic.width - 10) / 2, h = ic.height - 24;
+      const k = document.createElement('canvas'); k.width = ic.width; k.height = ic.height; const x = k.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, k.width, k.height);
+      x.drawImage(ic, w + 10, 24, w, h, w + 10, 24, w, h); x.drawImage(iz, 0, 24, w, h);
+      x.fillStyle = '#222'; x.font = 'bold 14px Tahoma'; x.textAlign = 'right'; x.fillText('قبل', k.width - 6, 17); x.fillStyle = '#2f855a'; x.fillText('الآن', w - 6, 17);
+      cmp = k.toDataURL('image/jpeg', 0.8); e.img_rc = cmp; }catch(err){}
+    const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: [...(cmp ? [{ label: 'compare', data: b64(cmp) }] : []), { label: 'before', data: b64(e.img_b) }, { label: 'after', data: b64(e.img_r) }],
       ctx: { zone: z.name, mode: z.mode || '', guess: 'رجوع قطعة كانت مفقودة إلى مكانها', hand: false, note: 'نُبّه على شيل قطعة من المربع، والمحرك يظن أنها رجعت الآن. هل رجعت فعلاً؟', noSales: !!S.cfg.noSales } };
     let v = null;
     try{ if(this.left() > 0){ const r = await this.post(body); const j = await r.json().catch(() => ({})); if(r.ok && j.verdict){ this.count(); v = j; } } }catch(err){}
