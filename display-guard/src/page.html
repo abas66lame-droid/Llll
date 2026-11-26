@@ -1284,7 +1284,7 @@ function vEv(){
 }
 // ملف صغير فيه آخر 30 حالة بصورها وأرقام القرار، لتحليل أخطاء التجربة الميدانية وتحويلها لاختبارات
 function exportCases(){
-  const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, why: e.why, clip: e.clip, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r }));
+  const L = S.events.slice(0, 30).map(e => ({ id: 'app-' + e.id, truth: e.truth, why: e.why, clip: e.clip, kind: e.kind, status: e.status, t: e.t_start, note: e.note, box: e.box, to: e.to, dbg: e.dbg, zone: zoneOf(e.zone).name, img_b: e.img_b, img_a: e.img_a, img_c: e.img_c, img_p: e.img_p, img_r: e.img_r, ai: e.ai, aiErr: e.aiErr, gem: e.gem }));
   download('haris-cases-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json', JSON.stringify({ zones: S.zones, cases: L }), 'application/json');
 }
 // حفظ تلقائي: صورة كل 15 ثانية ما دامت الكاميرا تعمل — آخر ساعتين على الجهاز، وكل صورة تُرفع (إن وُجد Supabase) لمطابقتها لاحقاً مع ما حدث فعلاً
