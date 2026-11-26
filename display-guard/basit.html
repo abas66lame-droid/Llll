@@ -938,7 +938,8 @@ const ENG = {
     for(const a of Hd){ if(used.has(a)) continue; DBG_CUR = a.dbg;
       if(!night && a.pol > PUT && this.movedLater({ z: a.z, reg: a.reg, sig: a.after }, c, MOVE_SIM_HAND)) continue;
       if(!night && a.pol > PUT) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
-      else if(!night && a.pol > 0) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة عند هذا المكان.');
+      // (تجربة ميدانية) كوب وكرتونة أبيض سُرقا فسُجّلا «إضافة»: ميل «وضع» ضعيف لا يغلب ملمساً يقول «اختفت قطعة»
+      else if(!night && a.pol > 0 && a.reg.type !== 'rem') this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة عند هذا المكان.');
       else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
     }
     const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && b.pol > 0){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
