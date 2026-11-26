@@ -1540,12 +1540,18 @@ function missedSave(what){
 }
 function teachWhy(id, ok){
   const L = ok ? WHY_OK : WHY_NO;
-  openModal(`<h3 style="margin:0 0 10px">${ok ? '✓ صحيح، لكن…' : '✗ خطأ، لأن…'}</h3>` + Object.entries(L).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();teach('${id}',${ok},'${k}')">${v}</button>`).join('')
+  openModal(`<h3 style="margin:0 0 10px">${ok ? '✓ صحيح، لكن…' : '✗ خطأ، لأن…'}</h3>` + Object.entries(L).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();${ok && k === 'kind' ? `teachKind('${id}')` : `teach('${id}',${ok},'${k}')`}">${v}</button>`).join('')
     + `<button class="btn w ${ok ? 'ok' : 'dan'}" onclick="closeModal();teach('${id}',${ok})">${ok ? 'صحيح تماماً' : 'سبب آخر'}</button>`, true);
 }
-function teach(id, ok, why){
+// «النوع غلط»: نسأل عن النوع الصحيح، فلا يُسجَّل «سرقة صحيحة» ما كان نقلاً
+const KIND_FIX = { removal: 'سرقة / شيل', added: 'إضافة', moved: 'نقل أو قلب', swap: 'تبديل بقطعة أخرى' };
+function teachKind(id){
+  openModal(`<h3 style="margin:0 0 10px">ما النوع الصحيح؟</h3>` + Object.entries(KIND_FIX).map(([k, v]) => `<button class="btn w" style="margin-bottom:6px" onclick="closeModal();teach('${id}',true,'kind','${k}')">${v}</button>`).join(''), true);
+}
+function teach(id, ok, why, kindFix){
   const e = S.events.find(x => x.id === id); if(!e) return;
-  e.truth = ok ? (TRUTH[e.kind] || e.kind) : 'false'; e.ack = true;
+  e.truth = ok ? (kindFix || TRUTH[e.kind] || e.kind) : 'false'; e.ack = true;
+  if(kindFix && kindFix !== 'removal' && (e.status === 'pending' || e.status === 'incident')) resolveEv(id, 'false', 'النوع الصحيح: ' + KIND_FIX[kindFix], LS.get('haris_who') || '');
   if(why){ e.why = why; e.note = ((e.note || '') + ' [تعليم: ' + ((ok ? WHY_OK : WHY_NO)[why] || why) + ']').trim(); }
   if(!ok && (e.status === 'pending' || e.status === 'incident')) resolveEv(id, 'false', '', LS.get('haris_who') || '');
   else putEvent(e);
