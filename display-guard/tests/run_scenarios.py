@@ -120,6 +120,10 @@ SCENARIOS = {
     'takeall': ('takeall.y4m', [ZALL], 40, lambda ev: not [1 for _, k, s in ev if k == 'moved' or s == 'moved'] and len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 3, MOCK_HAND),
     'takeall_nohand': ('takeall_nohand.y4m', [ZALL], 40, lambda ev: not [1 for _, k, s in ev if k == 'moved' or s == 'moved'] and len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 3, None, {'ai': False}),
     'turn': ('turn.y4m', [GUM, MOUSE], 28, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k == 'removal'], None),
+    # الجلسة الميدانية 7
+    'smallreturn': ('smallreturn.y4m', [ZALL], 50, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 2 and not [1 for _, k, s in ev if k == 'removal' and s in ('returned', 'resolved')], MOCK_HAND, {'fine': True}),
+    'personbase': ('personbase.y4m', [ZALL], 50, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k in ('removal', 'night')], MOCK_PERSON),
+    'swallow': ('swallow.y4m', [ZALL], 50, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 2, MOCK_HAND),
 }
 
 

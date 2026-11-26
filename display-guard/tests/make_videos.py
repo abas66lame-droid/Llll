@@ -379,5 +379,49 @@ def carry():
     run('carryadd', 83, shelf, newg, [((560, 520), G, shelf), ((560, 400), G, shelf), ((560, 330), None, newg), ((560, 470), None, newg)])
 
 
+# ===================== الجلسة الميدانية 7 (طريقة Veesion، كاميرا بعيدة من الأعلى) =====================
+def field7():
+    def ws(items, hand=None, person=None, marker=True):  # سطح أبيض بقطع صغيرة (كرات وعلب) كما تُرى من بعيد
+        im = Image.new('RGB', (SW, SH), (236, 238, 242)); d = ImageDraw.Draw(im)
+        d.rectangle([0, 330, SW, 345], fill=(220, 222, 228))
+        for k in range(7):  # صف خلفي ثابت من علب ومنتجات (كما على سطح العارضة الحقيقية)
+            x0 = 20 + k * 88; d.rectangle([x0, 20, x0 + 70, 110], fill=(250, 250, 252), outline=(190, 195, 205), width=2); d.rectangle([x0, 20, x0 + 70, 38], fill=[(30, 110, 220), (220, 60, 60), (40, 150, 60), (240, 180, 40)][k % 4]); d.ellipse([x0 + 20, 55, x0 + 50, 85], fill=(70, 75, 90))
+        for kind, cx, cy in items:
+            if kind == 'ball': d.ellipse([cx - 11, cy - 11, cx + 11, cy + 11], fill=(40, 70, 170)); d.ellipse([cx - 11, cy - 11, cx + 11, cy - 1], fill=(20, 20, 26))
+            elif kind == 'gball': d.ellipse([cx - 11, cy - 11, cx + 11, cy + 11], fill=(25, 25, 30)); d.ellipse([cx - 7, cy - 11, cx + 7, cy - 3], fill=(40, 140, 80))
+            elif kind == 'tray': d.rectangle([cx - 120, cy - 80, cx + 120, cy + 80], fill=(70, 80, 110)); [d.line([cx - 120, cy - 80 + k * 16, cx + 120, cy - 70 + k * 16], fill=(230, 230, 240), width=3) for k in range(10)]
+            elif kind == 'gift': d.rectangle([cx - 36, cy - 36, cx + 36, cy + 36], fill=(220, 50, 40)); d.rectangle([cx - 6, cy - 36, cx + 6, cy + 36], fill=(250, 250, 250)); d.rectangle([cx - 36, cy - 6, cx + 36, cy + 6], fill=(250, 250, 250))
+            elif kind == 'wbox': d.rectangle([cx - 42, cy - 70, cx + 42, cy + 70], fill=(248, 248, 250), outline=(200, 205, 215), width=2); d.rectangle([cx - 42, cy - 70, cx + 42, cy - 48], fill=(30, 110, 220)); d.ellipse([cx - 22, cy - 25, cx + 22, cy + 19], fill=(60, 70, 90))
+        if person:  # شخص واقف أمام العارضة (كمّ أخضر = «شخص» للكاشف الوهمي)
+            x = person; d.rectangle([x - 60, 120, x + 60, SH], fill=(40, 170, 60)); d.ellipse([x - 35, 60, x + 35, 130], fill=(205, 160, 135))
+        if hand:
+            d.ellipse([hand[0] - 30, hand[1] - 25, hand[0] + 30, hand[1] + 25], fill=(205, 160, 135)); d.rectangle([hand[0] - 20, min(SH, hand[1] + 20), hand[0] + 20, SH], fill=(60, 64, 80))
+            if marker: d.ellipse([hand[0] - 7, hand[1] - 7, hand[0] + 7, hand[1] + 7], fill=(0, 255, 255))
+        return im
+    def take(seq, f, items, it):  # يد تدخل من الأسفل، تأخذ القطعة، وتخرج بها
+        p = (it[1], it[2]); rest = [x for x in items if x is not it]
+        seq += [f(items, (p[0], p[1] + 140)), f(items, (p[0], p[1] + 40)), f(items, p), f(rest, p), f(rest, p), f(rest, (p[0], p[1] + 140)), f(rest, (p[0], SH - 5))]
+        return rest
+    # 1) «سُرقت الكرة الزرقاء فنبّه، ثم أغلقها وقال رجعت»: كرة صغيرة تُسرق، وبعد التنبيه تُسرق الكرة الخضراء جنبها — يُفترض: حالتان مفتوحتان، ولا «رجوع»
+    rng = np.random.default_rng(91); f = lambda it, h=None: noisy(rng, ws(it, h), 3)
+    items = [('ball', 250, 230), ('gball', 273, 232), ('wbox', 450, 240)]
+    seq = [f(items) for _ in range(24)]; cur = take(seq, f, items, items[0]); seq += [f(cur) for _ in range(64)]
+    cur = take(seq, f, cur, cur[0]); seq += [f(cur) for _ in range(110)]
+    write_y4m('smallreturn.y4m', seq)
+    # 2) «تحرّك الموبايل والموظف واقف أمام الرف، فلما ذهب نبّه بسرقة»: المشهد يتغيّر كله وشخص واقف يغطي علبة، ثم يذهب — يُفترض: تنبيه العبث فقط، بلا شيل
+    rng = np.random.default_rng(92); f = lambda it, h=None, pr=None: noisy(rng, ws(it, h, pr), 3)
+    A_ = [('gift', 200, 230), ('ball', 330, 240)]; B_ = [('wbox', 200, 240), ('tray', 430, 220)]
+    seq = [noisy(rng, hand_scene([('phone', 180, 240), ('book', 450, 250)])) for _ in range(24)]
+    seq += [f(B_, None, 220) for _ in range(44)]                              # الكاميرا وُجّهت لمكان آخر، وشخص واقف ثابت أمام العلبة البيضاء
+    seq += [f(B_, None, 120), f(B_, None, 40)] + [f(B_) for _ in range(120)]  # يبتعد الشخص فتظهر العلبة كما كانت
+    write_y4m('personbase.y4m', seq)
+    # 3) «حالة كبيرة مفتوحة ابتلعت سرقة صغيرة داخلها (سجّلها تبديل أو لم يسجّلها)»: تُشال لوحة كبيرة (إنذار)، ثم تُشال علبة حمراء كانت عند حافتها — يُفترض: حالتا شيل
+    rng = np.random.default_rng(93); f = lambda it, h=None: noisy(rng, ws(it, h), 3)
+    items = [('tray', 250, 220), ('gift', 345, 270)]
+    seq = [f(items) for _ in range(24)]; cur = take(seq, f, items, items[0]); seq += [f(cur) for _ in range(64)]
+    cur = take(seq, f, cur, cur[0]); seq += [f(cur) for _ in range(110)]
+    write_y4m('swallow.y4m', seq)
+
+
 if __name__ == '__main__':
-    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal(); hands(); carry()
+    live(); gum(); user(); focus(); steal(); tamper(); relocate(); stock(); conceal(); hands(); carry(); field7()

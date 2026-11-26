@@ -564,6 +564,10 @@ function grayThumb(src, b){
     return g.map(v => Math.round((v - mu) / sd * 100) / 100);
   }catch(e){ return null; }
 }
+// (الجلسة الميدانية 7) حالة مفتوحة كبيرة كانت «تبتلع» أي تغيّر صغير داخلها: المطابقة مع حالة مفتوحة تحتاج مكاناً بحجم مقارب
+const bArea = b => b.w * b.h, bIoU = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)), i = ix * iy; return i / Math.max(1e-9, bArea(a) + bArea(b) - i); };
+const nearCase = (reg, e) => DET.overlap(reg, e.box) > 0.35 && bArea(reg) >= 0.2 * bArea(e.box);
+const sameSpot = (reg, e) => bIoU(reg, e.box) > 0.5;
 const thumbDiff = (a, b) => { let n = 0; for(let i = 0; i < a.length; i++) if(Math.abs(a[i] - b[i]) > 1) n++; return n / a.length; };
 function rot180(src, b){ const W = src.width, H = src.height, c = document.createElement('canvas'); c.width = Math.max(1, Math.round(b.w * W)); c.height = Math.max(1, Math.round(b.h * H));
   const x = c.getContext('2d'); x.translate(c.width, c.height); x.rotate(Math.PI); x.drawImage(src, b.x * W, b.y * H, b.w * W, b.h * H, 0, 0, c.width, c.height); return c; }
@@ -702,8 +706,16 @@ function loop(){
 const ENG = {
   base: null, prev: null, baseCv: null, zst: {},
   camMove: 0, camBump: 0, settle: 0, hb: null, blindSince: 0, blindEv: null,
-  reset(){ this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; this.hb = null; this.blindSince = 0; this.blindEv = null; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
-  rebaseAll(F, c){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; this.hb = DET.health(F); },
+  reset(){ this.blind = []; this.base = null; this.prev = null; this.baseCv = null; this.zst = {}; this.camMove = 0; this.camBump = 0; this.settle = 0; this.hb = null; this.blindSince = 0; this.blindEv = null; S.moving = {}; S.diag = {}; S.camState = 'ok'; },
+  rebaseAll(F, c, ppl){ this.base = DET.clone(F); this.baseCv.getContext('2d').drawImage(c, 0, 0); this.zst = {}; this.hb = DET.health(F);
+    // الأشخاص الموجودون لحظة أخذ المرجع: ما خلفهم غير معروف حتى يذهبوا (صلاحية 10 دقائق)
+    this.blind = (ppl || []).map(b => ({ x: b.x - b.w * 0.1, y: b.y - b.h * 0.1, w: b.w * 1.2, h: b.h * 1.2, t: now() })); },
+  blind: [],
+  blindHit(reg){
+    this.blind = this.blind.filter(b => now() - b.t < 600); if(!this.blind.length) return false;
+    const ix = b => Math.max(0, Math.min(reg.x + reg.w, b.x + b.w) - Math.max(reg.x, b.x)) * Math.max(0, Math.min(reg.y + reg.h, b.y + b.h) - Math.max(reg.y, b.y));
+    return this.blind.some(b => ix(b) >= 0.5 * bArea(reg));
+  },
   // قبل إعادة ضبط المرجع كاملاً (بعد حركة الكاميرا): نقارن كل عارضة بالمرجع القديم بعد محاذاته بالإزاحة المقاسة،
   // حتى لا تُخفى سرقة حدثت مع حركة الموبايل (دفعه وأخذ القطعة في نفس اللحظة). نفتح فقط حالات «نقص» واضحة، ونغلق ما رجع.
   realign(F, c, sh, ppl, night, gb){
@@ -711,7 +723,7 @@ const ENG = {
     const grow = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
     // نطابق المرجع القديم على الصورة الحالية (إزاحة + دوران + تقريب). إذا تعذّر القياس بثقة لا نفتح حالات (تفادياً للإنذار الكاذب)
     const T = DET.estimateAffine(this.base, F, sh);
-    if(!T){ if(gb > 0.5) this.newTamper('turn', c); this.rebaseAll(F, c); return 0; } // المشهد كله تغيّر ولا يمكن مطابقته: الكاميرا وُجّهت لمكان آخر
+    if(!T){ if(gb > 0.5) this.newTamper('turn', c); this.rebaseAll(F, c, ppl); return 0; } // المشهد كله تغيّر ولا يمكن مطابقته: الكاميرا وُجّهت لمكان آخر
     const wc = document.createElement('canvas'); wc.width = c.width; wc.height = c.height;
     const wx = wc.getContext('2d', { willReadFrequently: true }); wx.drawImage(c, 0, 0); wx.setTransform(T.a, T.b, T.c, T.d, T.e, T.f); wx.drawImage(this.baseCv, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
     const B = DET.frameFromCanvas(wc);
@@ -723,15 +735,15 @@ const ENG = {
       const opened = S.events.filter(e => e.zone === z.id && e.kind !== 'conceal' && (e.status === 'pending' || e.status === 'incident'));
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, [0, 0], now() - 60)), reg => this.cand(z, reg, F, [0, 0], now() - 60))){
         const reg = cd.reg; if((ppl || []).some(b => ix(grow(b, 0.08), grow(reg, 0.1)))) continue;
-        const m = opened.filter(e => DET.overlap(reg, e.box) > 0.35 && (!e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
+        const m = reg.type === 'rem' ? [] : opened.filter(e => nearCase(reg, e) && (!e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND));
         if(m.length){ m.forEach(e => this.returned(e, c, reg)); continue; }
-        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        if(reg.type === 'rem' && opened.some(e => sameSpot(reg, e))) continue;
         cands.push(cd);
       }
     }
     this.decide(cands, c, night); this.base = old;
     n = S.events.slice(0, S.events.length - before).filter(e => e.kind === 'removal' || e.kind === 'night').length;
-    this.rebaseAll(F, c);
+    this.rebaseAll(F, c, ppl);
     return n;
   },
   process(c, pplFn){
@@ -834,12 +846,16 @@ const ENG = {
       for(const cd of mergeCands(mergeNear(r.regions, 0.04).map(reg => this.cand(z, reg, F, sh, since)), reg => this.cand(z, reg, F, sh, since))){
         const reg = cd.reg;
         // رجوع قطعة لمكان حالة مفتوحة: يجب أن تكون نفس القطعة (البصمة). (تجربة ميدانية: سُرق شريط ووُضع كأس مكانه فأُغلقت السرقة)
-        const near = opened.filter(e => DET.overlap(reg, e.box) > 0.35), same = e => { const now_ = e.emb && embCrop(c, e.box); if(now_){ e.embLast = +embSim(e.emb, now_).toFixed(2); return e.embLast >= EMB_SAME; } return !e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND; };
-        const m = near.filter(same), diff = near.filter(e => !same(e) && !handled.has(e.id));
+        // (الجلسة الميدانية 7) سُرقت كرة صغيرة ثم أُخذت قطعة بجانبها فأُغلقت الكرة «رجعت»: اختفاء قطعة لا يكون رجوعاً أبداً،
+        // والقطعة الراجعة يجب أن تشبه الأصل أكثر بوضوح مما كان المكان الفارغ يشبهه (الأماكن الصغيرة جداً تتشابه بالبصمة)
+        const near = opened.filter(e => nearCase(reg, e)), same = e => { const now_ = e.emb && embCrop(c, e.box); if(now_){ e.embLast = +embSim(e.emb, now_).toFixed(2); return e.embLast >= Math.max(EMB_SAME, (e.embGone || 0) + 0.15); } return !e.sig || DET.sigSim(e.sig, cd.after) >= MOVE_SIM_HAND; };
+        const m = reg.type === 'rem' ? [] : near.filter(same), diff = reg.type === 'rem' ? [] : near.filter(e => !same(e) && !handled.has(e.id));
         if(!m.length && diff.length && reg.type !== 'rem'){ diff.forEach(e => { handled.add(e.id); if(!/قطعة مختلفة/.test(e.note || '')){ e.note = ((e.note || '') + ' وُضعت قطعة مختلفة مكانها — الحالة تبقى مفتوحة.').trim(); putEvent(e); } });
           this.newInfo(z, reg, 'swap', c, 'وُضعت قطعة مختلفة مكان قطعة مشالة.'); continue; }
         if(m.length){ m.forEach(e => { if(!handled.has(e.id)){ handled.add(e.id); this.returned(e, c, reg); } }); continue; }
-        if(reg.type === 'rem' && opened.some(e => DET.overlap(reg, e.box) > 0.5)) continue;
+        if(reg.type === 'rem' && opened.some(e => sameSpot(reg, e))) continue;
+        // (الجلسة الميدانية 7) مكان كان يغطيه شخص لحظة أخذ الصورة المرجعية: ما خلفه لم يُرَ أصلاً، فظهوره ليس شيلاً — نعتمده مرجعاً بصمت
+        if(this.blindHit(reg)) continue;
         cands.push(cd);
       }
       zs.judged = now(); toRebase.push(z);
@@ -886,7 +902,8 @@ const ENG = {
     this.extras(z, e);
     // نموذج مدرَّب على أمثلة المحل المعلّمة (اختياري: window.HARIS_MODEL). الشيل غير المرجّح لا يُنذر، لكنه يُسجَّل «غير مؤكد» للمراجعة
     // تشابه مكان القطعة قبل وبعد (MobileNet، ومع قلب 180°): يُحفظ مع أرقام القرار ويدخل النموذج المدرَّب
-    if(DBG_CUR && e.emb){ const a1 = embCrop(c, box), a2 = embCrop(rot180(c, box), { x: 0, y: 0, w: 1, h: 1 }); const v = Math.max(a1 ? embSim(e.emb, a1) : 0, a2 ? embSim(e.emb, a2) : 0); if(a1 || a2) DBG_CUR.emb = +v.toFixed(3); }
+    if(e.emb){ const a1 = embCrop(c, box), a2 = DBG_CUR ? embCrop(rot180(c, box), { x: 0, y: 0, w: 1, h: 1 }) : null; if(a1) e.embGone = +embSim(e.emb, a1).toFixed(3); const v = Math.max(a1 ? embSim(e.emb, a1) : 0, a2 ? embSim(e.emb, a2) : 0); if(DBG_CUR && (a1 || a2)) DBG_CUR.emb = +v.toFixed(3); }
+    const gg = grayThumb(c, box); if(gg) e.gone = gg; // شكل المكان بعد الشيل: الرجوع يجب أن يعيده أقرب للأصل منه للفراغ
     const pr = night ? null : modelP(e, DBG_CUR);
     if(pr !== null){ e.p = pr; if(pr < window.HARIS_MODEL.th){ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: احتمال السرقة ' + Math.round(pr * 100) + '% حسب النموذج.').trim(); addEvent(e); return; } }
     addEvent(e);
@@ -1008,8 +1025,17 @@ const ENG = {
       e.retFrac = Math.min(1, (e.retFrac || 0) + ix * iy / Math.max(1e-9, e.box.w * e.box.h));
       // (تجربة ميدانية) أسود+أزرق في حالة واحدة، رجع الأسود فقط فأُغلقت: المكان يجب أن يعود كما كان قبل الشيل
       const nowT = e.ref && grayThumb(c, e.box), rest = nowT && nowT.length === e.ref.length ? thumbDiff(e.ref, nowT) : 0;
-      if(e.retFrac < 0.5 || rest >= 0.4){ if(!/رجع جزء/.test(e.note || '')) e.note = ((e.note || '') + ' رجع جزء منها فقط — باقي القطع ما زالت مفقودة.').trim(); putEvent(e); return; } }
-    e.img_r = this.shot(c, e.box, '#38a169'); e.t_end = now();   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
+      if(e.retFrac < 0.5 || rest >= 0.4){ if(!/رجع جزء/.test(e.note || '')) e.note = ((e.note || '') + ' رجع جزء منها فقط — باقي القطع ما زالت مفقودة.').trim(); putEvent(e); return; }
+      // (الجلسة الميدانية 7) المكان الآن يجب أن يشبه ما قبل الشيل أكثر مما يشبه الفراغ بعده
+      if(nowT && e.gone && e.gone.length === nowT.length && e.ref && thumbDiff(e.ref, nowT) >= thumbDiff(e.gone, nowT)) return; }
+    e.img_r = this.shot(c, e.box, '#38a169');   // نحتفظ بصور الشيل الأصلية ونضيف صورة الرجوع
+    // حالة نُبّه عليها: قبل إغلاقها «رجعت» نسأل Claude (إن وُجد) هل القطعة رجعت فعلاً
+    if(e.status === 'incident' && JUDGE.ready()){ if(!e.retAsk) JUDGE.confirmReturn(e, () => this.closeReturned(e)); return; }
+    this.closeReturned(e);
+  },
+  closeReturned(e){
+    if(e.status !== 'pending' && e.status !== 'incident') return;
+    e.t_end = now();
     if(e.status === 'pending') e.status = 'returned';
     else { e.status = 'resolved'; e.resolution = 'returned'; e.resolved_by = 'النظام'; e.t_resolved = now(); e.note = ((e.note || '') + ' عاد المنتج إلى مكانه بعد التنبيه').trim(); }
     putEvent(e);
@@ -1097,6 +1123,7 @@ function resolveEv(id, res, note, who){
 const AIV = { taken: 'أُخذت', moved: 'نُقلت', returned: 'رجعت', added: 'أُضيفت', rearranged: 'رُتّبت', concealed: 'إخفاء', no_change: 'لا تغيير حقيقي', unclear: 'غير واضح' };
 const judgeUrl = () => S.cfg.judgeUrl || (location.protocol === 'https:' && !/claude|anthropic/.test(location.host) ? location.origin + '/api/judge' : '');
 const JUDGE = { busy: 0, queue: [],
+  post(body){ return fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify(body) }); },
   ready(){ return S.cfg.judge && !isDemo() && judgeUrl() && S.cfg.judgeKey; },
   left(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); return (+S.cfg.judgeMax || 400) - (u.d === d ? u.n : 0); },
   count(){ const d = new Date().toLocaleDateString('en-CA'), u = LS.get('haris_judge', {}); LS.set('haris_judge', { d, n: (u.d === d ? u.n : 0) + 1 }); },
@@ -1112,13 +1139,28 @@ const JUDGE = { busy: 0, queue: [],
     else { for(const [label, d] of [['compare', e.img_c], ['before', e.img_b], ['hand', e.img_p], [e.kind === 'moved' ? 'dest' : 'after', e.img_a]]) if(d) im.push({ label, data: b64(d) }); }
     const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: im.slice(0, 4), ctx: { zone: z.name, mode: z.mode || '', guess: KIND[e.kind] || e.kind, hand: /يد/.test(e.note || '') || !!e.img_p, note: e.note || '', noSales: !!S.cfg.noSales } };
     try{
-      const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify(body) });
+      const r = await this.post(body);
       const j = await r.json().catch(() => ({}));
       if(r.ok && j.verdict){ this.count(); this.apply(e, j); return; }
       if((r.status === 429 || r.status >= 500) && tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); }
       e.aiErr = j.error || ('خطأ ' + r.status);
     }catch(err){ if(tries < 1){ await new Promise(ok => setTimeout(ok, 20000)); return this.send(e, tries + 1); } e.aiErr = 'تعذّر الاتصال بالحكم الذكي'; }
     e.aiPending = false; putEvent(e);
+  },
+  // (الجلسة الميدانية 7) قبل إغلاق حالة نُبّه عليها «رجعت»: Claude يقارن صورة ما قبل الشيل بالمكان الآن.
+  // إذا قال بثقة إن القطعة ما زالت مفقودة تبقى الحالة مفتوحة؛ وإذا تعذّر الاتصال نعتمد حكم المحرك كما كان
+  async confirmReturn(e, close){
+    e.retAsk = 'wait'; const b64 = d => (d || '').split(',')[1] || '';
+    const z = zoneOf(e.zone), body = { model: S.cfg.judgeModel, images: [{ label: 'before', data: b64(e.img_b) }, { label: 'after', data: b64(e.img_r) }],
+      ctx: { zone: z.name, mode: z.mode || '', guess: 'رجوع قطعة كانت مفقودة إلى مكانها', hand: false, note: 'نُبّه على شيل قطعة من المربع، والمحرك يظن أنها رجعت الآن. هل رجعت فعلاً؟', noSales: !!S.cfg.noSales } };
+    let v = null;
+    try{ if(this.left() > 0){ const r = await this.post(body); const j = await r.json().catch(() => ({})); if(r.ok && j.verdict){ this.count(); v = j; } } }catch(err){}
+    if(v && (v.verdict === 'taken' || v.verdict === 'concealed') && v.confidence >= 0.6){
+      e.retAsk = 'no'; e.retAi = { verdict: v.verdict, summary: v.summary, confidence: v.confidence, t: now() };
+      e.note = ((e.note || '') + ' Claude: القطعة ما رجعت — الحالة تبقى مفتوحة.').trim(); putEvent(e); refreshSoon(); return;
+    }
+    e.retAsk = 'yes'; if(v) e.retAi = { verdict: v.verdict, summary: v.summary, confidence: v.confidence, t: now() };
+    close(); refreshSoon();
   },
   apply(e, v){
     e.aiPending = false; e.ai = { verdict: v.verdict, item: v.item, summary: v.summary, confidence: v.confidence, risk: v.risk, model: v.model, t: now() };
@@ -1138,7 +1180,7 @@ const JUDGE = { busy: 0, queue: [],
     putEvent(e); refreshSoon();
   },
   async ping(){ if(!judgeUrl()) return 'لا يوجد رابط للخادم'; if(!S.cfg.judgeKey) return 'أدخل رمز الربط';
-    try{ const r = await fetch(judgeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-guard-key': S.cfg.judgeKey }, body: JSON.stringify({ ping: true }) }); const j = await r.json().catch(() => ({}));
+    try{ const r = await this.post({ ping: true }); const j = await r.json().catch(() => ({}));
       return r.ok && j.ok ? 'متصل ✓' : (j.error || 'خطأ ' + r.status); }catch(e){ return 'تعذّر الاتصال: ' + (e.message || e); } }
 };
 const aiLine = e => e.ai ? `<div class="ai ${e.ai.verdict === 'taken' || e.ai.verdict === 'concealed' ? 'bad' : ''}">🤖 <b>Claude:</b> ${esc(e.ai.summary)} <span class="xs mut">(${AIV[e.ai.verdict] || e.ai.verdict} · ثقة ${Math.round(e.ai.confidence * 100)}%)</span></div>`
