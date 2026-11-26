@@ -657,6 +657,7 @@ function sourceLost(){
   beep(); toast('⚠️ انقطعت الكاميرا؛ المراقبة متوقفة', 6000);
   notifyAll('⚠️ توقفت المراقبة في ' + S.cfg.site + ': انقطعت الكاميرا (فُصلت أو أُغلقت أو أُطفئ الجهاز).');
 }
+const lastFrame = () => (frameCv && frameCv.width > 1 ? frameCv : null);
 function grabFrame(){
   let src, w, h;
   if(isDemo()){ src = S.demo.render(); w = src.width; h = src.height; }
@@ -1031,7 +1032,7 @@ const CLIP = { buf: [], fps: 4, pre: 8, post: 4, last: 0, urls: {},
   tick(){
     if(!S.running){ this.buf = []; return; }
     const t = now(); if(t - this.last < 1 / this.fps) return;
-    const c = grabFrame(); if(!c) return; this.last = t;
+    const c = lastFrame(); if(!c) return; this.last = t;
     const s = document.createElement('canvas'); s.width = 320; s.height = Math.round(320 * c.height / c.width); s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
     this.buf.push({ t, img: s.toDataURL('image/jpeg', 0.6) });
     while(this.buf.length && t - this.buf[0].t > this.pre + this.post + 3) this.buf.shift();
@@ -1645,7 +1646,7 @@ function exportCases(){
 const TL = { on: true, shots: [], max: 480, every: 15, last: 0, up: 0, upFail: 0 };
 function tlTick(){
   if(!TL.on || !S.running || now() - TL.last < TL.every) return;
-  const c = grabFrame(); if(!c) return;
+  const c = lastFrame(); if(!c) return; // آخر صورة عالجها المحرك: لا نلتقط من الكاميرا حتى لا نغيّر الصورة التي يعمل عليها
   TL.last = now();
   const w = 640, sc = document.createElement('canvas'); sc.width = w; sc.height = Math.round(w * c.height / c.width); sc.getContext('2d').drawImage(c, 0, 0, sc.width, sc.height);
   const img = sc.toDataURL('image/jpeg', 0.6), t = now();
