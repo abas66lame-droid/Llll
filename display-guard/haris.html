@@ -1063,13 +1063,16 @@ const ENG = {
 };
 function addEvent(e){ if(isDemo()) e.demo = true; if(DBG_CUR && !e.dbg) e.dbg = DBG_CUR; S.events.unshift(e); if(S.running && CLIP.want(e)) CLIP.make(e); DB.put('events', e); if(S.events.length > 3000){ const old = S.events.pop(); DB.del('events', old.id); } refreshSoon(); JUDGE.ask(e); GEMINI.ask(e); }
 // مقطع فيديو مع كل حدث (مثل Veesion): آخر 8 ثوانٍ في الذاكرة (4 صور/ث بعرض 320)، وعند الحدث تُضاف 4 ثوانٍ بعده ويُصنع ملف فيديو صغير
-const CLIP = { buf: [], fps: 4, pre: 8, post: 4, last: 0, urls: {},
+// (طلب المستخدم: «ليش دقة الفيديو مو عالية؟») كان المقطع 320 بكسل و4 صور/ث من آخر صورة حلّلها المحرك (تتجدد كل ثانية فقط، فيبدو متقطعاً).
+// الآن: يلتقط مباشرة من الفيديو بقناته الخاصة (لا يلمس صورة المحرك frameCv) بعرض حتى 960 و8 صور/ث وجودة أعلى
+const CLIP = { buf: [], fps: 8, pre: 8, post: 4, last: 0, urls: {}, W: 960, cv: null,
   tick(){
     if(!S.running){ this.buf = []; return; }
-    const t = now(); if(t - this.last < 1 / this.fps) return;
-    const c = lastFrame(); if(!c) return; this.last = t;
-    const s = document.createElement('canvas'); s.width = 320; s.height = Math.round(320 * c.height / c.width); s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
-    this.buf.push({ t, img: s.toDataURL('image/jpeg', 0.6) });
+    const t = now(); if(t - this.last < 1 / this.fps - 0.01) return;
+    const v = $('#vid'), src = isDemo() ? lastFrame() : (v && v.videoWidth ? v : null); if(!src) return; this.last = t;
+    const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height, w = Math.min(this.W, sw);
+    const s = this.cv || (this.cv = document.createElement('canvas')); s.width = w; s.height = Math.round(w * sh / sw) & ~1; s.getContext('2d').drawImage(src, 0, 0, s.width, s.height);
+    this.buf.push({ t, img: s.toDataURL('image/jpeg', 0.8) });
     while(this.buf.length && t - this.buf[0].t > this.pre + this.post + 3) this.buf.shift();
   },
   want(e){ return ['removal', 'night', 'conceal', 'weak', 'added', 'moved', 'swap', 'missed', 'major'].includes(e.kind); },
@@ -1080,13 +1083,14 @@ const CLIP = { buf: [], fps: 4, pre: 8, post: 4, last: 0, urls: {},
     const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m)); if(!mime) return;
     const im0 = await load(fr[0].img); if(!im0) return;
     const cv = document.createElement('canvas'); cv.width = im0.width; cv.height = im0.height; const x = cv.getContext('2d'), b = e.box;
-    const rec = new MediaRecorder(cv.captureStream(this.fps), { mimeType: mime, videoBitsPerSecond: 300000 }), parts = [];
+    const rec = new MediaRecorder(cv.captureStream(this.fps), { mimeType: mime, videoBitsPerSecond: 2500000 }), parts = [];
     rec.ondataavailable = ev => { if(ev.data.size) parts.push(ev.data); }; const done = new Promise(r => rec.onstop = r);
     rec.start();
     for(const f of fr){ const im = await load(f.img); if(im) x.drawImage(im, 0, 0, cv.width, cv.height);
-      if(b){ x.lineWidth = 2; x.strokeStyle = f.t >= t0 ? '#e53e3e' : '#f0a020'; x.strokeRect(b.x * cv.width, b.y * cv.height, b.w * cv.width, b.h * cv.height); }
-      x.fillStyle = '#000a'; x.fillRect(0, 0, cv.width, 16); x.fillStyle = '#fff'; x.font = '11px sans-serif';
-      x.fillText(new Date(f.t * 1000).toLocaleTimeString('en-GB') + (f.t < t0 ? '  قبل' : '  بعد'), 4, 12);
+      const u = cv.width / 320; // سماكة المربع والخط تتناسب مع الدقة
+      if(b){ x.lineWidth = 2 * u; x.strokeStyle = f.t >= t0 ? '#e53e3e' : '#f0a020'; x.strokeRect(b.x * cv.width, b.y * cv.height, b.w * cv.width, b.h * cv.height); }
+      x.fillStyle = '#000a'; x.fillRect(0, 0, cv.width, 16 * u); x.fillStyle = '#fff'; x.font = Math.round(11 * u) + 'px sans-serif';
+      x.fillText(new Date(f.t * 1000).toLocaleTimeString('en-GB') + (f.t < t0 ? '  قبل' : '  بعد'), 4 * u, 12 * u);
       await wait(1000 / this.fps); }
     rec.stop(); await done;
     const blob = new Blob(parts, { type: mime.split(';')[0] }); if(!blob.size) return;
@@ -1097,7 +1101,7 @@ const CLIP = { buf: [], fps: 4, pre: 8, post: 4, last: 0, urls: {},
       if(r.ok){ e.clip.path = path; putEvent(e); } }catch(err){}
   }
 };
-setInterval(() => CLIP.tick(), 250);
+setInterval(() => CLIP.tick(), 1000 / CLIP.fps);
 function putEvent(e){ DB.put('events', e); refreshSoon(); }
 function trySale(e){
   const w = saleWin() * 60, s = S.sales.filter(s => s.zone === e.zone && s.remaining > 0 && s.t >= e.t_start - w).sort((a, b) => a.t - b.t)[0];
