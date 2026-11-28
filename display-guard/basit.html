@@ -585,7 +585,9 @@ async function loadMP(){
     const fs = await to(mp.FilesetResolver.forVisionTasks(MP_WASM), 30000);
     MP.mp = mp; MP.fs = fs;
     const make = MP.make = async (Cls, opts) => { let last; for(const delegate of ['GPU', 'CPU']){ try{ return await to(Cls.createFromOptions(fs, Object.assign({}, opts, { baseOptions: Object.assign({}, opts.baseOptions, { delegate }) })), 45000); }catch(e){ last = e; } } throw last; };
-    MP.obj = await make(mp.ObjectDetector, { baseOptions: { modelAssetPath: MP_MODELS + 'object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite' }, runningMode: 'IMAGE', scoreThreshold: 0.35, maxResults: 25 });
+    // (قياس على 3,020 صورة سقف من RetailAction بمكان رأس الشخص المعلَّم) Lite0 بعتبة 0.35 يجد الشخص 54%، و Lite2 بعتبة 0.25 يجد 65%
+    // بمربعات زائدة قليلة (0.32 مقابل 0.22 لكل صورة، وبعضها أشخاص آخرون غير معلَّمين). يُستدعى فقط عند الحركة، فكلفته مقبولة
+    MP.obj = await make(mp.ObjectDetector, { baseOptions: { modelAssetPath: MP_MODELS + 'object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite' }, runningMode: 'IMAGE', scoreThreshold: 0.25, maxResults: 25 });
     try{ MP.hand = await make(mp.GestureRecognizer, { baseOptions: { modelAssetPath: MP_MODELS + 'gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task' }, runningMode: 'IMAGE', numHands: 4, minHandDetectionConfidence: 0.45, minHandPresenceConfidence: 0.45 }); }catch(e){ MP.hand = null; }
     MP.state = 'ready';
     // تسخين: أول استدعاء للنماذج بطيء جداً (ثوانٍ). نستهلكه الآن حتى لا يتأخر الحكم لحظة أول حركة عند العارضة
