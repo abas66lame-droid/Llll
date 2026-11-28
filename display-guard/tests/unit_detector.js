@@ -37,4 +37,10 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   const want = { x: (0.2 * RW * s + tx) / RW, y: (0.3 * RH * s + ty) / RH };
   t(`stand re-located after phone moved (scale ${T.s.toFixed(2)}, score ${T.score.toFixed(2)})`, Math.abs(z.x - want.x) < 0.02 && Math.abs(z.y - want.y) < 0.02 && Math.abs(T.s - s) < 0.04);
 }
+// نموذج الإخفاء: ميزات JS مطابقة لـ Python (feats.py) واحتمال الأشجار مطابق لـ sklearn (عينات من MNNIT)
+{
+  const C = require('./fixtures/conceal_parity.json'), M = require('../src/models/conceal_model.json'); let fd = 0, pd = 0;
+  for(const c of C){ const f = D.poseWindowFeats(c.k.map(D.poseNorm).filter(Boolean)); f.forEach((v, i) => { fd = Math.max(fd, Math.abs(v - c.f[i])); }); pd = Math.max(pd, Math.abs(D.treeProb(M, f) - c.p)); }
+  t(`conceal model: JS features = Python (max diff ${fd.toExponential(1)}), probability = sklearn (diff ${pd.toExponential(1)})`, fd < 1e-9 && pd < 1e-9);
+}
 process.exit(fails ? 1 : 0);

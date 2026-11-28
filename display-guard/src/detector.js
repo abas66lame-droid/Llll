@@ -351,7 +351,44 @@ const DET = (() => {
   }
   // نقل منطقة (نسبية في المرجع) إلى مكانها في اللقطة الحالية
   const mapZone = (z, T, rw, rh, cw, ch) => ({ ...z, x: (T.s * z.x * rw + T.tx) / cw, y: ((T.sy || T.s) * z.y * rh + T.ty) / ch, w: T.s * z.w * rw / cw, h: (T.sy || T.s) * z.h * rh / ch });
-  return { frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim, resize, alignThumb, mapZone };
+  // ميزات منطقة تغيّر (تدريب على RetailAction: كاميرات سقف حقيقية). A = قبل، B = بعد، C = الصورة التالية لـ B (للثبات)، r = المنطقة
+  function regionFeats(A, B, C, r){
+    const W = A.w, x0 = Math.max(0, Math.floor(r.x * W)), y0 = Math.max(0, Math.floor(r.y * A.h)), x1 = Math.min(W, Math.ceil((r.x + r.w) * W)), y1 = Math.min(A.h, Math.ceil((r.y + r.h) * A.h));
+    let n = 0, sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0, Ga = 0, Gb = 0, dC = 0, dg = 0, big = 0, st = 0;
+    for(let y = y0; y < y1; y++) for(let x = x0; x < x1; x++){ const p = y * W + x, a = A.g[p], b = B.g[p]; n++; sa += a; sb += b; saa += a * a; sbb += b * b; sab += a * b; Ga += A.G[p]; Gb += B.G[p];
+      const dc = Math.hypot(A.ca[p] - B.ca[p], A.cb[p] - B.cb[p]); dC += dc; const d = Math.abs(a - b); dg += d; if(d > 25 || dc > 30) big++; if(C) st += Math.abs(b - C.g[p]); }
+    if(!n) return null; const ma = sa / n, mb = sb / n, va = saa / n - ma * ma, vb = sbb / n - mb * mb, cov = sab / n - ma * mb, ncc = va > 1 && vb > 1 ? cov / Math.sqrt(va * vb) : 1, ta = Ga / n, tb = Gb / n;
+    return [r.type === 'rem' ? 1 : 0, r.type === 'add' ? 1 : 0, r.type === 'chg' ? 1 : 0, Math.log(r.w * r.h + 1e-6), r.w / Math.max(1e-6, r.h), r.cells || 0,
+      ncc, (mb - ma) / 50, Math.sqrt(Math.max(0, va)) / 50, Math.sqrt(Math.max(0, vb)) / 50, (tb - ta) / Math.max(1, ta + tb), ta / 20, tb / 20, dC / n / 30, dg / n / 30, big / n, C ? st / n / 30 : 0];
+  }
+  // نموذج حركة الإخفاء (مدرَّب على MNNIT Shoplifting 2022، CC BY 4.0): ميزات نافذة من 6 قراءات وضعية (COCO-17: x, y بالبكسل، ثقة)
+  // نسخة حرفية من feats.py (norm_frame + window_feats) — تُختبر مطابقتها في tests/unit_detector.js
+  const PK = { LSH: 5, RSH: 6, LEL: 7, REL: 8, LWR: 9, RWR: 10, LHIP: 11, RHIP: 12 };
+  function poseNorm(k){ // k: 51 رقماً
+    const c = i => k[i * 3 + 2], X = i => k[i * 3], Y = i => k[i * 3 + 1];
+    if(Math.min(c(PK.LSH), c(PK.RSH), c(PK.LHIP), c(PK.RHIP)) < 0.2) return null;
+    const sx = (X(PK.LSH) + X(PK.RSH)) / 2, sy = (Y(PK.LSH) + Y(PK.RSH)) / 2, hx = (X(PK.LHIP) + X(PK.RHIP)) / 2, hy = (Y(PK.LHIP) + Y(PK.RHIP)) / 2, t = Math.hypot(sx - hx, sy - hy);
+    if(t < 5) return null;
+    const rel = [], conf = []; for(let i = 0; i < 17; i++){ rel.push([(X(i) - hx) / t, (Y(i) - hy) / t]); conf.push(c(i)); } return { rel, conf };
+  }
+  function poseWindowFeats(seq){ // seq: نتائج poseNorm (بلا null)
+    const n = seq.length, d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]), mean = a => a.reduce((s, v) => s + v, 0) / a.length, std = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v - m) * (v - m)))); };
+    const side = (w, el, sh, hp) => {
+      let p = seq.map(s => s.rel[w]), ok = seq.map(s => s.conf[w] > 0.2);
+      if(ok.filter(Boolean).length < 2){ p = p.map(() => [0, 0]); ok = ok.map(() => true); }
+      const dh = p.map((q, i) => d(q, seq[i].rel[hp])), dc = p.map(q => Math.hypot(q[0], q[1])), ds = p.map((q, i) => d(q, seq[i].rel[sh]));
+      const v = n > 1 ? p.slice(1).map((q, i) => d(q, p[i])) : [0];
+      const ea = p.map((q, i) => d(seq[i].rel[el], seq[i].rel[sh]) + d(q, seq[i].rel[el]) - d(q, seq[i].rel[sh]));
+      const xs = p.map(q => q[0]), ys = p.map(q => q[1]), inb = mean(p.map(q => (Math.abs(q[0]) < 0.6 && q[1] > -0.9 && q[1] < 0.45) ? 1 : 0));
+      return [mean(xs), mean(ys), std(xs), std(ys), Math.min(...ys), Math.max(...ys), Math.min(...dh), mean(dh), Math.min(...dc), mean(dc), Math.max(...ds), Math.max(...v), mean(v), v.reduce((s, x) => s + x, 0),
+        p[n - 1][1] - p[0][1], Math.abs(p[n - 1][0] - p[0][0]) + Math.abs(p[n - 1][1] - p[0][1]), Math.min(...ea), mean(ea), inb, mean(ok.map(o => o ? 1 : 0))];
+    };
+    const a = side(PK.LWR, PK.LEL, PK.LSH, PK.LHIP), b = side(PK.RWR, PK.REL, PK.RSH, PK.RHIP);
+    return [...a.map((x, i) => Math.max(x, b[i])), ...a.map((x, i) => Math.min(x, b[i])), mean(seq.map(s => d(s.rel[PK.LWR], s.rel[PK.RWR])))];
+  }
+  // أشجار HistGradientBoosting مصدَّرة: [feature, threshold, left, right, isLeaf, value, missingLeft]
+  function treeProb(M, x){ let s = M.base; for(const t of M.trees){ let i = 0; while(!t[i][4]){ const v = x[t[i][0]]; i = (v !== v ? t[i][6] : v <= t[i][1]) ? t[i][2] : t[i][3]; } s += t[i][5]; } return 1 / (1 + Math.exp(-s)); }
+  return { poseNorm, poseWindowFeats, treeProb, regionFeats, frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim, resize, alignThumb, mapZone };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;

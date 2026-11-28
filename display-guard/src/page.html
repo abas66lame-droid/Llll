@@ -573,6 +573,8 @@ const ENG = {
   cand(z, reg, F, sh, since){
     const cd = { z, reg, hT: handTouch(reg, since), before: DET.itemSig(this.base, F, reg, sh), after: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) };
     cd.pol = (1 - DET.histSim(cd.after, DET.ringHist(F, reg))) - (1 - DET.histSim(cd.before, DET.ringHist(this.base, reg))); // موجب = وُضع شيء، سالب = أُخذ شيء
+    // فلتر كاميرات السقف (مدرَّب على RetailAction): احتمال أن التغيّر قطعة أُخذت فعلاً لا جزء شخص أو ظل
+    if(RA_MODEL){ const f = DET.regionFeats(this.base, F, null, reg); if(f) cd.ra = +DET.treeProb(RA_MODEL, f).toFixed(3); }
     return cd;
   },
   decide(cands, c, night){
@@ -583,7 +585,7 @@ const ENG = {
     cands = cands.filter(a => { const lo = Math.min(a.reg.w, a.reg.h), hi = Math.max(a.reg.w, a.reg.h); return !(!a.hT && lo <= 0.025 && hi >= 3 * lo); });
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
-    for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2) };
+    for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2), ...(a.ra !== undefined ? { ra: a.ra } : {}) };
       if(a.hT){ const ib = colorHist(this.baseCv, a.reg, false), ia = colorHist(c, a.reg, false), h = handCarry(a.reg, firstTouch(a.reg, a.hT - 10) || a.hT, ib, ia); a.carry = h.v; a.dbg.carry = h;
         if(h.v === 'take') a.pol = Math.min(a.pol, -PUT - 0.01); else if(h.v === 'put') a.pol = Math.max(a.pol, PUT + 0.01); } } // دليل اليد يتقدّم على الملمس
     // (تجربة ميدانية) «حرّكت قطعة 2 سم فحسبها سرقة»: إزاحة صغيرة تظهر منطقة واحدة فيها القطعة قبل وبعد، أو منطقتين متلاصقتين.
@@ -885,11 +887,32 @@ const GEMINI = {
    يد (معصم من MediaPipe Pose) تلمس عارضة أو رفاً، ثم تذهب مباشرة إلى منطقة الجيب/الخصر/داخل الملابس وتبقى لحظة
    = «اشتباه إخفاء» يحتاج مراجعة المشرف. إذا ذهبت اليد أولاً لمكان آخر (السلة، العربة) يُلغى الاشتباه.
    لا يعرف المنتج: يكشف الحركة نفسها، فيصلح للشيبس والشوكولا وأي قطعة صغيرة. */
-const CONCEAL = { st: {}, last: {},
+// نموذج حركة الإخفاء: مدرَّب على 182 مقطعاً (MNNIT Shoplifting 2022 — CC BY 4.0، Mohd. Aquib Ansari وآخرون، MNNIT Allahabad)
+// بنقاط MediaPipe Pose نفسها، نافذة 6 قراءات (~2.4 ث). على مقاطع لم يرها: AUC 0.84. يُرفق احتماله بكل تنبيه إخفاء،
+// ويطلق تنبيهاً بنفسه فقط إذا لمست اليد عارضة خلال 8 ثوانٍ ثم بلغ ≥ 0.95
+const CONCEAL_MODEL = window.CONCEAL_MODEL || /*__CONCEAL_MODEL__*/null;
+// فلتر مناطق التغيّر لكاميرات السقف (RetailAction، Standard AI Dataset License): يُسجَّل احتماله مع كل حدث (dbg.ra) ويُعرض في الملاحظة
+const RA_MODEL = window.RA_MODEL || /*__RA_MODEL__*/null;
+const CONCEAL = { st: {}, last: {}, tracks: [],
+  // تتبّع بسيط لكل شخص (أقرب مركز ورك) + نافذة الوضعيات، ثم احتمال «إخفاء» من النموذج
+  score(lm, c, t){
+    if(!CONCEAL_MODEL || !lm[23] || !lm[24]) return 0;
+    const map = [0, 2, 5, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28], k = [];
+    for(const i of map){ const q = lm[i] || { x: 0, y: 0 }; k.push(q.x * c.width, q.y * c.height, q.visibility === undefined ? 1 : q.visibility); }
+    const cx = (lm[23].x + lm[24].x) / 2, cy = (lm[23].y + lm[24].y) / 2;
+    this.tracks = this.tracks.filter(r => t - r.t < 3);
+    let tr = null, bd = 0.15; for(const r of this.tracks){ const d = Math.hypot(r.cx - cx, r.cy - cy); if(d < bd && r.t !== t){ bd = d; tr = r; } }
+    if(!tr){ tr = { h: [], p: 0, pt: 0 }; this.tracks.push(tr); }
+    tr.cx = cx; tr.cy = cy; tr.t = t; tr.h.push({ t, n: DET.poseNorm(k) }); if(tr.h.length > 6) tr.h.shift();
+    if(tr.h.length < 6 || t - tr.h[0].t > 4) return tr.p * (t - tr.pt < 3 ? 1 : 0);
+    const seq = tr.h.map(x => x.n).filter(Boolean); if(seq.length < 5) return 0;
+    const p = DET.treeProb(CONCEAL_MODEL, DET.poseWindowFeats(seq)); if(p >= tr.p || t - tr.pt > 3){ tr.p = p; tr.pt = t; } return tr.p;
+  },
   tick(c){
     let r; try{ r = MP.pose.detect(c); }catch(e){ return; }
     const L = (r && r.landmarks) || [], t = now(); if(L.length) S.activeAt = t;
     L.forEach((lm, p) => {
+      const cp = this.score(lm, c, t);
       const v = i => lm[i] && (lm[i].visibility === undefined || lm[i].visibility > 0.5) ? lm[i] : null;
       const a = v(11), b = v(12), h1 = v(23), h2 = v(24); if(!a || !b || !h1 || !h2) return;
       const sw = Math.abs(a.x - b.x), sy = (a.y + b.y) / 2, hy = (h1.y + h2.y) / 2, th = hy - sy; if(th <= 0.02) return;
@@ -900,16 +923,18 @@ const CONCEAL = { st: {}, last: {},
         const inZone = S.zones.find(z => w.x >= z.x - 0.02 && w.x <= z.x + z.w + 0.02 && w.y >= z.y - 0.02 && w.y <= z.y + z.h + 0.02);
         const inBody = !inZone && w.x >= body.x && w.x <= body.x + body.w && w.y >= body.y && w.y <= body.y + body.h;
         if(inZone){ if(!s.zone || s.zone.id !== inZone.id || t - s.tTouch > 3) s.img = ENG.shot(c, inZone, '#e0a020'); s.zone = inZone; s.tTouch = t; s.n = 0; s.out = 0; }
-        else if(inBody && s.zone && t - s.tTouch <= 6){ s.out = 0; if(++s.n >= 2){ this.raise(c, s, body, t); s.zone = null; s.n = 0; } }
+        else if(inBody && s.zone && t - s.tTouch <= 6){ s.out = 0; if(++s.n >= 2){ this.raise(c, s, body, t, cp); s.zone = null; s.n = 0; } }
+        // النموذج المدرَّب: حركة إخفاء واضحة بعد لمس العارضة، حتى لو لم تدخل اليد مربع الجسم مرتين متتاليتين
+        else if(s.zone && t - s.tTouch <= 8 && cp >= 0.95){ this.raise(c, s, body, t, cp, true); s.zone = null; s.n = 0; }
         else if(!inBody){ s.n = 0; if(++s.out >= 2) s.zone = null; } // ذهبت اليد لمكان آخر أولاً (السلة/العربة): لا اشتباه
       }
     });
   },
-  raise(c, s, body, t){
+  raise(c, s, body, t, cp, byModel){
     const z = s.zone; if(t - (this.last[z.id] || 0) < 20) return; this.last[z.id] = t;
     const pk = S.lastPick && S.lastPick.zone === z.id && t - S.lastPick.t < 15, bx = { x: Math.max(0, body.x), y: Math.max(0, body.y) }; bx.w = Math.min(1, body.x + body.w) - bx.x; bx.h = Math.min(1, body.y + body.h) - bx.y;
     const e = { id: rid(), zone: z.id, kind: 'conceal', status: 'incident', t_start: t, deadline: t, box: { x: z.x, y: z.y, w: z.w, h: z.h }, img_b: s.img, img_a: ENG.shot(c, bx, '#e53e3e'),
-      note: 'يد لمست «' + z.name + '» ثم ذهبت مباشرة إلى منطقة الجيب أو الخصر خلال ' + Math.max(1, Math.round(t - s.tTouch)) + ' ثانية' + (pk ? '، وتزامن ذلك مع التقاط قطعة من الرف' : '') + '. راجع الصور: قد تكون حركة عادية (إخراج الموبايل مثلاً).' };
+      note: (byModel ? 'يد لمست «' + z.name + '» ثم رصد نموذج الإخفاء المدرَّب حركة إخفاء' : 'يد لمست «' + z.name + '» ثم ذهبت مباشرة إلى منطقة الجيب أو الخصر') + ' خلال ' + Math.max(1, Math.round(t - s.tTouch)) + ' ثانية' + (pk ? '، وتزامن ذلك مع التقاط قطعة من الرف' : '') + (cp ? '. نموذج الإخفاء: ' + Math.round(cp * 100) + '%' : '') + '. راجع الصور: قد تكون حركة عادية (إخراج الموبايل مثلاً).', cp: cp ? +cp.toFixed(3) : undefined };
     addEvent(e); alertEv(e);
   }
 };
