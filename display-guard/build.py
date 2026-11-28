@@ -9,6 +9,8 @@ assert '/*__DETECTOR__*/' in page
 cm = os.path.join(here, 'src', 'models', 'conceal_model.json')
 ra = os.path.join(here, 'src', 'models', 'ra_filter.json')
 page = page.replace('/*__RA_MODEL__*/null', open(ra, encoding='utf-8').read().strip() if os.path.exists(ra) else 'null')
+rv = os.path.join(here, 'src', 'models', 'ra_vision.json')
+page = page.replace('/*__RA_VIS__*/null', open(rv, encoding='utf-8').read().strip() if os.path.exists(rv) else 'null')
 page = page.replace('/*__CONCEAL_MODEL__*/null', open(cm, encoding='utf-8').read().strip() if os.path.exists(cm) else 'null')
 open(os.path.join(here, 'haris.html'), 'w', encoding='utf-8').write(page.replace('/*__DETECTOR__*/', det))
 # النسخة المبسّطة: نفس الملف بواجهة مختصرة

@@ -43,4 +43,10 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   for(const c of C){ const f = D.poseWindowFeats(c.k.map(D.poseNorm).filter(Boolean)); f.forEach((v, i) => { fd = Math.max(fd, Math.abs(v - c.f[i])); }); pd = Math.max(pd, Math.abs(D.treeProb(M, f) - c.p)); }
   t(`conceal model: JS features = Python (max diff ${fd.toExponential(1)}), probability = sklearn (diff ${pd.toExponential(1)})`, fd < 1e-9 && pd < 1e-9);
 }
+// فلتر السقف بالرؤية: إسقاط PCA + الأشجار في JS = sklearn (عينات من RetailAction test، البصمة محسوبة بـ MobileNet نفسه)
+{
+  const C = require('./fixtures/ra_vision_parity.json'), M = require('../src/models/ra_vision.json'); let pd = 0;
+  for(const c of C) pd = Math.max(pd, Math.abs(D.visProb(M, c.x.slice(0, 16), c.b, c.a) - c.p));
+  t(`ceiling vision filter: probability = sklearn (max diff ${pd.toExponential(1)}, PCA stored at 4 decimals)`, pd < 0.01);
+}
 process.exit(fails ? 1 : 0);

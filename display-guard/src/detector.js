@@ -387,8 +387,13 @@ const DET = (() => {
     return [...a.map((x, i) => Math.max(x, b[i])), ...a.map((x, i) => Math.min(x, b[i])), mean(seq.map(s => d(s.rel[PK.LWR], s.rel[PK.RWR])))];
   }
   // أشجار HistGradientBoosting مصدَّرة: [feature, threshold, left, right, isLeaf, value, missingLeft]
+  // فلتر السقف بالرؤية: ميزات المنطقة + تشابه بصمتي MobileNet (قبل/بعد) + إسقاط PCA لبصمة «بعد» ولفرق البصمتين — نسخة حرفية من emb_train2.py
+  function pcaProj(P, v){ const o = []; for(const row of P.comp){ let s = 0; for(let i = 0; i < row.length; i++) s += (v[i] - P.mean[i]) * row[i]; o.push(s); } return o; }
+  function visFeats(M, f, eb, ea){ let d = 0; for(let i = 0; i < ea.length; i++) d += eb[i] * ea[i]; const df = ea.map((v, i) => v - eb[i]);
+    return [...M.cols.map(i => f[i]), d, ...pcaProj(M.pcaA, ea), ...pcaProj(M.pcaB, df)]; }
+  function visProb(M, f, eb, ea){ return treeProb(M, visFeats(M, f, eb, ea)); }
   function treeProb(M, x){ let s = M.base; for(const t of M.trees){ let i = 0; while(!t[i][4]){ const v = x[t[i][0]]; i = (v !== v ? t[i][6] : v <= t[i][1]) ? t[i][2] : t[i][3]; } s += t[i][5]; } return 1 / (1 + Math.exp(-s)); }
-  return { poseNorm, poseWindowFeats, treeProb, regionFeats, frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim, resize, alignThumb, mapZone };
+  return { poseNorm, poseWindowFeats, treeProb, visFeats, visProb, regionFeats, frameFromCanvas, build, clone, estimateShift, estimateAffine, health, itemSig, sigSim, ringHist, histSim, recess, compareZone, motion, rebase, overlap, coarseSim, resize, alignThumb, mapZone };
 })();
 /* DETECTOR_END */
 if(typeof module !== 'undefined') module.exports = DET;

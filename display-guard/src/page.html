@@ -558,7 +558,7 @@ const ENG = {
     if(e.emb){ const a1 = embCrop(c, box), a2 = DBG_CUR ? embCrop(rot180(c, box), { x: 0, y: 0, w: 1, h: 1 }) : null; if(a1) e.embGone = +embSim(e.emb, a1).toFixed(3); const v = Math.max(a1 ? embSim(e.emb, a1) : 0, a2 ? embSim(e.emb, a2) : 0); if(DBG_CUR && (a1 || a2)) DBG_CUR.emb = +v.toFixed(3); }
     const gg = grayThumb(c, box); if(gg) e.gone = gg; // شكل المكان بعد الشيل: الرجوع يجب أن يعيده أقرب للأصل منه للفراغ
     // كاميرا سقف: التغيّر الذي يشبه جزء شخص (فلتر RetailAction) لا يُنذر — يُسجَّل «غير مؤكد» للمراجعة
-    if(!night && S.cfg.ceil && RA_MODEL && DBG_CUR && !DBG_CUR.hand && DBG_CUR.ra !== undefined && DBG_CUR.ra < RA_MODEL.th){ /* يد رُصدت عند المكان = دليل أخذ قوي: لا نخفّضه */ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: فلتر كاميرات السقف يرجّح أنه جزء شخص لا قطعة (' + Math.round(DBG_CUR.ra * 100) + '%).').trim(); addEvent(e); return; }
+    if(!night && S.cfg.ceil && RA_MODEL && DBG_CUR && !DBG_CUR.hand && DBG_CUR.ra !== undefined && DBG_CUR.ra < (DBG_CUR.raTh || RA_MODEL.th)){ /* يد رُصدت عند المكان = دليل أخذ قوي: لا نخفّضه */ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: فلتر كاميرات السقف' + (DBG_CUR.vis ? ' بالرؤية' : '') + ' يرجّح أنه جزء شخص لا قطعة (' + Math.round(DBG_CUR.ra * 100) + '%).').trim(); addEvent(e); return; }
     const pr = night ? null : modelP(e, DBG_CUR);
     if(pr !== null){ e.p = pr; if(pr < window.HARIS_MODEL.th){ e.kind = 'weak'; e.status = 'info'; e.t_end = t; e.note = (e.note + ' غير مؤكد: احتمال السرقة ' + Math.round(pr * 100) + '% حسب النموذج.').trim(); addEvent(e); return; } }
     addEvent(e);
@@ -576,7 +576,7 @@ const ENG = {
     const cd = { z, reg, hT: handTouch(reg, since), before: DET.itemSig(this.base, F, reg, sh), after: DET.itemSig(F, this.base, reg, [-sh[0], -sh[1]]) };
     cd.pol = (1 - DET.histSim(cd.after, DET.ringHist(F, reg))) - (1 - DET.histSim(cd.before, DET.ringHist(this.base, reg))); // موجب = وُضع شيء، سالب = أُخذ شيء
     // فلتر كاميرات السقف (مدرَّب على RetailAction): احتمال أن التغيّر قطعة أُخذت فعلاً لا جزء شخص أو ظل
-    if(RA_MODEL){ const f = DET.regionFeats(this.base, F, null, reg); if(f) cd.ra = +DET.treeProb(RA_MODEL, f).toFixed(3); }
+    if(RA_MODEL){ const f = DET.regionFeats(this.base, F, null, reg); if(f){ cd.raF = f; cd.ra = +DET.treeProb(RA_MODEL, f).toFixed(3); } }
     return cd;
   },
   decide(cands, c, night){
@@ -587,7 +587,9 @@ const ENG = {
     cands = cands.filter(a => { const lo = Math.min(a.reg.w, a.reg.h), hi = Math.max(a.reg.w, a.reg.h); return !(!a.hT && lo <= 0.025 && hi >= 3 * lo); });
     // المصدر لا يكون «وضعاً» واضحاً، والوجهة لا تكون «أخذاً» واضحاً: وإلا طابقنا الخلفيتين بدل القطعة فأخفينا سرقة
     const src = a => a.pol < PUT, dst = b => b.pol > -PUT;
-    for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2), ...(a.ra !== undefined ? { ra: a.ra } : {}) };
+    // فلتر السقف بالعيون: بصمة MobileNet للمكان في الصورة المرجعية والآن (فقط مع إعداد «كاميرا سقف»، حتى لا نصرف معالجة بلا داعٍ)
+    if(RA_VIS && S.cfg.ceil && MP.emb) for(const a of cands) if(a.raF && !a.hT){ const eb = embCrop(this.baseCv, a.reg), ea = eb && embCrop(c, a.reg); if(ea){ a.ra = +DET.visProb(RA_VIS, a.raF, eb, ea).toFixed(3); a.raTh = RA_VIS.th; } }
+    for(const a of cands){ a.dbg = { type: a.reg.type, pol: +a.pol.toFixed(2), hand: !!a.hT, self: +DET.sigSim(a.before, a.after).toFixed(2), ...(a.ra !== undefined ? { ra: a.ra } : {}), ...(a.raTh !== undefined ? { raTh: +a.raTh.toFixed(3), vis: true } : {}) };
       if(a.hT){ const ib = colorHist(this.baseCv, a.reg, false), ia = colorHist(c, a.reg, false), h = handCarry(a.reg, firstTouch(a.reg, a.hT - 10) || a.hT, ib, ia); a.carry = h.v; a.dbg.carry = h;
         if(h.v === 'take') a.pol = Math.min(a.pol, -PUT - 0.01); else if(h.v === 'put') a.pol = Math.max(a.pol, PUT + 0.01); } } // دليل اليد يتقدّم على الملمس
     // (تجربة ميدانية) «حرّكت قطعة 2 سم فحسبها سرقة»: إزاحة صغيرة تظهر منطقة واحدة فيها القطعة قبل وبعد، أو منطقتين متلاصقتين.
@@ -895,6 +897,8 @@ const GEMINI = {
 const CONCEAL_MODEL = window.CONCEAL_MODEL || /*__CONCEAL_MODEL__*/null;
 // فلتر مناطق التغيّر لكاميرات السقف (RetailAction، Standard AI Dataset License): يُسجَّل احتماله مع كل حدث (dbg.ra) ويُعرض في الملاحظة
 const RA_MODEL = window.RA_MODEL || /*__RA_MODEL__*/null;
+// نفس الفلتر مع «عيون» MobileNet (بصمة المكان قبل وبعد): يُستعمل بدل السابق كلما كان نموذج البصمة محمّلاً (على مقاطع RetailAction لم يرها: إنذار خاطئ 8.5% → 7.6%)
+const RA_VIS = window.RA_VIS || /*__RA_VIS__*/null;
 const CONCEAL = { st: {}, last: {}, tracks: [],
   // تتبّع بسيط لكل شخص (أقرب مركز ورك) + نافذة الوضعيات، ثم احتمال «إخفاء» من النموذج
   score(lm, c, t){
