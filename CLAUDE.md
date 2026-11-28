@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+## Communication (standing user instruction, always)
+- **Reply to the user in Arabic only** (simple, Iraqi-friendly wording), including progress updates, results and errors. Code, commit messages and file names may stay in English.
+- Explain step by step in plain language; keep answers short when the user asks for brevity.
+- End every reply with the «🛡️ مِرصاد: شريط التقدم» progress bar and a «خطواتنا» next-steps list.
+- Never ask for, echo or store secrets in chat or in the repo; credentials go to GitHub secrets or the environment's network secrets.
+
 Two independent Arabic-RTL systems for an Iraqi electronics retailer (~600 display stands, ~300 staff).
 
 ## `display-cleaning/` — dust-cleaning compliance app (Firebase)
