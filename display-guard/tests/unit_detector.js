@@ -49,4 +49,10 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   for(const c of C) pd = Math.max(pd, Math.abs(D.visProb(M, c.x.slice(0, 16), c.b, c.a) - c.p));
   t(`ceiling vision filter: probability = sklearn (max diff ${pd.toExponential(1)}, PCA stored at 4 decimals)`, pd < 0.01);
 }
+// «اليد تحمل قطعة»: الانحدار اللوجستي في JS = sklearn (البصمة مقرّبة لـ3 منازل كما في الصفحة)
+{
+  const C = require('./fixtures/hand_hold_parity.json'), M = require('../src/models/hand_hold.json'); let pd = 0;
+  for(const c of C){ let z = M.b; c.e.forEach((v, i) => { z += M.w[i] * v; }); pd = Math.max(pd, Math.abs(1 / (1 + Math.exp(-z)) - c.p)); }
+  t(`hand-holding model: probability = sklearn (max diff ${pd.toExponential(1)})`, pd < 0.02);
+}
 process.exit(fails ? 1 : 0);
