@@ -734,7 +734,8 @@ function addEvent(e){ if(isDemo()) e.demo = true; if(DBG_CUR && !e.dbg) e.dbg = 
 // (الجلسة الميدانية 8: «فتحت المقاطع ما بيهن لحظة السرقة، ألكى القطعة مو موجودة») كان المقطع 8 ث قبل القرار و4 بعده،
 // والقرار يتأخر حتى يبتعد الشخص؛ فإن بقي أكثر من 8 ث ضاعت لحظة الأخذ. الآن: مخزن 70 ث (كامل الكثافة أثناء وجود شخص/يد
 // وآخر 20 ث، و2 صورة/ث لغيرها)، والمقطع يبدأ قبل وصول الشخص/اليد إلى العارضة بـ3 ث
-const CLIP = { buf: [], fps: 8, pre: 8, post: 4, keep: 70, last: 0, urls: {}, W: 960, cv: null, act: {},
+// (طلب المستخدم: «دقة عالية بالفيديو») 1280 بكسل و10 صور/ث و5 ميغابت، مع نافذة مكبَّرة للمكان داخل المقطع
+const CLIP = { buf: [], fps: 10, pre: 8, post: 4, keep: 70, last: 0, urls: {}, W: 1280, cv: null, act: {},
   activity(zid){ const t = now(), a = this.act[zid] = this.act[zid] || []; const L = a[a.length - 1];
     if(L && t - L.b <= 5) L.b = t; else a.push({ a: t, b: t }); while(a.length && t - a[0].b > this.keep) a.shift(); },
   busy(t){ for(const k in this.act) for(const e of this.act[k]) if(t >= e.a - 3 && t <= e.b + 3) return true; return false; },
@@ -746,10 +747,10 @@ const CLIP = { buf: [], fps: 8, pre: 8, post: 4, keep: 70, last: 0, urls: {}, W:
     const v = $('#vid'), src = isDemo() ? lastFrame() : (v && v.videoWidth ? v : null); if(!src) return; this.last = t;
     const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height, w = Math.min(this.W, sw);
     const s = this.cv || (this.cv = document.createElement('canvas')); s.width = w; s.height = Math.round(w * sh / sw) & ~1; s.getContext('2d').drawImage(src, 0, 0, s.width, s.height);
-    s.toBlob(b => { if(b) this.buf.push({ t, b }); }, 'image/jpeg', 0.78);   // ثنائي لا نصّ: نصف الذاكرة
+    s.toBlob(b => { if(b) this.buf.push({ t, b }); }, 'image/jpeg', 0.86);   // ثنائي لا نصّ: نصف الذاكرة
     // تخفيف: ما هو أقدم من 20 ث ولا يقع في فترة وجود شخص/يد يُبقى منه صورتان/ث فقط
     let prev = -1e9; this.buf = this.buf.filter(f => { if(t - f.t > this.keep) return false; if(t - f.t <= 20 || this.busy(f.t) || f.t - prev >= 0.5){ prev = f.t; return true; } return false; });
-    if(this.buf.length > 520) this.buf.splice(0, this.buf.length - 520);
+    if(this.buf.length > 450) this.buf.splice(0, this.buf.length - 450);
   },
   want(e){ return ['removal', 'night', 'conceal', 'weak', 'added', 'moved', 'swap', 'missed', 'major'].includes(e.kind); },
   async make(e){
@@ -760,14 +761,20 @@ const CLIP = { buf: [], fps: 8, pre: 8, post: 4, keep: 70, last: 0, urls: {}, W:
     const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m)); if(!mime) return;
     const im0 = await load(fr[0].b); if(!im0) return;
     const cv = document.createElement('canvas'); cv.width = im0.width; cv.height = im0.height; const x = cv.getContext('2d'), b = e.box;
-    const rec = new MediaRecorder(cv.captureStream(this.fps), { mimeType: mime, videoBitsPerSecond: 2500000 }), parts = [];
+    const rec = new MediaRecorder(cv.captureStream(this.fps), { mimeType: mime, videoBitsPerSecond: 5000000 }), parts = [];
     rec.ondataavailable = ev => { if(ev.data.size) parts.push(ev.data); }; const done = new Promise(r => rec.onstop = r);
     rec.start();
-    for(const f of fr){ const im = await load(f.b); if(im){ x.drawImage(im, 0, 0, cv.width, cv.height); im.close && im.close(); }
+    for(const f of fr){ const im = await load(f.b); if(im) x.drawImage(im, 0, 0, cv.width, cv.height);
       const u = cv.width / 320; // سماكة المربع والخط تتناسب مع الدقة
-      if(b){ x.lineWidth = 2 * u; x.strokeStyle = f.t >= t0 ? '#e53e3e' : '#f0a020'; x.strokeRect(b.x * cv.width, b.y * cv.height, b.w * cv.width, b.h * cv.height); }
+      if(b){ x.lineWidth = 2 * u; x.strokeStyle = f.t >= t0 ? '#e53e3e' : '#f0a020'; x.strokeRect(b.x * cv.width, b.y * cv.height, b.w * cv.width, b.h * cv.height);
+        // نافذة مكبَّرة للمكان (ضعف المربع) في الزاوية البعيدة عنه: تفاصيل القطعة واليد بدقة الكاميرا الكاملة
+        const W = cv.width, H = cv.height, cx = (b.x + b.w / 2) * W, cy = (b.y + b.h / 2) * H, sw = Math.min(W, Math.max(b.w * W * 2, W * 0.12)), sh = Math.min(H, Math.max(b.h * H * 2, H * 0.12));
+        const sx = Math.max(0, Math.min(W - sw, cx - sw / 2)), sy = Math.max(0, Math.min(H - sh, cy - sh / 2)), iw = W * 0.36, ih = Math.min(H * 0.5, iw * sh / sw), iw2 = ih * sw / sh;
+        const ox = cx > W / 2 ? 8 * u : W - iw2 - 8 * u, oy = cy > H / 2 ? 20 * u : H - ih - 8 * u;
+        if(sw < W * 0.7 && im){ x.drawImage(im, sx * im.width / W, sy * im.height / H, sw * im.width / W, sh * im.height / H, ox, oy, iw2, ih); x.lineWidth = 2 * u; x.strokeStyle = '#fff'; x.strokeRect(ox, oy, iw2, ih); } }
       x.fillStyle = '#000a'; x.fillRect(0, 0, cv.width, 16 * u); x.fillStyle = '#fff'; x.font = Math.round(11 * u) + 'px sans-serif';
       x.fillText(new Date(f.t * 1000).toLocaleTimeString('en-GB') + (f.t < t0 ? (an && f.t >= an - 0.5 ? '  عند العارضة' : '  قبل') : '  بعد'), 4 * u, 12 * u);
+      if(im && im.close) im.close();
       await wait(1000 / this.fps); }
     rec.stop(); await done;
     const blob = new Blob(parts, { type: mime.split(';')[0] }); if(!blob.size) return;
