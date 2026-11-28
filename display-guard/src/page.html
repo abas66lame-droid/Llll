@@ -633,7 +633,7 @@ const ENG = {
       if(!night && a.pol > PUT) this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة جديدة هنا.');
       // (تجربة ميدانية) كوب وكرتونة أبيض سُرقا فسُجّلا «إضافة»: ميل «وضع» ضعيف لا يغلب ملمساً يقول «اختفت قطعة»
       else if(!night && a.pol > 0 && a.reg.type !== 'rem') this.newInfo(a.z, a.reg, 'added', c, 'وضعت يدٌ قطعة عند هذا المكان.');
-      else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.'));
+      else this.newRemoval(a.z, a.reg, c, night, a.before, 'رُصدت يد عند القطعة لحظة التغيّر' + (a.reg.type === 'add' ? ' (ظهر ما كان خلفها).' : '.') + (a.dbg.carry && a.dbg.carry.hide >= 0.8 ? ' اليد بعد الأخذ تبدو وكأنها تخفي القطعة (' + Math.round(a.dbg.carry.hide * 100) + '%).' : ''));
     }
     const P2 = []; for(const a of Nd) for(const b of Nd) if(a !== b && src(a) && b.pol > 0){ const v = DET.sigSim(a.before, b.after); if(v > MOVE_SIM) P2.push([v + 0.5 * (b.pol - a.pol), v, a, b]); }
     P2.sort((x, y) => y[0] - x[0]);
@@ -925,14 +925,18 @@ const CONCEAL_MODEL = window.CONCEAL_MODEL || /*__CONCEAL_MODEL__*/null;
 const RA_MODEL = window.RA_MODEL || /*__RA_MODEL__*/null;
 // نفس الفلتر مع «عيون» MobileNet (بصمة المكان قبل وبعد): يُستعمل بدل السابق كلما كان نموذج البصمة محمّلاً (على مقاطع RetailAction لم يرها: إنذار خاطئ 8.5% → 7.6%)
 const RA_VIS = window.RA_VIS || /*__RA_VIS__*/null;
-// «هل اليد تحمل قطعة؟» من بصمة MobileNet لمربع اليد مكبَّراً ×1.5 (Roboflow retail_items_handscombine، CC BY 4.0، صور من فوق):
-// على صور لم يرها: دقة 96%، AUC 0.998. يكمّل «تتبّع ما تحمله اليد» بالألوان حين لا تكفي الألوان
-const HAND_HOLD = window.HAND_HOLD || /*__HAND_HOLD__*/null;
-function holdProb(c, b){
+// «هل اليد تحمل قطعة؟» و«هل تخفيها؟» من بصمة MobileNet لمربع اليد مكبَّراً ×1.5 (Roboflow، CC BY 4.0):
+// - الحمل v2: صور بيوت (retail_items_handscombine) + كاميرات محلات من السقف (sazzat/shoplift). على مقاطع محلات لم يرها AUC 0.94
+//   (v1 المدرَّب على البيوت فقط كان 0.60 على المحلات). يكمّل «تتبّع ما تحمله اليد» بالألوان حين لا تكفي الألوان
+// - الإخفاء: يد تخفي قطعة مقابل يد تحملها عادياً (sazzat/shoplift). على مقاطع لم يرها AUC 0.96. يُضاف دليلاً في ملاحظة الحالة فقط
+const HAND_HOLD = window.HAND_HOLD || /*__HAND_HOLD__*/null, HAND_HIDE = window.HAND_HIDE || /*__HAND_HIDE__*/null;
+const lgt = (M, e) => { let z = M.b; for(let i = 0; i < e.length; i++) z += M.w[i] * e[i]; return 1 / (1 + Math.exp(-z)); };
+function handProbs(c, b){
   if(!HAND_HOLD || !MP.emb || !c) return undefined;
   const e = embCrop(c, { x: Math.max(0, b.x - b.w * .25), y: Math.max(0, b.y - b.h * .25), w: Math.min(1, b.w * 1.5), h: Math.min(1, b.h * 1.5) }); if(!e) return undefined;
-  let z = HAND_HOLD.b; for(let i = 0; i < e.length; i++) z += HAND_HOLD.w[i] * e[i]; return 1 / (1 + Math.exp(-z));
+  return { hold: lgt(HAND_HOLD, e), hide: HAND_HIDE ? lgt(HAND_HIDE, e) : 0 };
 }
+const holdProb = (c, b) => { const p = handProbs(c, b); return p && p.hold; };
 const CONCEAL = { st: {}, last: {}, tracks: [],
   // تتبّع بسيط لكل شخص (أقرب مركز ورك) + نافذة الوضعيات، ثم احتمال «إخفاء» من النموذج
   score(lm, c, t){
@@ -995,23 +999,23 @@ const hsim = (a, b) => { if(!a || !b || a.n < 10 || b.n < 10) return 0; let sa =
 function logHands(boxes, c){ const h = boxes.filter(b => b.kind === 'يد'); if(!h.length) return;
   const g = b => ({ x: Math.max(0, b.x - b.w * .4), y: Math.max(0, b.y - b.h * .4), w: Math.min(1, b.w * 1.8), h: Math.min(1, b.h * 1.8) });
   const doHold = HAND_HOLD && MP.emb && c && now() - (S.holdAt || 0) >= 0.3; if(doHold) S.holdAt = now();
-  (S.handLog = S.handLog || []).push({ t: now(), b: h, carry: c ? h.map(b => colorHist(c, g(b), true)) : [], hold: doHold ? h.map(b => holdProb(c, b)) : [] });
+  (S.handLog = S.handLog || []).push({ t: now(), b: h, carry: c ? h.map(b => colorHist(c, g(b), true)) : [], hold: doHold ? h.map(b => handProbs(c, b)) : [] });
   const lim = now() - 180; while(S.handLog.length && S.handLog[0].t < lim) S.handLog.shift(); }
 // «تتبّع ما تحمله اليد» (فكرة المستخدم): قبل اللمس هل كانت اليد تحمل القطعة الجديدة؟ وبعده هل خرجت بالقطعة القديمة؟
 // يرجع 'take' أو 'put' أو null إذا لم يكن الدليل واضحاً
 function handCarry(reg, tTouch, itemBefore, itemAfter){
   const L = S.handLog || [], g = b => ({ x: b.x - b.w * .4, y: b.y - b.h * .4, w: b.w * 1.8, h: b.h * 1.8 }),
     near = b => Math.abs(b.x + b.w / 2 - (reg.x + reg.w / 2)) < 0.4 && Math.abs(b.y + b.h / 2 - (reg.y + reg.h / 2)) < 0.4 && !ix(g(b), reg);
-  let inB = 0, inA = 0, outB = 0, outA = 0, inH = -1, outH = -1;
+  let inB = 0, inA = 0, outB = 0, outA = 0, inH = -1, outH = -1, hide = -1;
   for(const e of L){ if(Math.abs(e.t - tTouch) > 8) continue; e.b.forEach((b, i) => { if(!near(b)) return;
-    const hp = e.hold && e.hold[i]; if(hp !== undefined){ if(e.t < tTouch) inH = Math.max(inH, hp); else outH = Math.max(outH, hp); }
+    const q = e.hold && e.hold[i]; if(q){ if(e.t < tTouch) inH = Math.max(inH, q.hold); else { outH = Math.max(outH, q.hold); if(q.hold >= 0.6) hide = Math.max(hide, q.hide); } }
     if(!e.carry[i]) return; const cb = hsim(e.carry[i], itemBefore), ca = hsim(e.carry[i], itemAfter);
     if(e.t < tTouch){ inB = Math.max(inB, cb); inA = Math.max(inA, ca); } else { outB = Math.max(outB, cb); outA = Math.max(outA, ca); } }); }
   const take = outB - Math.max(outA, inB), put = inA - Math.max(inB, outA);
   let v = take > 0.12 && take > put ? 'take' : put > 0.12 && put > take ? 'put' : null;
   // الألوان لم تحسم: نموذج «اليد تحمل قطعة» — جاءت فارغة وخرجت حاملة = أخذ، والعكس = وضع
   if(!v && inH >= 0 && outH >= 0){ if(outH >= 0.85 && inH < 0.4) v = 'take'; else if(inH >= 0.85 && outH < 0.4) v = 'put'; }
-  return { v, take: +take.toFixed(2), put: +put.toFixed(2), ...(inH >= 0 && outH >= 0 ? { holdIn: +inH.toFixed(2), holdOut: +outH.toFixed(2) } : {}) };
+  return { v, take: +take.toFixed(2), put: +put.toFixed(2), ...(inH >= 0 && outH >= 0 ? { holdIn: +inH.toFixed(2), holdOut: +outH.toFixed(2) } : {}), ...(hide >= 0 ? { hide: +hide.toFixed(2) } : {}) };
 }
 function firstTouch(reg, since){ const g = (b, m) => ({ x: b.x - b.w * m, y: b.y - b.h * m, w: b.w * (1 + 2 * m), h: b.h * (1 + 2 * m) });
   for(const h of S.handLog || []) if(h.t >= since && h.b.some(b => ix(g(b, 0.2), g(reg, 0.1)))) return h.t; return 0; }

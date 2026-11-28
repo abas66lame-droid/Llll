@@ -55,4 +55,9 @@ for(const fine of [false, true]) for(const [nm, f, nz] of [['wood', wood, 5], ['
   for(const c of C){ let z = M.b; c.e.forEach((v, i) => { z += M.w[i] * v; }); pd = Math.max(pd, Math.abs(1 / (1 + Math.exp(-z)) - c.p)); }
   t(`hand-holding model: probability = sklearn (max diff ${pd.toExponential(1)})`, pd < 0.02);
 }
+{
+  const C = require('./fixtures/hand_hide_parity.json'), M = require('../src/models/hand_hide.json'); let pd = 0;
+  for(const c of C){ let z = M.b; c.e.forEach((v, i) => { z += M.w[i] * v; }); pd = Math.max(pd, Math.abs(1 / (1 + Math.exp(-z)) - c.p)); }
+  t(`hand-hiding model: probability = sklearn (max diff ${pd.toExponential(1)})`, pd < 0.02);
+}
 process.exit(fails ? 1 : 0);
