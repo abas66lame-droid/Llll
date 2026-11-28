@@ -66,6 +66,8 @@ async function judge(body, client){
     'تخمين المحرك على الجهاز: ' + clean(c.guess, 40) + (c.hand ? '، ورُصدت يد عند المكان' : '، ولم تُرصد يد'),
     c.note ? 'ملاحظة المحرك: ' + clean(c.note, 300) : '',
     c.noSales ? 'لا يوجد بيع حالياً في المحل: أي قطعة تُؤخذ ولا ترجع تُعتبر مشكلة.' : '',
+    // (تجربة RetailAction: كاميرات سقف حقيقية) هذا التوجيه بجانب السؤال ضاعف الإنذارات الكاذبة المُزالة بلا خسارة سرقات
+    'الكاميرا غالباً عالية أو في السقف والقطع صغيرة. رأس شخص أو كتفه أو ملابسه أو حقيبته أو ظله داخل المربع ليس قطعة (no_change). أما إذا كان مكان على الرف فيه منتج في «قبل» وصار فارغاً في «بعد» فهذا أخذ (taken) حتى لو كانت القطعة صغيرة.',
   ].filter(Boolean).join('\n');
   const content = [];
   for(const im of images){ content.push({ type: 'text', text: LABELS[im.label] + ':' }); content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: im.data } }); }
