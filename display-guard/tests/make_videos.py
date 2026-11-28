@@ -421,6 +421,13 @@ def field7():
     seq = [f(items) for _ in range(24)]; cur = take(seq, f, items, items[0]); seq += [f(cur) for _ in range(64)]
     cur = take(seq, f, cur, cur[0]); seq += [f(cur) for _ in range(110)]
     write_y4m('swallow.y4m', seq)
+    # 4) (الجلسة الميدانية 8) «المقاطع ما بيهن لحظة السرقة»: اليد تأخذ القطعة ثم تبقى فارغة عند العارضة 16 ث (القرار ينتظرها)،
+    #    فمقطع «8 ث قبل القرار» يبدأ بعد الأخذ — يُفترض: المقطع يبدأ قبل وصول اليد
+    rng = np.random.default_rng(94); f = lambda it, h=None: noisy(rng, ws(it, h), 3)
+    items = [('gift', 250, 240), ('wbox', 470, 240)]
+    seq = [f(items) for _ in range(24)]; cur = take(seq, f, items, items[0])[:]
+    seq = seq[:-2] + [f(cur, (250, 260 + (k % 6) * 4)) for k in range(64)] + [f(cur, (250, 380)), f(cur, (250, SH - 5))] + [f(cur) for _ in range(220)]
+    write_y4m('lingerclip.y4m', seq)
 
 
 if __name__ == '__main__':

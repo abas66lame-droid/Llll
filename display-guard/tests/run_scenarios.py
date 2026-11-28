@@ -124,6 +124,8 @@ SCENARIOS = {
     'smallreturn': ('smallreturn.y4m', [ZALL], 50, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 2 and not [1 for _, k, s in ev if k == 'removal' and s in ('returned', 'resolved')], MOCK_HAND, {'fine': True}),
     'personbase': ('personbase.y4m', [ZALL], 50, lambda ev: any(k == 'tamper' for _, k, _ in ev) and not [1 for _, k, _ in ev if k in ('removal', 'night')], MOCK_PERSON),
     'swallow': ('swallow.y4m', [ZALL], 50, lambda ev: len([1 for _, k, s in ev if k == 'removal' and s == 'incident']) >= 2, MOCK_HAND),
+    # الجلسة الميدانية 8: المقطع يجب أن يحتوي لحظة الأخذ (يبدأ قبل أول ظهور لليد) حتى لو بقيت اليد عند العارضة طويلاً
+    'lingerclip': ('lingerclip.y4m', [ZALL], 75, lambda ev: ev and ev[0] == 'CLIPOK', MOCK_HAND),
 }
 
 
@@ -142,6 +144,10 @@ async def run_one(p, name):
     await pg.click('text=تشغيل الكاميرا')
     await pg.wait_for_timeout(secs * 1000)
     ev = await pg.evaluate("S.events.map(e => [zoneOf(e.zone).name, e.kind, e.status])")
+    if name == 'lingerclip':  # أول ظهور لليد مقابل بداية مقطع الشيل
+        ck = await pg.evaluate("(() => { const h = (S.handLog || [])[0], e = S.events.filter(e => e.kind === 'removal').pop(); return { h: h && h.t, c: e && e.clip }; })()")
+        print('  clip', ck)
+        ev = ['CLIPOK'] if ck['h'] and ck['c'] and ck['c'].get('from') is not None and ck['c']['from'] <= ck['h'] + 0.5 else ev
     await b.close()
     ok = check(ev) and not errs
     print(('PASS' if ok else 'FAIL'), name, ev, errs if errs else '')
